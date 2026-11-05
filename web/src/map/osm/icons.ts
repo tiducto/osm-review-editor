@@ -56,6 +56,12 @@ async function symbolFor(icon: string): Promise<Symbol | null> {
   return result
 }
 
+export async function iconMarkup(icon: string): Promise<string | null> {
+  const sym = await symbolFor(icon)
+  if (!sym) return null
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${sym.viewBox}" width="100%" height="100%" fill="currentColor">${sym.body}</svg>`
+}
+
 function loadImage(svg: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()

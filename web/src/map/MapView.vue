@@ -4,13 +4,14 @@ import * as maplibregl from 'maplibre-gl'
 import type { MapGeoJSONFeature, MapMouseEvent, GeoJSONSource, VectorTileSource } from 'maplibre-gl'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import type { OsmRef, OsmType } from '@/generated/models'
-import { useMapStore } from '@/stores/map'
+import { setDashState, useMapStore } from '@/stores/map'
 import { useRulesStore } from '@/stores/rules'
 import { useDraftsStore } from '@/stores/drafts'
 import { INTERACTIVE, ISSUE_LAYERS, SRC, installLayers, setData, setImagery, setVisible } from './layers'
 import { areaToGeoJSON, beforeToGeoJSON, changesToGeoJSON, empty, featuresToGeoJSON, issuesToGeoJSON, selectionToGeoJSON } from './data'
 import { asGeometry } from '@/lib/geo'
 import { PolygonDraw, drawJustEnded, type DrawState } from './draw'
+import { setFilterPart } from './filters'
 import { refString, featureTitle } from '@/lib/osm'
 import { changeKindColor, changeKindLabel, type ChangeKind } from '@/lib/colors'
 import { changeKind } from '@/lib/changes'
@@ -21,10 +22,14 @@ import { PATTERN_IMAGES } from './osm/patterns'
 import { knownDashes, OUT, tagsOf, type Props } from './osm/transform'
 import Icon from '@/components/Icon.vue'
 import Spinner from '@/components/Spinner.vue'
+import EditToolbar from '@/components/editor/EditToolbar.vue'
+import EditMenu from '@/components/editor/EditMenu.vue'
+import { useEditorStore } from '@/stores/editor'
 
 const mapStore = useMapStore()
 const rules = useRulesStore()
 const drafts = useDraftsStore()
+const editor = useEditorStore()
 
 const el = ref<HTMLDivElement | null>(null)
 let map: maplibregl.Map | null = null
@@ -61,7 +66,9 @@ function onDashes(keys: string[]) {
     dashTimer = null
     if (!map || !styleReady) return
     for (const [id, p] of DASHED_LAYERS) {
-      if (map.getLayer(id)) map.setPaintProperty(id, 'line-dasharray', dashExpr(dashes, p, lowZoom))
+      for (const layer of [id, `edit-${id}`]) {
+        if (map.getLayer(layer)) map.setPaintProperty(layer, 'line-dasharray', dashExpr(dashes, p, lowZoom))
+      }
     }
   }, 50)
 }
@@ -134,7 +141,6 @@ function syncAll() {
 
 type HideGroup = keyof typeof AUTO_HIDE
 const hidden: Record<HideGroup, boolean> = { buildings: false, points: false, addresses: false }
-const baseFilters = new Map<string, maplibregl.FilterSpecification | undefined>()
 const HIDE_LIMITS: Record<HideGroup, number> = { buildings: 250, points: 200, addresses: 100 }
 
 function applyHidden(group: HideGroup, hide: boolean) {
@@ -142,11 +148,7 @@ function applyHidden(group: HideGroup, hide: boolean) {
   hidden[group] = hide
   for (const part of AUTO_HIDE[group]) {
     for (const id of part.layers) {
-      if (!map.getLayer(id)) continue
-      if (!baseFilters.has(id)) baseFilters.set(id, map.getFilter(id) as maplibregl.FilterSpecification | undefined)
-      const base = baseFilters.get(id)
-      const filter = hide ? (base ? ['all', base, part.hide] : part.hide) : base
-      map.setFilter(id, (filter ?? null) as maplibregl.FilterSpecification | null)
+      for (const layer of [id, `edit-${id}`]) setFilterPart(map, layer, `autohide-${group}`, hide ? (part.hide as maplibregl.FilterSpecification) : null)
     }
   }
 }
@@ -195,6 +197,26 @@ watch(
   () => drafts.reviewing,
   () => clearHover(),
 )
+watch(
+  () => editor.active,
+  () => {
+    clearHover()
+    for (const g of Object.keys(hidden) as HideGroup[]) {
+      const cur = hidden[g]
+      hidden[g] = !cur
+      applyHidden(g, cur)
+    }
+    autoHide()
+  },
+)
+
+const editHover = computed(() => {
+  const h = editor.hover
+  if (!h || editor.menu) return null
+  const s = editor.describe(h.id)
+  if (!s) return null
+  return { x: h.x, y: h.y, text: s.displayName ?? s.preset.name, sub: `${s.id[0]}${s.osmId}${s.isNew ? ' · new' : ''}` }
+})
 watch(() => [drafts.current, drafts.index, drafts.reviewing, drafts.showBefore], syncChanges)
 watch(() => [drafts.context, drafts.reviewing], syncContext)
 watch(() => mapStore.activeImagery, syncImagery)
@@ -253,7 +275,7 @@ function topFeature(e: MapMouseEvent): MapGeoJSONFeature | null {
 }
 
 async function onClick(e: MapMouseEvent) {
-  if (mapStore.drawing || drawJustEnded()) return
+  if (editor.active || mapStore.drawing || drawJustEnded()) return
   const f = topFeature(e)
   if (!f || !map) {
     if (!drafts.reviewing) void mapStore.select(null)
@@ -304,6 +326,10 @@ function clearHover() {
 
 function onMouseMove(e: MapMouseEvent) {
   if (!map || mapStore.drawing) return
+  if (editor.active) {
+    if (hover.value) clearHover()
+    return
+  }
   const f = topFeature(e)
   map.getCanvas().style.cursor = f ? 'pointer' : ''
   if (!f) {
@@ -379,6 +405,7 @@ onMounted(() => {
     fadeDuration: 100,
   })
   registerTileProtocol(map, onDashes)
+  setDashState({ dashes, lowZoom, add: onDashes })
   map.touchZoomRotate.disableRotation()
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left')
@@ -442,6 +469,15 @@ const currentHasGeometryChange = computed(() => {
   <div class="relative h-full w-full overflow-hidden">
     <div ref="el" class="absolute inset-0" />
 
+    <EditMenu v-if="editor.menu" />
+    <div
+      v-if="editHover"
+      class="pointer-events-none absolute z-10 max-w-64 rounded-md border border-line bg-surface/95 px-2 py-1 text-[12px] shadow-panel backdrop-blur"
+      :style="{ left: `${editHover.x + 14}px`, top: `${editHover.y + 10}px` }"
+    >
+      <div class="truncate font-medium">{{ editHover.text }}</div>
+      <div class="font-mono text-[10.5px] text-fg-3">{{ editHover.sub }}</div>
+    </div>
     <div
       v-if="hover"
       class="pointer-events-none absolute z-10 max-w-64 rounded-md border border-line bg-surface/95 px-2 py-1 text-[12px] shadow-panel backdrop-blur"
@@ -455,6 +491,7 @@ const currentHasGeometryChange = computed(() => {
     </div>
 
     <div class="pointer-events-none absolute top-3 left-1/2 z-10 flex w-max max-w-[calc(100%-24px)] -translate-x-1/2 flex-col items-center gap-2">
+      <EditToolbar v-if="!drafts.reviewing && !mapStore.drawing" />
       <div
         v-if="mapStore.drawing"
         class="pointer-events-auto flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 rounded-lg border border-accent/50 bg-surface/95 px-3 py-2 text-[12px] text-fg-2 shadow-pop backdrop-blur"

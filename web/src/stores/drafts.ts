@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import type { Change, Draft, DraftDetail, DraftStatus, MapFeature, OsmRef, ReviewRequest } from '@/generated/models'
 import type { MergeProgress } from '@/generated/models'
-import { api } from '@/api/client'
+import { api, ApiError } from '@/api/client'
 import { useAppStore } from './app'
 import { useMapStore } from './map'
 import { useRulesStore } from './rules'
@@ -152,12 +152,38 @@ export const useDraftsStore = defineStore('drafts', () => {
     return counts
   }
 
+  const cascadePrompt = shallowRef<{ decision: ReviewRequest['decision']; message: string; links: Change['dependsOn']; resolve: (ok: boolean) => void } | null>(null)
+
+  function askCascade(c: Change, req: ReviewRequest, message: string): Promise<boolean> {
+    const links = req.decision === 'approve' || req.decision === 'edit' ? c.dependsOn : c.requiredBy
+    return new Promise((resolve) => {
+      cascadePrompt.value = {
+        decision: req.decision,
+        message,
+        links,
+        resolve: (ok) => {
+          cascadePrompt.value = null
+          resolve(ok)
+        },
+      }
+    })
+  }
+
   async function review(req: ReviewRequest, advance = true): Promise<boolean> {
     const c = currentChange.value
     if (!c || busy.value) return false
     busy.value = true
     try {
-      replaceChange(await api.review(c.id, req))
+      try {
+        replaceChange(await api.review(c.id, req))
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.status !== 409 || req.cascade || req.decision === 'reset') throw e
+        busy.value = false
+        if (!(await askCascade(c, req, e.detail ?? e.error))) return false
+        busy.value = true
+        replaceChange(await api.review(c.id, { ...req, cascade: true }))
+        setDetail(await api.draft(c.draftId))
+      }
       if (advance) nextOpen()
       return true
     } catch (e) {
@@ -381,7 +407,7 @@ export const useDraftsStore = defineStore('drafts', () => {
     drawerOpen, drawerTab, progress,
     changes, currentChange, decidedCount, pendingCount, approvedCount, conflictCount,
     loadDrafts, open, startReview, stopReview, close, focusCurrent, goTo, next, prev, nextOpen,
-    review, approve, reject, editTags, reset, sendToId, resolve, approveRemaining, refreshLive, fromRule,
+    review, cascadePrompt, approve, reject, editTags, reset, sendToId, resolve, approveRemaining, refreshLive, fromRule,
     setStatus, rename, updateChangeset, onDraftUpdated, onMergeProgress,
     savingManual, saveManualEdit, openInId,
   }

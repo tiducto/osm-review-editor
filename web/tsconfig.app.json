@@ -7,7 +7,12 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": false,
-    "paths": { "@/*": ["./src/*"] }
+    "paths": {
+      "@/*": ["./src/*"],
+      "@openstreetmap/id/modules/index": ["./src/editor/id/types/id-modules.d.ts"],
+      "@openstreetmap/id/modules/util/jxon": ["./src/editor/id/types/id-jxon.d.ts"]
+    }
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue"]
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue"],
+  "exclude": ["src/**/*.test.ts"]
 }

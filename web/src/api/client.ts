@@ -28,6 +28,10 @@ import type {
   Upload,
   BBox,
   OsmRef,
+  OpenChangeElsewhere,
+  OsmChangeImportRequest,
+  OsmChangeImportResult,
+  DraftFromOsmChangeRequest,
 } from '@/generated/models'
 import { bboxParam } from '@/lib/geo'
 import { refString } from '@/lib/osm'
@@ -37,6 +41,8 @@ export class ApiError extends Error {
     readonly status: number,
     readonly error: string,
     readonly detail: string | null = null,
+    readonly code: string | null = null,
+    readonly openChanges: OpenChangeElsewhere[] | null = null,
   ) {
     super(detail ? `${error}: ${detail}` : error)
     this.name = 'ApiError'
@@ -55,12 +61,12 @@ function withQuery(path: string, query?: Query): string {
   return qs ? `${path}?${qs}` : path
 }
 
-async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+async function send(method: string, path: string, body: unknown, signal: AbortSignal | undefined, accept: string): Promise<string> {
   let res: Response
   try {
     res = await fetch(path, {
       method,
-      headers: body === undefined ? { Accept: 'application/json' } : { Accept: 'application/json', 'Content-Type': 'application/json' },
+      headers: body === undefined ? { Accept: accept } : { Accept: accept, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal,
     })
@@ -72,15 +78,24 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
   if (!res.ok) {
     let error = res.statusText || `HTTP ${res.status}`
     let detail: string | null = null
+    let code: string | null = null
+    let openChanges: OpenChangeElsewhere[] | null = null
     try {
-      const parsed = JSON.parse(text) as { error?: string; detail?: string | null }
+      const parsed = JSON.parse(text) as { error?: string; detail?: string | null; code?: string | null; openChanges?: OpenChangeElsewhere[] | null }
       if (parsed.error) error = parsed.error
       detail = parsed.detail ?? null
+      code = parsed.code ?? null
+      openChanges = parsed.openChanges ?? null
     } catch {
       detail = text || null
     }
-    throw new ApiError(res.status, error, detail)
+    throw new ApiError(res.status, error, detail, code, openChanges)
   }
+  return text
+}
+
+async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  const text = await send(method, path, body, signal, 'application/json')
   return (text ? JSON.parse(text) : undefined) as T
 }
 
@@ -139,6 +154,11 @@ export const api = {
   imagerySettings: () => get<ImagerySource[]>('/api/settings/imagery'),
   saveImagerySettings: (list: ImagerySource[]) => put<ImagerySource[]>('/api/settings/imagery', list),
   resetImagerySettings: () => post<ImagerySource[]>('/api/settings/imagery/reset'),
+
+  osmMap: (bbox: BBox, signal?: AbortSignal) => send('GET', withQuery('/api/osm/map', { bbox: bboxParam(bbox) }), undefined, signal, 'application/xml'),
+  draftOsmChange: (id: string) => send('GET', `/api/drafts/${enc(id)}/osmchange`, undefined, undefined, 'application/xml'),
+  importOsmChange: (id: string, req: OsmChangeImportRequest) => post<OsmChangeImportResult>(`/api/drafts/${enc(id)}/osmchange`, req),
+  draftFromOsmChange: (req: DraftFromOsmChangeRequest) => post<OsmChangeImportResult>('/api/drafts/from-osmchange', req),
 }
 
 export function errorMessage(e: unknown): string {

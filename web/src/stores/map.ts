@@ -12,6 +12,22 @@ const IMAGERY_KEY = 'ore.imagery'
 
 let map: MlMap | null = null
 
+export interface DashState {
+  dashes: Map<string, number[]>
+  lowZoom: number
+  add: (keys: string[]) => void
+}
+
+let dashState: DashState | null = null
+
+export function setDashState(s: DashState | null) {
+  dashState = s
+}
+
+export function getDashState(): DashState | null {
+  return dashState
+}
+
 export interface FitPadding {
   top: number
   bottom: number

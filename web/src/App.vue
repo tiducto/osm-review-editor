@@ -16,18 +16,28 @@ import MergeDialog from '@/components/MergeDialog.vue'
 import SettingsDialog from '@/components/SettingsDialog.vue'
 import Toasts from '@/components/Toasts.vue'
 import Icon from '@/components/Icon.vue'
+import EditInspector from '@/components/editor/EditInspector.vue'
+import EditDialogs from '@/components/editor/EditDialogs.vue'
+import { useEditorStore } from '@/stores/editor'
 
 const app = useAppStore()
 const mapStore = useMapStore()
 const rules = useRulesStore()
 const drafts = useDraftsStore()
+const editor = useEditorStore()
 
 const topBar = ref<InstanceType<typeof TopBar> | null>(null)
 const leftOpen = ref(window.innerWidth >= 768)
 const rightCollapsed = ref(false)
 
-const rightContent = computed<'review' | 'inspector' | null>(() =>
-  drafts.reviewing && drafts.current ? 'review' : mapStore.selected ? 'inspector' : null,
+const rightContent = computed<'review' | 'inspector' | 'edit' | null>(() =>
+  editor.active
+    ? 'edit'
+    : drafts.reviewing && drafts.current
+      ? 'review'
+      : mapStore.selected
+        ? 'inspector'
+        : null,
 )
 const rightOpen = computed(() => !!rightContent.value && !rightCollapsed.value)
 const mapBox = ref<HTMLElement | null>(null)
@@ -43,7 +53,13 @@ function syncInset() {
   mapStore.setBottomInset(Math.max(0, map.bottom - (box.bottom - box.height * 0.58)))
 }
 watch(
-  () => [mapStore.selected, drafts.reviewing && drafts.current?.draft.id],
+  () => drafts.reviewing,
+  (r) => {
+    if (r && editor.active) editor.exit()
+  },
+)
+watch(
+  () => [mapStore.selected, drafts.reviewing && drafts.current?.draft.id, editor.active],
   () => {
     if (window.innerWidth < 768) rightCollapsed.value = false
   },
@@ -62,7 +78,7 @@ function onKey(e: KeyboardEvent) {
     leftOpen.value = !leftOpen.value
   } else if (e.key === ']') {
     rightCollapsed.value = !rightCollapsed.value
-  } else if (e.key === 'Escape' && !drafts.reviewing && mapStore.selected) {
+  } else if (e.key === 'Escape' && !editor.active && !drafts.reviewing && mapStore.selected) {
     void mapStore.select(null)
     mapStore.highlighted = []
   }
@@ -160,17 +176,19 @@ onBeforeUnmount(() => {
           @click="rightCollapsed = !rightCollapsed"
         >
           <Icon :name="rightOpen ? 'chevron-down' : 'chevron-up'" :size="13" />
-          {{ rightOpen ? 'Show map' : rightContent === 'review' ? 'Show review' : 'Show inspector' }}
+          {{ rightOpen ? 'Show map' : rightContent === 'review' ? 'Show review' : rightContent === 'edit' ? 'Show editor' : 'Show inspector' }}
         </button>
         <div class="h-full overflow-hidden md:w-[392px]">
           <ReviewCard v-if="rightContent === 'review'" />
           <Inspector v-else-if="rightContent === 'inspector'" />
+          <EditInspector v-else-if="rightContent === 'edit'" />
         </div>
       </aside>
     </div>
 
     <SettingsDialog v-if="app.settingsOpen" />
     <MergeDialog v-if="app.mergeDraftId" :draft-id="app.mergeDraftId" />
+    <EditDialogs />
     <Toasts />
   </div>
 </template>

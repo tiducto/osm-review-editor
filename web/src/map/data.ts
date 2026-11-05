@@ -103,10 +103,16 @@ export function changesToGeoJSON(list: Change[], currentId: string | null): Feat
 export function beforeToGeoJSON(c: Change | null, showBefore: boolean): FeatureCollection {
   if (!c) return empty
   const base = asGeometry(c.baseGeom)
-  if (!base) return empty
-  if (!showBefore && !c.newGeom) return empty
+  const after = asGeometry(c.newGeom)
   const color = changeKindColor[changeKind(c)]
-  return { type: 'FeatureCollection', features: [feature(base, { mode: showBefore ? 'solid' : 'ghost', color })] }
+  const out: Feature[] = []
+  if (base && (showBefore || after)) out.push(feature(base, { mode: showBefore ? 'solid' : 'ghost', color }))
+  const shown = showBefore ? base : c.action === 'delete' ? null : (after ?? (c.geometryChanged ? null : base))
+  if (shown && c.geometryChanged) {
+    const nodes = wayNodes(shown)
+    if (nodes.length) out.push({ type: 'Feature', geometry: { type: 'MultiPoint', coordinates: nodes }, properties: { g: 'vx', color } })
+  }
+  return out.length ? { type: 'FeatureCollection', features: out } : empty
 }
 
 export function areaToGeoJSON(a: Area | null): FeatureCollection {
