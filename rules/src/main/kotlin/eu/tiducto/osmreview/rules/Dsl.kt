@@ -43,6 +43,8 @@ class RuleDef(
     val id: String,
     val title: String,
     val description: String,
+    /** What the fix does, for changeset comments ("add area=yes to closed platforms"). */
+    val changesetComment: String,
     val severity: Severity,
     val confidence: Confidence,
     val find: RuleContext.(Scope) -> Iterable<Feature>,
@@ -58,10 +60,11 @@ fun rule(
     severity: Severity,
     confidence: Confidence,
     description: String = "",
+    changesetComment: String = title.replaceFirstChar(Char::lowercase),
     find: RuleContext.(Scope) -> Iterable<Feature>,
     fix: (RuleContext.(Feature) -> Fix?)?,
     context: (RuleContext.(Feature) -> Iterable<Feature>)? = null,
-): RuleDef = RuleDef(id, title, description, severity, confidence, find, fix, context)
+): RuleDef = RuleDef(id, title, description, changesetComment, severity, confidence, find, fix, context)
 
 /** Restricts a query to the scope: bbox first (index), then the polygon if there is one. */
 fun Features.within(scope: Scope): Features {

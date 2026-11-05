@@ -1,0 +1,218 @@
+package eu.tiducto.osmreview.rules
+
+import com.geodesk.feature.Feature
+import com.geodesk.feature.FeatureLibrary
+import com.geodesk.feature.Filter
+import com.geodesk.geom.Box
+import eu.tiducto.osmreview.shared.Area
+import eu.tiducto.osmreview.shared.BBox
+import eu.tiducto.osmreview.shared.FeatureCollection
+import eu.tiducto.osmreview.shared.MapFeature
+import eu.tiducto.osmreview.shared.OsmRef
+import eu.tiducto.osmreview.shared.OsmType
+import java.text.Normalizer
+import java.util.concurrent.atomic.AtomicReference
+
+/** Read queries over the mirror for the map, lookups by ID and named areas. */
+class MirrorQueries(private val mirror: GolMirror) {
+
+    /**
+     * Mirror objects in [bbox] for the map: tagged nodes, ways, and area relations. Relations much
+     * larger than the view (boundaries, regions) are skipped: at street zoom they are noise and megabytes.
+     */
+    fun features(bbox: BBox, limit: Int): FeatureCollection = mirror.query { gol ->
+        val out = ArrayList<MapFeature>()
+        var truncated = false
+        val view = Geo.box(bbox)
+        val maxRelationSpan = 4.0 * maxOf(view.maxX().toDouble() - view.minX(), view.maxY().toDouble() - view.minY())
+        for (f in gol.`in`(view)) {
+            if (f.isRelation) {
+                if (!f.isArea) continue
+                val b = f.bounds()
+                if (maxOf(b.maxX().toDouble() - b.minX(), b.maxY().toDouble() - b.minY()) > maxRelationSpan) continue
+            }
+            if (out.size >= limit) {
+                truncated = true
+                break
+            }
+            out += f.toMapFeature()
+        }
+        FeatureCollection(out, truncated)
+    }
+
+    /**
+     * Looks up [refs] in an open GOL (call inside [GolMirror.query]; features are only valid there).
+     * One pass with an ID-set filter, about 0.5 s over a whole-country GOL; pass [near] to restrict
+     * the pass to a bbox when the location is known.
+     */
+    fun findIn(gol: FeatureLibrary, refs: Collection<OsmRef>, near: BBox? = null): Map<OsmRef, Feature> {
+        if (refs.isEmpty()) return emptyMap()
+        val wanted = refs.filter { it.id > 0 }.toHashSet()
+        val view = near?.let { gol.`in`(Geo.box(it)) } ?: gol
+        return view.select(IdSetFilter(wanted)).associateBy { it.ref }
+    }
+
+    fun mapFeature(ref: OsmRef, near: BBox? = null): MapFeature? =
+        mirror.query { gol -> findIn(gol, listOf(ref), near)[ref]?.toMapFeature() }
+
+    /** Map features for many refs at once (context objects in review, change geometries). */
+    fun mapFeatures(refs: Collection<OsmRef>, near: BBox? = null): Map<OsmRef, MapFeature> =
+        mirror.query { gol -> findIn(gol, refs, near).mapValues { it.value.toMapFeature() } }
+
+    /** One object with its parents (ways and relations it belongs to), for MCP `get_object`. */
+    fun objectInfo(ref: OsmRef): ObjectInfo? = mirror.query { gol ->
+        val f = findIn(gol, listOf(ref))[ref] ?: return@query null
+        ObjectInfo(
+            feature = f.toMapFeature(),
+            parents = f.parents().take(MAX_PARENTS).map { ParentInfo(it.ref, it.tagMap(), it.role().takeIf { r -> r.isNotEmpty() }) },
+            center = f.centroid(),
+        )
+    }
+
+    // ---- areas ----
+
+    /** An admin boundary, or a place node (suburb, village...) standing in as a bbox around it. */
+    private data class AreaEntry(
+        val name: String,
+        val key: String,
+        val adminLevel: Int,
+        val ref: OsmRef,
+        val bbox: BBox,
+        val isPlaceNode: Boolean = false,
+    )
+
+    private val areaIndex = AtomicReference<Pair<Long, List<AreaEntry>>?>(null)
+
+    private fun areas(): List<AreaEntry> {
+        val gen = mirror.generation
+        areaIndex.get()?.takeIf { it.first == gen }?.let { return it.second }
+        val list = mirror.query { gol ->
+            val boundaries = gol.select("a[boundary=administrative][name]").map { f ->
+                AreaEntry(f.tag("name"), fold(f.tag("name")), f.tag("admin_level").toIntOrNull() ?: 99, f.ref, Geo.bbox(f.bounds()))
+            }
+            // Parts of towns are often only place nodes ("Kateřinky" in Opava): a bbox by place type.
+            val places = gol.select("n[place=suburb,quarter,neighbourhood,village,hamlet][name]").map { f ->
+                val radius = PLACE_RADIUS_M[f.tag("place")] ?: 500.0
+                AreaEntry(f.tag("name"), fold(f.tag("name")), PLACE_LEVEL, f.ref, Geo.bbox(Box.metersAroundLonLat(radius, f.lon(), f.lat())), true)
+            }
+            boundaries + places
+        }
+        areaIndex.set(gen to list)
+        return list
+    }
+
+    /** Administrative areas whose name matches [q] (diacritics- and case-insensitive), best first. */
+    fun searchAreas(q: String, limit: Int = 10): List<Area> {
+        val k = fold(q)
+        if (k.isBlank()) return emptyList()
+        return areas().asSequence()
+            .filter { it.key.contains(k) }
+            .sortedWith(compareBy({ it.key != k }, { !it.key.startsWith(k) }, { it.adminLevel }, { it.name }))
+            .distinctBy { it.name to it.adminLevel }
+            .take(limit)
+            .map { Area(it.name, it.bbox) }
+            .toList()
+    }
+
+    /**
+     * The polygon of a named area: exact name match, lowest admin level first. Ambiguous names can be
+     * qualified by their parent, "Opava-Kateřinky" or "Kateřinky, Opava": the child inside the parent.
+     */
+    fun area(name: String): Pair<Area, Scope>? {
+        val entry = resolveArea(name) ?: return null
+        if (entry.isPlaceNode) {
+            val box = Geo.box(entry.bbox)
+            return Area(entry.name, entry.bbox, Geo.toGeoJson(Geo.boxPolygon(box))) to Scope(box)
+        }
+        return mirror.query { gol ->
+            val f = findIn(gol, listOf(entry.ref), entry.bbox)[entry.ref] ?: return@query null
+            val geom = f.toGeometry()
+            Area(entry.name, entry.bbox, Geo.toGeoJson(geom)) to Scope(Box(f.bounds()), geom)
+        }
+    }
+
+    private fun resolveArea(name: String): AreaEntry? {
+        val k = fold(name)
+        areas().filter { it.key == k }.minByOrNull { it.adminLevel }?.let { return it }
+        val (parent, child) = when {
+            ',' in name -> name.substringAfter(',').trim() to name.substringBefore(',').trim()
+            '-' in name -> name.substringBefore('-').trim() to name.substringAfter('-').trim()
+            else -> return null
+        }
+        val p = areas().filter { it.key == fold(parent) }.minByOrNull { it.adminLevel } ?: return null
+        return areas().filter { it.key == fold(child) && it.bbox.centerIn(p.bbox) }.minByOrNull { it.adminLevel }
+            ?.let { it.copy(name = name) }
+    }
+
+    private fun BBox.centerIn(o: BBox): Boolean {
+        val x = (west + east) / 2
+        val y = (south + north) / 2
+        return x in o.west..o.east && y in o.south..o.north
+    }
+
+    /** Named features in [bbox] whose name contains [q]. */
+    fun searchNamed(q: String, bbox: BBox, limit: Int = 10): List<MapFeature> = mirror.query { gol ->
+        val k = fold(q)
+        gol.select("*[name]").`in`(Geo.box(bbox)).asSequence()
+            .filter { fold(it.tag("name")).contains(k) }
+            .take(limit)
+            .map { it.toMapFeature() }
+            .toList()
+    }
+
+    /** A GOQL query in [bbox], capped at [limit]. */
+    fun goql(query: String, bbox: BBox?, limit: Int): Pair<List<MapFeature>, Boolean> = mirror.query { gol ->
+        val sel = gol.select(query).let { s -> bbox?.let { s.`in`(Geo.box(it)) } ?: s }
+        val out = ArrayList<MapFeature>()
+        for (f in sel) {
+            if (out.size >= limit) return@query out to true
+            out += f.toMapFeature()
+        }
+        out to false
+    }
+
+    private fun fold(s: String): String =
+        Normalizer.normalize(s, Normalizer.Form.NFD).replace(DIACRITICS, "").lowercase().trim()
+
+    companion object {
+        private val DIACRITICS = Regex("\\p{M}+")
+
+        /** Place nodes rank after every admin level when names collide. */
+        private const val PLACE_LEVEL = 50
+        private val PLACE_RADIUS_M = mapOf(
+            "suburb" to 1200.0, "quarter" to 800.0, "neighbourhood" to 400.0, "village" to 1000.0, "hamlet" to 400.0,
+        )
+    }
+}
+
+@kotlinx.serialization.Serializable
+data class ParentInfo(val ref: OsmRef, val tags: Map<String, String>, val role: String? = null)
+
+@kotlinx.serialization.Serializable
+data class ObjectInfo(val feature: MapFeature, val parents: List<ParentInfo>, val center: eu.tiducto.osmreview.shared.LngLat)
+
+private const val MAX_PARENTS = 50
+
+fun Feature.toMapFeature(): MapFeature = MapFeature(ref, tagMap(), Geo.featureGeoJson(this))
+
+/** Accepts features whose (type, id) is in the set: one scan for many lookups. */
+private class IdSetFilter(private val refs: Set<OsmRef>) : Filter {
+    private val types = refs.map { it.type }.toSet()
+
+    override fun acceptedTypes(): Int = types.fold(0) { acc, t ->
+        acc or when (t) {
+            OsmType.NODE -> NODES
+            OsmType.WAY -> WAYS
+            OsmType.RELATION -> RELATIONS
+        }
+    }
+
+    override fun accept(f: Feature): Boolean = f.ref in refs
+
+    companion object {
+        // Type masks GeoDesk's own IdFilter uses for node(id), way(id), relation(id).
+        private const val NODES = 327685
+        private const val WAYS = 15728880
+        private const val RELATIONS = 251662080
+    }
+}

@@ -15,6 +15,7 @@ object BuiltInRules {
         id = "platform-area",
         title = "Closed platform way without area=yes",
         description = "A closed platform way is drawn as an outline; area=yes makes renderers and routers treat it as a surface.",
+        changesetComment = "add area=yes to closed platforms",
         severity = Severity.WARNING,
         confidence = Confidence.DETERMINISTIC,
         find = { scope ->
@@ -29,6 +30,7 @@ object BuiltInRules {
         id = "deprecated-tags",
         title = "Deprecated tags",
         description = "Tags listed in iD's deprecated.json (id-tagging-schema ${DeprecatedTags.schemaVersion}), upgraded the way iD does.",
+        changesetComment = "upgrade deprecated tags",
         severity = Severity.WARNING,
         confidence = Confidence.NEEDS_REVIEW,
         find = { scope ->
@@ -70,6 +72,7 @@ object BuiltInRules {
         id = "sidewalk-separate",
         title = "Sidewalk tagged on road but mapped separately",
         description = "The road says sidewalk=* while a footway=sidewalk runs parallel within 10 m. The side is computed from geometry.",
+        changesetComment = "mark separately mapped sidewalks on roads",
         severity = Severity.WARNING,
         confidence = Confidence.NEEDS_REVIEW,
         find = { scope ->
@@ -85,6 +88,7 @@ object BuiltInRules {
         id = "crossing-missing-type",
         title = "Crossing without crossing=*",
         description = "highway=crossing without crossing=*. A type is suggested only when crossing_ref implies it.",
+        changesetComment = "add crossing type from crossing_ref",
         severity = Severity.INFO,
         confidence = Confidence.NEEDS_REVIEW,
         find = { scope -> gol.select("n[highway=crossing][!crossing]").within(scope) },
@@ -101,6 +105,7 @@ object BuiltInRules {
         id = "footway-missing-surface",
         title = "Footway, path or cycleway without surface",
         description = "Suggests the surface of connected footways, paths and cycleways when they all agree.",
+        changesetComment = "add surface from connected ways",
         severity = Severity.INFO,
         confidence = Confidence.NEEDS_REVIEW,
         find = { scope -> gol.select("w[highway=footway,path,cycleway][!surface]").within(scope) },

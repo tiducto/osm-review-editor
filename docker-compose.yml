@@ -1,0 +1,43 @@
+# One `docker compose up` starts everything. The first run builds the GOL from the extract (Czechia:
+# about 15 minutes, a few GB of disk); later runs apply daily replication diffs.
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: osmreview
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      POSTGRES_DB: osmreview
+    volumes: [pgdata:/var/lib/postgresql]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U osmreview"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  gol:
+    build: ./infra/gol              # GOL Tool 2.5 + update/swap script
+    volumes: [goldata:/data]
+    environment:
+      EXTRACT_URL: ${EXTRACT_URL:-https://download.geofabrik.de/europe/czech-republic-latest.osm.pbf}
+      UPDATE_INTERVAL: ${UPDATE_INTERVAL:-86400}   # seconds; Geofabrik extracts publish daily diffs
+      REBUILD_DAYS: ${REBUILD_DAYS:-7}             # weekly full rebuild as a safety net
+    restart: unless-stopped
+
+  app:
+    build: .                        # multi-stage: Gradle builds shared + Vue + server, JRE runtime image
+    depends_on:
+      db: { condition: service_healthy }
+      gol: { condition: service_started }
+    volumes: [goldata:/data]        # reads the active GOL; watches /data/current for swaps
+    ports:
+      - 127.0.0.1:3000:3000         # UI, REST, WebSocket, MCP
+      - 127.0.0.1:8111:8111         # JOSM remote control (never publish on all interfaces)
+    env_file: .env
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/osmreview
+      DB_USER: osmreview
+    restart: unless-stopped
+
+volumes:
+  pgdata: {}
+  goldata: {}

@@ -1,0 +1,12 @@
+**/build
+**/node_modules
+**/.gradle
+.kotlin
+.idea
+.git
+data
+.tools
+web/dist
+*.gol
+*.osm.pbf
+.env

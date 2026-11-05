@@ -74,6 +74,9 @@ object Geo {
 
     fun boundsOf(g: Geometry): Box = Box.of(g)
 
+    /** A Mercator box as a JTS polygon (for GeoJSON output). */
+    fun boxPolygon(b: Box): Polygon = factory.toGeometry(b.toEnvelope()) as Polygon
+
     private fun polygon(rings: JsonArray): Polygon {
         val linear = rings.map { ring -> factory.createLinearRing(ring.jsonArray.map(::mercator).toTypedArray()) }
         return factory.createPolygon(linear.first(), linear.drop(1).toTypedArray<LinearRing>())

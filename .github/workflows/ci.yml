@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: Test (shared JVM + JS, rules, server incl. Postgres via Testcontainers)
+        run: ./gradlew :shared:allTests :rules:test :server:test
+
+      - name: Generated TS models are up to date
+        run: |
+          ./gradlew :shared:generateTsModels
+          git diff --exit-code web/src/generated/models.ts
+
+      - name: Web build (type-check + bundle)
+        run: |
+          ./gradlew :shared:jsBrowserProductionLibraryDistribution
+          npm ci
+          npm run build -w web
+
+      - name: Server distribution with the bundled UI
+        run: ./gradlew :server:installDist
