@@ -3,6 +3,7 @@ import type { VectorTileFeatureLike, VectorTileLayerLike } from '@maplibre/vt-pb
 import { areaStyle, hasInterestingTags, isAddressPoint, isWikidata, lineStyle, type Stroke, type Tags } from './classify'
 import { areaPattern } from './patterns'
 import type { PresetMatcher } from './presets'
+import { featureGroup } from './features'
 
 export type Props = Record<string, string | number | boolean>
 
@@ -159,12 +160,12 @@ export function transform(tile: VectorTile, presets: PresetMatcher, z: number): 
     const pat = pattern ? `pat:${pattern}` : ''
     const sort = Number(p['@fz'] ?? 0)
     areas.set(`${p['@type']}${p['@id']}`, { fc: st.fill, pat, sort, props: p })
-    layer(OUT.area).push(f, { ...p, ...convention(OUT.area, p), '@fc': st.fill, '@sc': st.stroke, '@pat': pat, '@sort': sort, '@bld': isBuilding(t) })
+    layer(OUT.area).push(f, { ...p, ...convention(OUT.area, p), '@fc': st.fill, '@sc': st.stroke, '@pat': pat, '@sort': sort, '@bld': isBuilding(t), '@feat': featureGroup(t, 'area') })
   })
   each(tile.layers.band, (f, p) => {
     const a = areas.get(`${p['@type']}${p['@id']}`)
     if (!a) return
-    layer(OUT.band).push(f, { ...a.props, ...p, '@fc': a.fc, '@pat': a.pat, '@sort': a.sort, '@bld': isBuilding(tagsOf(a.props)) })
+    layer(OUT.band).push(f, { ...a.props, ...p, '@fc': a.fc, '@pat': a.pat, '@sort': a.sort, '@bld': isBuilding(tagsOf(a.props)), '@feat': featureGroup(tagsOf(a.props), 'area') })
   })
   each(tile.layers.label, (f, p) => {
     const t = tagsOf(p)
@@ -184,6 +185,7 @@ export function transform(tile: VectorTile, presets: PresetMatcher, z: number): 
       '@lw': name.length * 7 + 20,
       '@sort': -Number(p['@area'] ?? 0),
       '@bld': isBuilding(t),
+      '@feat': featureGroup(t, 'area'),
     })
   })
   each(tile.layers.line, (f, p) => {
@@ -201,6 +203,7 @@ export function transform(tile: VectorTile, presets: PresetMatcher, z: number): 
       '@name': t.highway || t.railway || t.waterway ? (t.name ?? '') : '',
       '@ow': dir,
       '@owimg': dark ? 'oneway-white' : 'oneway-black',
+      '@feat': featureGroup(t, 'line'),
       ...strokeProps('@c', ls.casing, dashes),
       ...strokeProps('@s', ls.stroke, dashes),
     })
@@ -230,7 +233,7 @@ export function transform(tile: VectorTile, presets: PresetMatcher, z: number): 
       return
     }
     if (isAddressPoint(t)) {
-      layer(OUT.point).push(f, { ...p, ...convention(OUT.point, p), '@addr': true, '@hn': t['addr:housenumber'] ?? t['addr:housename'] ?? '', '@name': '' })
+      layer(OUT.point).push(f, { ...p, ...convention(OUT.point, p), '@addr': true, '@hn': t['addr:housenumber'] ?? t['addr:housename'] ?? '', '@name': '', '@feat': 'address_points' })
       return
     }
     const preset = presets.match(t, 'point')
@@ -238,7 +241,7 @@ export function transform(tile: VectorTile, presets: PresetMatcher, z: number): 
     const wd = isWikidata(t)
     const pin = `pin:${icon ?? ''}:${wd ? 'w' : ''}`
     icons.add(pin)
-    layer(OUT.point).push(f, { ...p, ...convention(OUT.point, p), '@addr': false, '@pin': pin, '@name': t.name ?? '' })
+    layer(OUT.point).push(f, { ...p, ...convention(OUT.point, p), '@addr': false, '@pin': pin, '@name': t.name ?? '', '@feat': 'points' })
   })
   return { layers: out, icons: [...icons], dashes: [...dashes] }
 }

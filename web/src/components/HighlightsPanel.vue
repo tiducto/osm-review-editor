@@ -7,6 +7,7 @@ import { useRuleFilesStore } from '@/stores/ruleFiles'
 import Icon from './Icon.vue'
 import Spinner from './Spinner.vue'
 import Modal from './Modal.vue'
+import MapFeaturesPanel from './MapFeaturesPanel.vue'
 
 const emit = defineEmits<{ edit: [path: string] }>()
 const mapStore = useMapStore()
@@ -56,6 +57,8 @@ async function save() {
         <Icon name="chevron-down" :size="13" class="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-fg-3" />
       </div>
     </section>
+
+    <MapFeaturesPanel />
 
     <section class="space-y-2 border-b border-line px-3 py-3">
       <div class="flex items-center">

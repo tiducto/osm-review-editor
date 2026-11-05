@@ -106,7 +106,7 @@ export function usePushView() {
     } else if (drafts.reviewing && (e.bbox || e.center || e.select.length)) drafts.stopReview()
     const framed = !!(e.bbox || e.center)
     if (e.bbox) mapStore.fitBBox(e.bbox, 19)
-    else if (e.center && map) map.flyTo({ center: [e.center.lng, e.center.lat], zoom: e.zoom ?? Math.max(map.getZoom(), 17), duration: 900 })
+    else if (e.center && map) map.flyTo({ center: [e.center.lng, e.center.lat], zoom: e.zoom ?? Math.max(map.getZoom(), 17), offset: mapStore.visibleOffset(), duration: 900 })
     if (e.select.length) {
       const session = editor.active ? currentEditSession() : null
       const ids = session ? e.select.map(editId).filter((id) => session.adapter.graph().hasEntity(id)) : []

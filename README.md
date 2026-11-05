@@ -343,7 +343,10 @@ The map draws the mirror like iD: the server cuts vector tiles from the GOL
 ([`/api/tiles`](docs/api.md#vector-tiles)), a web worker classifies every feature (iD's way and area
 colours, casings, dashes, patterns, preset icons from id-tagging-schema) and re-encodes the tile for
 MapLibre. Large areas get iD's 30 px partial fill as an inset band computed on the server per display
-zoom; buildings, points and address points are hidden when too dense, with iD's thresholds. Imagery,
+zoom. Nothing is hidden automatically: the Map tab's Map features switches (iD's groups: points, address
+points, roads, paths, buildings, landuse, water, rail and so on) hide a group until you turn it back on,
+saved per browser. The side, bottom and inspector panels lie over the map, so opening or closing one never
+moves or redraws it; fitting and flying to objects leaves room for the open panels. Imagery,
 when chosen, replaces the light grey background under the data. Above the data and below the
 overlays (scope, issues, drafts) the style keeps an empty `ore-highlight-slot` layer, and highlight
 layers are inserted before it.
