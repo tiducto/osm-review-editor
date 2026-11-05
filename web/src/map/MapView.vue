@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from '@/i18n'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as maplibregl from 'maplibre-gl'
 import type { MapGeoJSONFeature, MapMouseEvent, GeoJSONSource, VectorTileSource } from 'maplibre-gl'
@@ -27,6 +28,7 @@ import EditMenu from '@/components/editor/EditMenu.vue'
 import { useEditorStore } from '@/stores/editor'
 
 const mapStore = useMapStore()
+const { t, tn } = useI18n()
 const rules = useRulesStore()
 const drafts = useDraftsStore()
 const editor = useEditorStore()
@@ -350,8 +352,8 @@ function onMouseMove(e: MapMouseEvent) {
   } else {
     setHoverState(null)
     if (layer === 'ore-issues-cluster') {
-      text = `${props.point_count} issues`
-      sub = 'Click to zoom in'
+      text = tn('shell.map.clusterIssues', Number(props.point_count))
+      sub = t('shell.map.clickToZoom')
     } else if (layer === 'ore-issues-point') {
       const rule = rules.ruleById.get(String(props.ruleId))
       text = rule?.title ?? String(props.ruleId)
@@ -366,7 +368,7 @@ function onMouseMove(e: MapMouseEvent) {
         color = changeKindColor[kind]
       }
     } else if (layer.startsWith('ore-context')) {
-      text = 'Context'
+      text = t('shell.map.context')
       sub = String(props.key)
     }
   }
@@ -454,7 +456,7 @@ onBeforeUnmount(() => {
 
 const zoomHint = computed(() => {
   if (drafts.reviewing) return null
-  if (rules.needsZoom) return 'Pick an area or zoom in to load issues'
+  if (rules.needsZoom) return t('shell.map.needsZoom')
   return null
 })
 const rulesLoading = computed(() => rules.loading.size > 0)
@@ -497,18 +499,16 @@ const currentHasGeometryChange = computed(() => {
         class="pointer-events-auto flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 rounded-lg border border-accent/50 bg-surface/95 px-3 py-2 text-[12px] text-fg-2 shadow-pop backdrop-blur"
         data-testid="draw-banner"
       >
-        <span class="flex items-center gap-1.5 font-medium text-fg"><Icon name="edit" :size="13" class="text-accent" /> Drawing polygon</span>
+        <span class="flex items-center gap-1.5 font-medium text-fg"><Icon name="edit" :size="13" class="text-accent" /> {{ t('shell.map.drawingPolygon') }}</span>
         <span>
-          {{ drawState.count ? `${drawState.count} point${drawState.count === 1 ? '' : 's'}` : 'Click the map to add points' }}<template
-            v-if="drawState.count"
-          > · double-click or click the first point to finish</template>
+          {{ drawState.count ? tn('shell.map.points', drawState.count) + t('shell.map.finishHint') : t('shell.map.clickToAdd') }}
         </span>
         <span class="flex items-center gap-1">
-          <button class="btn btn-sm" :disabled="!drawState.count" title="Remove last point (Backspace)" @click="draw?.undo()">
-            <Icon name="undo" :size="12" /> Undo
+          <button class="btn btn-sm" :disabled="!drawState.count" :title="t('shell.map.removeLast')" @click="draw?.undo()">
+            <Icon name="undo" :size="12" /> {{ t('common.undo') }}
           </button>
-          <button class="btn btn-primary btn-sm" :disabled="!drawState.canFinish" title="Finish (Enter)" @click="draw?.finish()">Finish</button>
-          <button class="btn btn-ghost btn-sm" title="Cancel (Esc)" @click="draw?.cancel()">Cancel <span class="kbd">Esc</span></button>
+          <button class="btn btn-primary btn-sm" :disabled="!drawState.canFinish" :title="t('shell.map.finishTitle')" @click="draw?.finish()">{{ t('shell.map.finish') }}</button>
+          <button class="btn btn-ghost btn-sm" :title="t('shell.map.cancelTitle')" @click="draw?.cancel()">{{ t('common.cancel') }} <span class="kbd">Esc</span></button>
         </span>
       </div>
       <Transition name="fade">
@@ -521,7 +521,7 @@ const currentHasGeometryChange = computed(() => {
           v-if="rulesLoading && !drafts.reviewing"
           class="flex items-center gap-2 rounded-full border border-line bg-surface/95 px-3 py-1 text-[12px] text-fg-2 shadow-panel backdrop-blur"
         >
-          <Spinner :size="12" /> Running rules…
+          <Spinner :size="12" /> {{ t('shell.map.runningRules') }}
         </div>
       </Transition>
     </div>
@@ -532,7 +532,7 @@ const currentHasGeometryChange = computed(() => {
           <span v-for="k in kinds" :key="k" class="flex items-center gap-1.5">
             <span class="h-[3px] w-3.5 rounded-full" :style="{ background: changeKindColor[k] }" />{{ changeKindLabel[k] }}
           </span>
-          <span class="flex items-center gap-1.5"><span class="h-[3px] w-3.5 rounded-full bg-[#64748b] opacity-60" />Context</span>
+          <span class="flex items-center gap-1.5"><span class="h-[3px] w-3.5 rounded-full bg-[#64748b] opacity-60" />{{ t('shell.map.context') }}</span>
         </div>
         <div class="flex w-fit items-center rounded-lg border border-line bg-surface/95 p-0.5 text-[12px] shadow-panel backdrop-blur">
           <button
@@ -540,16 +540,16 @@ const currentHasGeometryChange = computed(() => {
             :class="drafts.showBefore ? 'bg-surface-3 text-fg' : 'text-fg-3 hover:text-fg'"
             @click="drafts.showBefore = true"
           >
-            Before
+            {{ t('shell.map.before') }}
           </button>
           <button
             class="rounded-md px-2.5 py-1 font-medium transition-colors"
             :class="!drafts.showBefore ? 'bg-surface-3 text-fg' : 'text-fg-3 hover:text-fg'"
             @click="drafts.showBefore = false"
           >
-            After
+            {{ t('shell.map.after') }}
           </button>
-          <span class="flex items-center gap-1 px-2 text-fg-3" :title="currentHasGeometryChange ? '' : 'Tag-only change: geometry is the same'">
+          <span class="flex items-center gap-1 px-2 text-fg-3" :title="currentHasGeometryChange ? '' : t('shell.map.tagOnly')">
             <span class="kbd">Space</span>
           </span>
         </div>

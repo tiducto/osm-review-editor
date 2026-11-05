@@ -49,6 +49,11 @@ export function toUserData(list: Partial<Record<Locale, ResolvedPreset[]>>, loca
   })
 }
 
+export function localizedName(names: Record<string, string> | null | undefined, l: string): string | null {
+  if (!names) return null
+  return names[l] ?? Object.entries(names).find(([k]) => k.split('-')[0] === l)?.[1] ?? names.en ?? Object.values(names)[0] ?? null
+}
+
 export const usePresetsStore = defineStore('presets', () => {
   const app = useAppStore()
   const locale = computed<Locale>({
@@ -57,7 +62,8 @@ export const usePresetsStore = defineStore('presets', () => {
   })
   const raw = shallowRef<RawSchema | null>(null)
   const user = shallowRef<Partial<Record<Locale, ResolvedPreset[]>>>({})
-  const smart = shallowRef<SmartPreset[]>([])
+  const smartRaw = shallowRef<SmartPreset[]>([])
+  const smart = computed<SmartPreset[]>(() => smartRaw.value.map((p) => ({ ...p, name: localizedName(p.names, locale.value) ?? p.name })))
   const recent = ref<string[]>(readRecent())
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -106,7 +112,7 @@ export const usePresetsStore = defineStore('presets', () => {
 
   async function loadSmart() {
     try {
-      smart.value = await presetsApi.smart()
+      smartRaw.value = await presetsApi.smart()
     } catch (e) {
       app.fail(e, translate(locale.value, 'library.loadSmartFailed'))
     }

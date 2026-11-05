@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { t } from '@/i18n'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { rulesApi } from '@/api/rules'
 import type { CheckSheet, EditIssue } from '@/editor/validation/issues'
@@ -94,7 +95,7 @@ export const useEditIssuesStore = defineStore('editIssues', () => {
     try {
       await loadSheets()
     } catch (e) {
-      app.fail(e, 'Loading check files')
+      app.fail(e, t('shell.issues.loadingChecks'))
     }
   }
 
@@ -177,7 +178,7 @@ export const useEditIssuesStore = defineStore('editIssues', () => {
     if (!session || !mod) return false
     const ok = mod.applyIssueFix(session.adapter, issue, fixId, ignored)
     if (!ok) {
-      app.toast('This fix is no longer available', 'error')
+      app.toast(t('shell.issues.fixGone'), 'error')
       return false
     }
     session.controller.afterUndoRedo()

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from '@/i18n'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useEditorStore } from '@/stores/editor'
 import { useEditIssuesStore } from '@/stores/editIssues'
@@ -8,12 +9,13 @@ import Spinner from '../Spinner.vue'
 
 const editor = useEditorStore()
 const issues = useEditIssuesStore()
+const { t, tn } = useI18n()
 
 const groups = computed(() =>
   [
-    { key: 'error', label: 'Errors', list: issues.errors },
-    { key: 'warning', label: 'Warnings', list: issues.warnings },
-    { key: 'other', label: 'Other', list: issues.others },
+    { key: 'error', label: t('shell.issues.errors'), list: issues.errors },
+    { key: 'warning', label: t('shell.issues.warnings'), list: issues.warnings },
+    { key: 'other', label: t('shell.issues.other'), list: issues.others },
   ].filter((g) => g.list.length),
 )
 
@@ -51,17 +53,17 @@ function severityClass(i: EditIssue): string {
         @click="issues.panelCollapsed = !issues.panelCollapsed"
       >
         <Icon name="alert" :size="14" :class="issues.errors.length ? 'text-error' : issues.warnings.length ? 'text-warning' : 'text-fg-3'" />
-        <span class="font-medium text-fg">Issues in your edits</span>
+        <span class="font-medium text-fg">{{ t('shell.issues.title') }}</span>
         <span v-if="issues.errors.length" class="chip bg-removed-soft text-error">{{ issues.errors.length }}</span>
         <span v-if="issues.warnings.length" class="chip bg-changed-soft text-warning">{{ issues.warnings.length }}</span>
         <Spinner v-if="issues.running" :size="11" />
         <Icon :name="issues.panelCollapsed ? 'chevron-up' : 'chevron-down'" :size="13" class="ml-auto text-fg-3" />
       </button>
-      <button class="btn btn-ghost btn-icon btn-sm" title="Close" @click="issues.panelOpen = false"><Icon name="x" :size="13" /></button>
+      <button class="btn btn-ghost btn-icon btn-sm" :title="t('common.close')" @click="issues.panelOpen = false"><Icon name="x" :size="13" /></button>
     </div>
     <div v-show="!issues.panelCollapsed" ref="list" class="scroll-thin min-h-0 flex-1 overflow-y-auto">
       <p v-if="!issues.issues.length" class="px-3 py-3 text-fg-3" data-testid="edit-issues-empty">
-        {{ editor.editCount ? 'No issues found in the edited features.' : 'Edit something to see its issues here.' }}
+        {{ editor.editCount ? t('shell.issues.none') : t('shell.issues.editFirst') }}
       </p>
       <section v-for="g in groups" :key="g.key">
         <h4 class="bg-surface-2 px-3 py-1 text-[11px] font-semibold tracking-wide text-fg-3 uppercase">{{ g.label }} ({{ g.list.length }})</h4>
@@ -98,8 +100,8 @@ function severityClass(i: EditIssue): string {
       </section>
     </div>
     <div v-if="!issues.panelCollapsed && (issues.sheetPaths.length || issues.sheetErrors.length)" class="shrink-0 border-t border-line px-3 py-1.5 text-[11px] text-fg-3">
-      iD validations and {{ issues.sheetPaths.length }} check file{{ issues.sheetPaths.length === 1 ? '' : 's' }}
-      <span v-if="issues.sheetErrors.length" class="text-error" :title="issues.sheetErrors.join('\n')">· {{ issues.sheetErrors.length }} failed to load</span>
+      {{ tn('shell.issues.sources', issues.sheetPaths.length) }}
+      <span v-if="issues.sheetErrors.length" class="text-error" :title="issues.sheetErrors.join('\n')">{{ t('shell.issues.failed', { n: issues.sheetErrors.length }) }}</span>
     </div>
   </section>
 </template>

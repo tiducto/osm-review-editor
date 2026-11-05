@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from '@/i18n'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useEditorStore, type NeedsPreset } from '@/stores/editor'
 import { useEditPresetsStore } from '@/stores/presetEdit'
@@ -15,6 +16,7 @@ const editor = useEditorStore()
 const presetEdit = useEditPresetsStore()
 const presets = usePresetsStore()
 const t = presets.t
+const { t: tt, tn } = useI18n()
 const editIssues = useEditIssuesStore()
 const picking = ref(false)
 
@@ -29,17 +31,24 @@ const drawName = computed(() => {
   return d ? (presets.catalog?.preset(d.id)?.name ?? d.id) : null
 })
 
-const shortcuts: [string, string][] = [
-  ['1 2 3', 'Draw a point, line, area'],
-  ['X D C V', 'Split, disconnect, combine, reverse'],
-  ['Q O S', 'Square, circularize, straighten'],
-  ['M R A', 'Move, rotate, continue line'],
-  ['Del', 'Delete'],
-  ['⌘Z ⇧⌘Z', 'Undo, redo'],
-  ['Alt', 'Drag or draw without snapping'],
-]
+const shortcuts = computed<[string, string][]>(() => [
+  ['1 2 3', tt('shell.edit.key.draw')],
+  ['X D C V', tt('shell.edit.key.split')],
+  ['Q O S', tt('shell.edit.key.shape')],
+  ['M R A', tt('shell.edit.key.move')],
+  ['Del', tt('shell.edit.key.delete')],
+  ['⌘Z ⇧⌘Z', tt('shell.edit.key.undo')],
+  ['Alt', tt('shell.edit.key.snap')],
+])
 
-const kindLabel: Record<string, string> = { node: 'Node', way: 'Way', relation: 'Relation' }
+function kindLabel(kind: string): string {
+  return kind === 'node' ? tt('shell.edit.kind.node') : kind === 'way' ? tt('shell.edit.kind.way') : tt('shell.edit.kind.relation')
+}
+
+function geomLabel(g: string): string {
+  const key = `shell.edit.geom.${g}` as const
+  return key === 'shell.edit.geom.point' || key === 'shell.edit.geom.vertex' || key === 'shell.edit.geom.line' || key === 'shell.edit.geom.area' || key === 'shell.edit.geom.relation' ? tt(key) : g
+}
 
 function shortRef(s: EntitySnapshot): string {
   return `${s.id[0]}${s.osmId}`
@@ -96,7 +105,7 @@ function onSmart(p: SmartPreset) {
       <h2 class="text-[13px] font-semibold">{{ t('inspector.edit') }}</h2>
       <span class="chip bg-accent-soft text-accent">iD {{ editor.version }}</span>
       <span v-if="editor.selection.length > 1" class="chip bg-surface-3 text-fg-2">{{ t('inspector.selected', { n: editor.selection.length }) }}</span>
-      <button class="btn btn-ghost btn-icon btn-sm ml-auto w-6" title="Deselect (Esc)" @click="editor.select([])"><Icon name="x" :size="14" /></button>
+      <button class="btn btn-ghost btn-icon btn-sm ml-auto w-6" :title="tt('shell.edit.deselect')" @click="editor.select([])"><Icon name="x" :size="14" /></button>
     </div>
 
     <div v-if="drawName" class="flex items-center gap-2 border-b border-accent/40 bg-accent-soft px-4 py-2 text-[12px]" data-testid="draw-preset">
@@ -121,10 +130,10 @@ function onSmart(p: SmartPreset) {
       <template #meta>
         <div v-if="single" class="flex flex-wrap items-center gap-x-2 font-mono text-[11.5px] text-fg-3">
           <span>{{ shortRef(single) }}</span>
-          <span v-if="single.isNew" class="font-sans text-added">new</span>
+          <span v-if="single.isNew" class="font-sans text-added">{{ tt('shell.edit.new') }}</span>
           <span v-else-if="single.version">v{{ single.version }}</span>
-          <span class="font-sans">· {{ kindLabel[single.kind] }}, {{ single.geometry }}</span>
-          <span v-if="single.nodeCount != null" class="font-sans">· {{ single.nodeCount }} nodes</span>
+          <span class="font-sans">· {{ kindLabel(single.kind) }}, {{ geomLabel(single.geometry) }}</span>
+          <span v-if="single.nodeCount != null" class="font-sans">· {{ tn('shell.edit.nodes', single.nodeCount) }}</span>
         </div>
         <div v-else class="flex flex-wrap gap-1 pt-0.5">
           <button v-for="s in editor.selection.slice(0, 8)" :key="s.id" class="chip bg-surface-3 font-mono text-fg-2 hover:text-fg" @click="editor.select([s.id])">{{ shortRef(s) }}</button>

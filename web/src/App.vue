@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from '@/i18n'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useMapStore } from '@/stores/map'
@@ -28,6 +29,7 @@ const rules = useRulesStore()
 const drafts = useDraftsStore()
 const panel = usePanelStore()
 const editor = useEditorStore()
+const { t } = useI18n()
 
 const topBar = ref<InstanceType<typeof TopBar> | null>(null)
 const leftOpen = ref(window.innerWidth >= 768)
@@ -123,15 +125,14 @@ onBeforeUnmount(() => {
     <TopBar ref="topBar" />
 
     <div v-if="app.serverError" class="flex shrink-0 items-center gap-2 border-b border-error/30 bg-removed-soft px-4 py-1.5 text-[12.5px] text-removed">
-      <Icon name="alert" :size="14" /> Cannot reach the server: {{ app.serverError }}
-      <button class="btn btn-sm ml-auto" @click="app.init()">Retry</button>
+      <Icon name="alert" :size="14" /> {{ t('shell.serverError', { error: app.serverError }) }}
+      <button class="btn btn-sm ml-auto" @click="app.init()">{{ t('common.retry') }}</button>
     </div>
     <div
       v-else-if="app.mirror && !app.mirror.available"
       class="flex shrink-0 items-center gap-2 border-b border-changed/30 bg-changed-soft px-4 py-1.5 text-[12.5px] text-changed"
     >
-      <Icon name="database" :size="14" /> No local mirror is open yet{{ app.mirror.message ? `: ${app.mirror.message}` : '' }}. Rules and objects
-      appear once it is ready.
+      <Icon name="database" :size="14" /> {{ t('shell.noMirror', { detail: app.mirror.message ? `: ${app.mirror.message}` : '' }) }}
     </div>
 
     <div class="relative flex min-h-0 flex-1">
@@ -149,7 +150,7 @@ onBeforeUnmount(() => {
           <button
             class="absolute top-1/2 left-0 z-10 grid h-12 w-4 -translate-y-1/2 place-items-center rounded-r-md border border-l-0 border-line bg-surface text-fg-3 shadow-panel hover:text-fg"
             :class="leftOpen && (panel.wide ? 'max-md:hidden' : 'max-md:left-[296px] max-md:z-30')"
-            :title="leftOpen ? 'Hide layers ([)' : 'Show layers ([)'"
+            :title="leftOpen ? t('shell.hideLayers') : t('shell.showLayers')"
             @click="leftOpen = !leftOpen"
           >
             <Icon :name="leftOpen ? 'chevron-left' : 'chevron-right'" :size="12" />
@@ -157,7 +158,7 @@ onBeforeUnmount(() => {
           <button
             v-if="rightContent"
             class="absolute top-1/2 right-0 z-10 grid h-12 w-4 -translate-y-1/2 place-items-center rounded-l-md border border-r-0 border-line bg-surface text-fg-3 shadow-panel hover:text-fg max-md:hidden"
-            :title="rightOpen ? 'Hide panel (])' : 'Show panel (])'"
+            :title="rightOpen ? t('shell.hidePanel') : t('shell.showPanel')"
             @click="rightCollapsed = !rightCollapsed"
           >
             <Icon :name="rightOpen ? 'chevron-right' : 'chevron-left'" :size="12" />
@@ -179,7 +180,7 @@ onBeforeUnmount(() => {
           @click="rightCollapsed = !rightCollapsed"
         >
           <Icon :name="rightOpen ? 'chevron-down' : 'chevron-up'" :size="13" />
-          {{ rightOpen ? 'Show map' : rightContent === 'review' ? 'Show review' : rightContent === 'edit' ? 'Show editor' : 'Show inspector' }}
+          {{ rightOpen ? t('shell.showMap') : rightContent === 'review' ? t('shell.showReview') : rightContent === 'edit' ? t('shell.showEditor') : t('shell.showInspector') }}
         </button>
         <div class="h-full overflow-hidden md:w-[392px]">
           <ReviewCard v-if="rightContent === 'review'" />
