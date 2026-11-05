@@ -129,13 +129,20 @@ queries, creates a draft with a reason per change, and reads your rejection comm
 | Tool | What it does |
 | --- | --- |
 | `list_rules` | Rule ids, titles, severity, confidence |
-| `run_rule` | Issues for a rule in an area (name, bbox or GeoJSON), with proposed fixes |
-| `query_osm` | GOQL over the local mirror, or Overpass QL; at most 500 objects |
-| `get_object` | One object from the mirror (with parents) or live from the API (with version) |
-| `create_draft` | A draft authored by Claude |
+| `run_rule` | Issues for a rule in an area, with proposed fixes |
+| `query_osm` | GOQL over the local mirror, or Overpass QL; confined to `area`; at most 500 objects |
+| `get_object` | One object with its neighbours (`parents` with member roles, `connected_ways` for nodes and ways), from the mirror or live from the API (with version) |
+| `create_draft` | A draft authored by Claude, optionally scoped to an area |
 | `propose_changes` | Up to 2,000 changes: `add_tags`, `remove_tags`, `set_tags`, `reason` |
 | `update_change` | Revise or withdraw a proposed change |
 | `list_drafts`, `get_draft` | Drafts, changes, your review decisions and comments |
+
+`area` is an admin boundary or place name (`"Opava"`, `"Opava-Kateřinky"`), a bbox
+`[west, south, east, north]` (or the string `"w,s,e,n"`), or a GeoJSON Polygon/MultiPolygon in WGS84
+(geometry, `Feature` or one-feature `FeatureCollection`, at most 10° across and 20,000 vertices).
+Rules and GOQL queries are clipped to the polygon. Overpass queries get the area's bbox as a global
+`[bbox:...]` setting, and results whose center falls outside the polygon are dropped. An area that
+cannot be resolved (unknown name, malformed bbox, invalid polygon) is a tool error that says why.
 
 Resources: `draft://{id}`, `rule://{id}`, `area://{name}`.
 

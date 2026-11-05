@@ -31,17 +31,10 @@ import org.slf4j.LoggerFactory
 import java.security.SecureRandom
 import java.util.Base64
 
-class App(val config: Config) : AutoCloseable {
+class App(val config: Config, val http: HttpClient = defaultHttpClient()) : AutoCloseable {
     private val log = LoggerFactory.getLogger(App::class.java)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    val http = HttpClient(CIO) {
-        install(HttpTimeout) {
-            requestTimeoutMillis = 120_000
-            connectTimeoutMillis = 15_000
-        }
-        expectSuccess = false
-    }
     val db = Db(config.dbUrl, config.dbUser, config.dbPassword)
     val repo = DraftRepo(db)
     val settings = SettingsRepo(db)
@@ -83,8 +76,11 @@ class App(val config: Config) : AutoCloseable {
         }
     }
 
-    fun launchRecord(ruleId: String, scopeKey: String, issues: Int, tookMs: Long) {
-        scope.launch { runCatching { repo.recordRuleRun(ruleId, scopeKey, issues, tookMs) } }
+    fun launchRecord(ruleId: String, resolved: eu.tiducto.osmreview.server.core.ResolvedScope, issues: Int, tookMs: Long) {
+        scope.launch {
+            runCatching { repo.recordRuleRun(ruleId, resolved.key, resolved.runGeometry, issues, tookMs) }
+                .onFailure { log.warn("Could not record rule run", it) }
+        }
     }
 
     fun editorLinks(ref: OsmRef): EditorLinks {
@@ -108,6 +104,14 @@ class App(val config: Config) : AutoCloseable {
         private const val SWAP_POLL_MS = 15_000L
         private const val MCP_TOKEN_KEY = "mcp.token"
     }
+}
+
+fun defaultHttpClient() = HttpClient(CIO) {
+    install(HttpTimeout) {
+        requestTimeoutMillis = 120_000
+        connectTimeoutMillis = 15_000
+    }
+    expectSuccess = false
 }
 
 class Search(private val queries: eu.tiducto.osmreview.rules.MirrorQueries) {

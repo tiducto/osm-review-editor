@@ -47,6 +47,18 @@ class OsmApi(
         }
     }
 
+    suspend fun parents(ref: OsmRef): List<OsmElement> {
+        val kinds = if (ref.type == OsmType.NODE) listOf("ways", "relations") else listOf("relations")
+        return kinds.flatMap { kind ->
+            val resp = http.get("${target.apiUrl}/${ref.type.apiName}/${ref.id}/$kind") { header(HttpHeaders.UserAgent, userAgent) }
+            when {
+                resp.status.isSuccess() -> OsmXml.parseElements(resp.bodyAsText())
+                resp.status == HttpStatusCode.NotFound || resp.status == HttpStatusCode.Gone -> emptyList()
+                else -> throw OsmApiException(resp.status, resp.bodyAsText(), "fetch $kind of $ref")
+            }
+        }
+    }
+
     suspend fun userDetails(token: String): XUser {
         val resp = http.get("${target.apiUrl}/user/details") {
             header(HttpHeaders.UserAgent, userAgent)

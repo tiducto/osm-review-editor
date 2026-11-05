@@ -52,6 +52,15 @@ data class DraftFromRuleRequest(
     val bbox: BBox? = null,
     val title: String? = null,
     val limit: Int? = null,
+    val polygon: JsonElement? = null,
+)
+
+@Serializable
+data class RuleIssuesRequest(
+    val area: String? = null,
+    val bbox: BBox? = null,
+    val polygon: JsonElement? = null,
+    val limit: Int? = null,
 )
 
 @Serializable

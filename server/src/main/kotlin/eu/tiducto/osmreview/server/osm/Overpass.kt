@@ -1,5 +1,6 @@
 package eu.tiducto.osmreview.server.osm
 
+import eu.tiducto.osmreview.shared.BBox
 import eu.tiducto.osmreview.shared.LngLat
 import eu.tiducto.osmreview.shared.OsmRef
 import eu.tiducto.osmreview.shared.OsmType
@@ -14,6 +15,8 @@ import io.ktor.http.isSuccess
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import java.math.BigDecimal
+import java.math.RoundingMode
 
 class Overpass(private val http: HttpClient, private val url: String, private val userAgent: String) {
     @Serializable
@@ -37,12 +40,8 @@ class Overpass(private val http: HttpClient, private val url: String, private va
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun query(query: String, limit: Int): Pair<List<Hit>, Boolean> {
-        val q = buildString {
-            if (!query.trimStart().startsWith("[out:json")) append("[out:json][timeout:60];")
-            append(query.trim())
-            if (!query.contains(Regex("""\bout\b"""))) append(" out tags center ${limit + 1};")
-        }
+    suspend fun query(query: String, limit: Int, bbox: BBox? = null): Pair<List<Hit>, Boolean> {
+        val q = buildQuery(query, limit, bbox)
         var attempt = 0
         while (true) {
             val resp = http.submitForm(url, Parameters.build { append("data", q) }) { header(HttpHeaders.UserAgent, userAgent) }
@@ -60,7 +59,32 @@ class Overpass(private val http: HttpClient, private val url: String, private va
         }
     }
 
-    private companion object {
-        const val MAX_RETRIES = 4
+    companion object {
+        private const val MAX_RETRIES = 4
+        private val SETTINGS = Regex("""^((?:\[[^\]]*\]\s*)+);""")
+        private val SETTING = Regex("""\[[^\]]*\]""")
+        private val OUT = Regex("""\bout\b""")
+
+        private fun out(v: Double, mode: RoundingMode) = BigDecimal.valueOf(v).setScale(6, mode).stripTrailingZeros().toPlainString()
+
+        fun buildQuery(query: String, limit: Int, bbox: BBox? = null): String {
+            val q = query.trim()
+            val m = SETTINGS.find(q)
+            val settings = m?.groupValues?.get(1)?.let { s -> SETTING.findAll(s).map { it.value }.toMutableList() } ?: mutableListOf()
+            val body = (if (m != null) q.substring(m.range.last + 1) else q).trim()
+            settings.removeAll { it.startsWith("[out:") || it.startsWith("[bbox:") }
+            if (settings.none { it.startsWith("[timeout:") }) settings += "[timeout:60]"
+            return buildString {
+                append("[out:json]")
+                settings.forEach(::append)
+                if (bbox != null) {
+                    append("[bbox:${out(bbox.south, RoundingMode.FLOOR)},${out(bbox.west, RoundingMode.FLOOR)},")
+                    append("${out(bbox.north, RoundingMode.CEILING)},${out(bbox.east, RoundingMode.CEILING)}]")
+                }
+                append(";")
+                append(body)
+                if (!OUT.containsMatchIn(body)) append(" out tags center ${limit + 1};")
+            }
+        }
     }
 }

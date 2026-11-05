@@ -11,6 +11,25 @@ GOL open yet).
 Object refs are `{type: 'node'|'way'|'relation', id}` in bodies and JOSM-style strings (`n123`,
 `w45`, `r6`) in paths. Bboxes in query strings are `west,south,east,north` (WGS84).
 
+## Scopes
+
+Endpoints that run rules take exactly one of:
+
+- `area`: a preset or admin boundary name. When the area has a polygon (admin boundaries, presets
+  with geometry) rules are clipped to it, not just to its bbox.
+- `bbox`: `west,south,east,north` in query strings, `{west, south, east, north}` in bodies.
+- `polygon`: a GeoJSON `Polygon` or `MultiPolygon` in WGS84 `[lon, lat]` (a bare geometry, a
+  `Feature`, or a `FeatureCollection` with one feature). In query strings it is URL-encoded JSON; use
+  the POST form for large polygons. Rings must be closed with at least 4 positions, the geometry must be
+  valid (no self-intersections), at most 20,000 vertices and at most 10° across in each direction.
+  Anything else is a 400 with the reason.
+
+Giving more than one is a 400. Rule results are cached per rule, scope key and mirror generation;
+the scope key is `area:<name>#<hash>`, `bbox:<w>,<s>,<e>,<n>` or `polygon:<hash>`, where the hash is
+a SHA-256 prefix of the normalized geometry (independent of ring start, orientation and JSON layout).
+Each run is recorded in `app.rule_runs` with its scope key and scope geometry (simplified to at most
+2,000 points).
+
 ## Status, areas, imagery
 
 | Method | Path | Returns |
@@ -35,7 +54,8 @@ Object refs are `{type: 'node'|'way'|'relation', id}` in bodies and JOSM-style s
 | Method | Path | Returns |
 | --- | --- | --- |
 | GET | `/api/rules` | `Rule[]` |
-| GET | `/api/rules/{id}/issues?area=` or `?bbox=` `&limit=` | `RuleRunResult` |
+| GET | `/api/rules/{id}/issues?area=` or `?bbox=` or `?polygon=` `&limit=` | `RuleRunResult` |
+| POST | `/api/rules/{id}/issues` with `RuleIssuesRequest` `{area?, bbox?, polygon?, limit?}` | `RuleRunResult` |
 
 ## Drafts and review
 
@@ -43,7 +63,7 @@ Object refs are `{type: 'node'|'way'|'relation', id}` in bodies and JOSM-style s
 | --- | --- | --- | --- |
 | GET | `/api/drafts?status=&author=` | | `Draft[]`, newest first |
 | POST | `/api/drafts` | `CreateDraftRequest` | `Draft` (author `user`) |
-| POST | `/api/drafts/from-rule` | `DraftFromRuleRequest` | `DraftDetail` (author `rule:<id>`; every issue with a fix becomes a change, refetched live) |
+| POST | `/api/drafts/from-rule` | `DraftFromRuleRequest` `{ruleId, area?, bbox?, polygon?, title?, limit?}` | `DraftDetail` (author `rule:<id>`; every issue with a fix becomes a change, refetched live; the draft's `scope` is the scope geometry) |
 | GET | `/api/drafts/{id}` | | `DraftDetail` |
 | PATCH | `/api/drafts/{id}` | `UpdateDraftRequest` | `Draft` |
 | POST | `/api/drafts/{id}/changes` | `ProposeChangesRequest` | `ProposalResult[]` |

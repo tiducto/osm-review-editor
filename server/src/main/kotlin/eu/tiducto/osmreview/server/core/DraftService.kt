@@ -5,6 +5,7 @@ import eu.tiducto.osmreview.rules.MirrorQueries
 import eu.tiducto.osmreview.rules.RuleEngine
 import eu.tiducto.osmreview.rules.Scope
 import eu.tiducto.osmreview.rules.Geo
+import eu.tiducto.osmreview.rules.PolygonScopes
 import eu.tiducto.osmreview.server.db.DraftRepo
 import eu.tiducto.osmreview.server.db.NewChange
 import eu.tiducto.osmreview.server.osm.OsmElement
@@ -31,9 +32,12 @@ import eu.tiducto.osmreview.shared.TagDiff
 import eu.tiducto.osmreview.shared.TagEdit
 import eu.tiducto.osmreview.shared.UiEvent
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import org.locationtech.jts.geom.Geometry
 import org.slf4j.LoggerFactory
 import java.util.UUID
 
@@ -58,12 +62,15 @@ class DraftService(
 
     suspend fun draftFromRule(req: DraftFromRuleRequest): DraftDetail {
         val def = rules.definition(req.ruleId)
-        val (scope, scopeKey, scopeGeom) = resolveScope(req.area, req.bbox)
+        val resolved = resolveScope(req.area, req.bbox, req.polygon)
+        val (scope, scopeKey, scopeGeom) = resolved
         val run = rules.run(req.ruleId, scope, scopeKey, req.limit ?: MAX_FROM_RULE)
+        runCatching { repo.recordRuleRun(req.ruleId, scopeKey, resolved.runGeometry, run.issueCount, run.tookMs) }
+            .onFailure { log.warn("Could not record rule run", it) }
         val withFix = run.issues.filter { it.fix != null }
         require(withFix.isNotEmpty()) { "Rule ${def.id} found ${run.issueCount} issues in $scopeKey, none with an automatic fix" }
         val draft = repo.createDraft(
-            title = req.title ?: "${def.title} · ${req.area ?: "map area"}",
+            title = req.title ?: "${def.title} · ${req.area ?: if (req.polygon != null) "drawn area" else "map area"}",
             description = "${run.issueCount} issues found by rule ${def.id}; ${withFix.size} with a proposed fix.",
             author = Authors.rule(def.id),
             scope = scopeGeom,
@@ -92,13 +99,23 @@ class DraftService(
         return detail(draft.id)
     }
 
-    fun resolveScope(area: String?, bbox: BBox?): Triple<Scope, String, kotlinx.serialization.json.JsonElement?> {
-        if (area != null) {
-            val (a, scope) = queries.area(area) ?: throw NotFoundException("Unknown area '$area'")
-            return Triple(scope, "area:${a.name}", a.geometry)
+    fun resolveScope(area: String?, bbox: BBox?, polygon: JsonElement? = null): ResolvedScope {
+        val poly = polygon?.takeUnless { it is JsonNull }
+        require(listOfNotNull(area, bbox, poly).size <= 1) { "Give only one of area, bbox or polygon" }
+        if (poly != null) {
+            val p = PolygonScopes.parse(poly)
+            return ResolvedScope(p.scope, p.key, p.geoJson, p.scope.polygon)
         }
-        val b = bbox ?: throw IllegalArgumentException("Give an area name or a bbox")
-        return Triple(Scope(Geo.box(b)), "bbox:${b.west},${b.south},${b.east},${b.north}", bboxPolygon(b))
+        if (area != null) {
+            val (a, found) = queries.area(area) ?: throw NotFoundException("Unknown area '$area'")
+            val shape = found.polygon ?: PolygonScopes.fromAreaGeometry(a.geometry)
+            val scope = if (shape != null && found.polygon == null) Scope(found.bounds, shape) else found
+            val key = "area:${a.name}" + (shape?.let { "#${PolygonScopes.hash(it)}" } ?: "")
+            return ResolvedScope(scope, key, a.geometry, shape)
+        }
+        val b = bbox ?: throw IllegalArgumentException("Give an area name, a bbox or a polygon")
+        require(b.west < b.east && b.south < b.north) { "bbox must be west,south,east,north with west < east and south < north" }
+        return ResolvedScope(Scope(Geo.box(b)), "bbox:${b.west},${b.south},${b.east},${b.north}", bboxPolygon(b), null)
     }
 
     suspend fun proposeChanges(draftId: String, proposals: List<ProposedChange>, near: BBox? = null): List<ProposalResult> {
@@ -371,6 +388,10 @@ class DraftService(
 
         fun parseId(id: String): UUID = runCatching { UUID.fromString(id) }.getOrElse { throw NotFoundException("Unknown id $id") }
     }
+}
+
+data class ResolvedScope(val scope: Scope, val key: String, val geometry: JsonElement?, val polygon: Geometry?) {
+    val runGeometry: JsonElement? get() = polygon?.let { PolygonScopes.simplifiedGeoJson(it) } ?: geometry
 }
 
 class NotFoundException(message: String) : RuntimeException(message)

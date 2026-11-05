@@ -1,8 +1,9 @@
 package eu.tiducto.osmreview.server.api
 
-import eu.tiducto.osmreview.rules.Scope
+import eu.tiducto.osmreview.rules.PolygonScopes
 import eu.tiducto.osmreview.server.App
 import eu.tiducto.osmreview.server.core.DraftService
+import eu.tiducto.osmreview.server.core.ResolvedScope
 import eu.tiducto.osmreview.server.core.StateException
 import eu.tiducto.osmreview.shared.AppStatus
 import eu.tiducto.osmreview.shared.Authors
@@ -17,7 +18,9 @@ import eu.tiducto.osmreview.shared.OsmRef
 import eu.tiducto.osmreview.shared.OsmTarget
 import eu.tiducto.osmreview.shared.ProposeChangesRequest
 import eu.tiducto.osmreview.shared.ResolveConflictRequest
+import eu.tiducto.osmreview.shared.RuleRunResult
 import eu.tiducto.osmreview.shared.ReviewRequest
+import eu.tiducto.osmreview.shared.RuleIssuesRequest
 import eu.tiducto.osmreview.shared.SetTargetRequest
 import eu.tiducto.osmreview.shared.UpdateDraftRequest
 import io.ktor.http.HttpStatusCode
@@ -105,13 +108,13 @@ fun Route.apiRoutes(app: App) {
 
         get("/rules") { call.respond(app.rules.rules()) }
         get("/rules/{id}/issues") {
-            val id = call.parameters["id"]!!
-            val area = call.request.queryParameters["area"]
-            val limit = call.request.queryParameters["limit"]?.toIntOrNull()
-            val (scope: Scope, key, _) = drafts.resolveScope(area, call.bboxParam())
-            val result = app.rules.run(id, scope, key, limit ?: 5000)
-            app.launchRecord(id, key, result.issueCount, result.tookMs)
-            call.respond(result)
+            val q = call.request.queryParameters
+            val polygon = q["polygon"]?.let(PolygonScopes::parseJson)
+            call.respond(app.runRule(call.parameters["id"]!!, drafts.resolveScope(q["area"], call.bboxParam(), polygon), q["limit"]?.toIntOrNull()))
+        }
+        post("/rules/{id}/issues") {
+            val req = call.receive<RuleIssuesRequest>()
+            call.respond(app.runRule(call.parameters["id"]!!, drafts.resolveScope(req.area, req.bbox, req.polygon), req.limit))
         }
 
         route("/drafts") {
@@ -208,6 +211,12 @@ fun Route.apiRoutes(app: App) {
             call.respondRedirect("/?connected=1")
         }
     }
+}
+
+fun App.runRule(ruleId: String, resolved: ResolvedScope, limit: Int?): RuleRunResult {
+    val result = rules.run(ruleId, resolved.scope, resolved.key, limit ?: 5000)
+    launchRecord(ruleId, resolved, result.issueCount, result.tookMs)
+    return result
 }
 
 fun ApplicationCall.bboxParam(): BBox? = request.queryParameters["bbox"]?.let { s ->

@@ -219,6 +219,14 @@ export interface DraftFromRuleRequest {
   bbox?: BBox | null
   title?: string | null
   limit?: number | null
+  polygon?: JsonValue | null
+}
+
+export interface RuleIssuesRequest {
+  area?: string | null
+  bbox?: BBox | null
+  polygon?: JsonValue | null
+  limit?: number | null
 }
 
 export interface ProposeChangesRequest {
