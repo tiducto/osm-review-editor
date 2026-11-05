@@ -10,6 +10,7 @@ import eu.tiducto.osmreview.shared.FeatureCollection
 import eu.tiducto.osmreview.shared.MapFeature
 import eu.tiducto.osmreview.shared.OsmRef
 import eu.tiducto.osmreview.shared.OsmType
+import org.eclipse.collections.impl.set.mutable.primitive.LongHashSet
 import java.text.Normalizer
 import java.util.concurrent.atomic.AtomicReference
 
@@ -201,22 +202,50 @@ private const val MAX_PARENTS = 50
 
 fun Feature.toMapFeature(): MapFeature = MapFeature(ref, tagMap(), Geo.featureGeoJson(this))
 
-private class IdSetFilter(private val refs: Set<OsmRef>) : Filter {
-    private val types = refs.map { it.type }.toSet()
-
-    override fun acceptedTypes(): Int = types.fold(0) { acc, t ->
-        acc or when (t) {
-            OsmType.NODE -> NODES
-            OsmType.WAY -> WAYS
-            OsmType.RELATION -> RELATIONS
-        }
+class ExistingIds(
+    private val nodes: LongHashSet,
+    private val ways: LongHashSet,
+    private val relations: LongHashSet,
+) {
+    fun contains(type: OsmType, id: Long): Boolean = when (type) {
+        OsmType.NODE -> nodes.contains(id)
+        OsmType.WAY -> ways.contains(id)
+        OsmType.RELATION -> relations.contains(id)
     }
 
-    override fun accept(f: Feature): Boolean = f.ref in refs
+    val size: Int get() = nodes.size() + ways.size() + relations.size()
+}
+
+fun FeatureLibrary.existingIds(nodes: LongArray, ways: LongArray, relations: LongArray): ExistingIds {
+    val filter = IdSetFilter(LongHashSet.newSetWith(*nodes), LongHashSet.newSetWith(*ways), LongHashSet.newSetWith(*relations))
+    val found = mapOf(OsmType.NODE to LongHashSet(), OsmType.WAY to LongHashSet(), OsmType.RELATION to LongHashSet())
+    if (filter.acceptedTypes() != 0) {
+        for (f in select(filter)) found.getValue(f.ref.type).add(f.id())
+    }
+    return ExistingIds(found.getValue(OsmType.NODE), found.getValue(OsmType.WAY), found.getValue(OsmType.RELATION))
+}
+
+private class IdSetFilter(
+    private val nodes: LongHashSet,
+    private val ways: LongHashSet,
+    private val relations: LongHashSet,
+) : Filter {
+    constructor(refs: Set<OsmRef>) : this(ids(refs, OsmType.NODE), ids(refs, OsmType.WAY), ids(refs, OsmType.RELATION))
+
+    override fun acceptedTypes(): Int =
+        (if (nodes.isEmpty) 0 else NODES) or (if (ways.isEmpty) 0 else WAYS) or (if (relations.isEmpty) 0 else RELATIONS)
+
+    override fun accept(f: Feature): Boolean = when {
+        f.isNode -> nodes.contains(f.id())
+        f.isWay -> ways.contains(f.id())
+        else -> relations.contains(f.id())
+    }
 
     companion object {
         private const val NODES = 327685
         private const val WAYS = 15728880
         private const val RELATIONS = 251662080
+
+        private fun ids(refs: Set<OsmRef>, type: OsmType) = LongHashSet().also { s -> refs.forEach { if (it.type == type) s.add(it.id) } }
     }
 }

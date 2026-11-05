@@ -25,6 +25,7 @@ import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.count
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.inList
+import org.jetbrains.exposed.v1.core.greater
 import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.core.min
 import org.jetbrains.exposed.v1.jdbc.andWhere
@@ -480,6 +481,21 @@ class DraftRepo(private val db: Db) {
             it[UploadsTable.status] = status
             it[UploadsTable.changesetId] = changesetId
             it[UploadsTable.error] = error
+            it[finishedAt] = now()
+        }
+    }
+
+    suspend fun uploadedSince(since: OffsetDateTime): List<UploadedChange> = db.tx {
+        val uploads = UploadsTable.selectAll()
+            .where { (UploadsTable.status eq "uploaded") and (UploadsTable.finishedAt greater since) }
+            .map { Triple(it[UploadsTable.changeIds], it[UploadsTable.finishedAt]!!, it[UploadsTable.changesetId]) }
+        val ids = uploads.flatMap { it.first }.distinct()
+        if (ids.isEmpty()) return@tx emptyList()
+        val byId = changeRows { ChangesTable.id inList ids }.associateBy { it.id }
+        uploads.flatMap { (changeIds, at, cs) ->
+            changeIds.mapNotNull { byId[it.toString()] }
+                .filter { it.status == ChangeStatus.UPLOADED }
+                .map { UploadedChange(it, at.toInstant(), cs ?: it.changesetId) }
         }
     }
 
@@ -509,3 +525,5 @@ class DraftRepo(private val db: Db) {
         }
     }
 }
+
+data class UploadedChange(val change: Change, val uploadedAt: java.time.Instant, val changesetId: Long?)
