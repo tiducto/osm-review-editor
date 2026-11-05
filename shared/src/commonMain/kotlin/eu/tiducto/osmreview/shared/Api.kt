@@ -45,6 +45,7 @@ data class OsmChangeImportRequest(
     val reasons: Map<String, String> = emptyMap(),
     val reason: String? = null,
     val replace: Boolean = false,
+    val takeOver: Boolean = false,
 )
 
 @Serializable
@@ -57,6 +58,7 @@ data class DraftFromOsmChangeRequest(
     val changesetSource: String? = null,
     val reasons: Map<String, String> = emptyMap(),
     val reason: String? = null,
+    val takeOver: Boolean = false,
 )
 
 @Serializable
@@ -249,7 +251,27 @@ sealed interface UiEvent {
 }
 
 @Serializable
-data class ApiError(val error: String, val detail: String? = null)
+data class ApiError(
+    val error: String,
+    val detail: String? = null,
+    val code: String? = null,
+    val openChanges: List<OpenChangeElsewhere>? = null,
+)
+
+@Serializable
+data class OpenChangeElsewhere(
+    val ref: OsmRef,
+    val changeId: String,
+    val status: ChangeStatus,
+    val draftId: String,
+    val draftTitle: String,
+)
+
+object ApiErrorCodes {
+    const val OPEN_CHANGE_ELSEWHERE = "open_change_elsewhere"
+    const val AREA_TOO_LARGE = "area_too_large"
+    const val OSM_API_ERROR = "osm_api_error"
+}
 
 @Serializable
 data class UpdateDraftRequest(

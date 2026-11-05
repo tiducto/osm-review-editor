@@ -174,7 +174,9 @@ fun Route.apiRoutes(app: App) {
                     val xml = call.request.contentType().let { it.match(ContentType.Application.Xml) || it.match(ContentType.Text.Xml) }
                     val req = if (xml) {
                         val q = call.request.queryParameters
-                        OsmChangeImportRequest(call.receiveText(), reason = q["reason"], replace = q["replace"] == "true")
+                        OsmChangeImportRequest(
+                            call.receiveText(), reason = q["reason"], replace = q["replace"] == "true", takeOver = q["takeOver"] == "true",
+                        )
                     } else {
                         call.receive<OsmChangeImportRequest>()
                     }

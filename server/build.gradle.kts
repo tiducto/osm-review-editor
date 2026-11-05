@@ -56,7 +56,7 @@ val idTaggingSchema = rootProject.layout.projectDirectory.dir("node_modules/@ope
 val idTaggingSchemaResources = layout.buildDirectory.dir("generated/id-tagging-schema")
 val copyIdTaggingSchema by tasks.registering(Sync::class) {
     group = "build"
-    description = "Copies the iD tagging schema (presets, fields, categories, en and cs translations) from node_modules into the server resources."
+    description = "Copies the iD tagging schema (presets, fields, categories, defaults, deprecated and discarded tags, en and cs translations) from node_modules into the server resources."
     val packageJson = idTaggingSchema.file("package.json").asFile
     doFirst {
         check(packageJson.exists()) { "${packageJson.parentFile} is missing; run npm install first" }
@@ -67,6 +67,9 @@ val copyIdTaggingSchema by tasks.registering(Sync::class) {
             "presets.min.json",
             "fields.min.json",
             "preset_categories.min.json",
+            "preset_defaults.min.json",
+            "deprecated.min.json",
+            "discarded.min.json",
             "translations/en.min.json",
             "translations/cs.min.json",
         )

@@ -4,8 +4,8 @@ The Ktor server on `:3000` serves the UI, this API, the MCP endpoint (`/mcp`) an
 All bodies are JSON in the shapes of `shared/` (`@Serializable` Kotlin), mirrored as TypeScript in
 `web/src/generated/models.ts` (regenerate with `./gradlew :shared:generateTsModels`).
 
-Responses always carry every field (defaults are encoded). Errors are `ApiError` (`{error, detail}`)
-with 400 (bad input), 401 (no OSM account connected), 404 (unknown id), 409 (state conflict, e.g.
+Responses always carry every field (defaults are encoded). Errors are `ApiError` (`{error, detail, code, openChanges}`;
+`code` is set for errors a client can act on, see below) with 400 (bad input), 401 (no OSM account connected), 404 (unknown id), 409 (state conflict, e.g.
 reviewing an uploaded change, merging a closed draft or with nothing approved, another merge
 running), 502 (OSM API error), 503 (no GOL open yet). The remote-control port `:8111` answers
 errors as `text/plain` instead, like JOSM.
@@ -51,6 +51,18 @@ Each run is recorded in `app.rule_runs` with its scope key and scope geometry (s
 | GET | `/api/objects/{ref}` | `MapFeature` from the mirror (no version) |
 | GET | `/api/objects/{ref}?live=true` | `MapFeature` from the live OSM API (with version) |
 | GET | `/api/objects/{ref}/links` | `EditorLinks` (iD, osm.org, history) for the current API target |
+
+### Live OSM
+
+| Method | Path | Returns |
+| --- | --- | --- |
+| GET | `/api/osm/map?bbox=west,south,east,north` | `application/xml`: the target API's (dev or prod, as for uploads) `GET /api/0.6/map` for the bbox, read-only, no login needed, sent with the server's User-Agent |
+
+The bbox must be four finite numbers with west < east and south < north inside ±180/±90, else
+`400`. An area over 0.25 square degrees or a response over 25 MB is `413` with `code`
+`area_too_large` ("zoom in"). Errors from OSM carry `code` `osm_api_error` and OSM's message in
+`detail`: its `400` (e.g. "You requested too many nodes (limit is 50000)") is `400`, `429` is `429`,
+`509` is `503`, anything else `502`. An unreachable API is `502`.
 
 ### Vector tiles
 
@@ -109,10 +121,10 @@ node, so a node's parent count is exact for nodes inside the tile.
 | GET | `/api/drafts?status=&author=` | | `Draft[]`, newest first |
 | POST | `/api/drafts` | `CreateDraftRequest` | `Draft` (author `user`) |
 | POST | `/api/drafts/from-rule` | `DraftFromRuleRequest` `{ruleId, area?, bbox?, polygon?, title?, limit?}` | `DraftDetail` (author `rule:<id>`; every issue with a fix becomes a change, refetched live; the draft's `scope` is the scope geometry) |
-| POST | `/api/drafts/from-osmchange` | `DraftFromOsmChangeRequest` `{title, osmChange, description?, area?, changesetComment?, changesetSource?, reasons?, reason?}` | `201` `OsmChangeImportResult` (author `user`; nothing is created when the osmChange is invalid) |
+| POST | `/api/drafts/from-osmchange` | `DraftFromOsmChangeRequest` `{title, osmChange, description?, area?, changesetComment?, changesetSource?, reasons?, reason?, takeOver?}` | `201` `OsmChangeImportResult` (author `user`; nothing is created when the osmChange is invalid) |
 | GET | `/api/drafts/{id}` | | `DraftDetail` |
 | GET | `/api/drafts/{id}/osmchange` | | `application/xml` osmChange of the draft's pending, approved and conflict changes |
-| POST | `/api/drafts/{id}/osmchange` | `OsmChangeImportRequest` `{osmChange, reasons?, reason?, replace?}`, or the raw XML with `Content-Type: application/xml` and `?replace=&reason=` | `OsmChangeImportResult` `{draft, results}` |
+| POST | `/api/drafts/{id}/osmchange` | `OsmChangeImportRequest` `{osmChange, reasons?, reason?, replace?, takeOver?}`, or the raw XML with `Content-Type: application/xml` and `?replace=&reason=&takeOver=` | `OsmChangeImportResult` `{draft, results}` |
 | PATCH | `/api/drafts/{id}` | `UpdateDraftRequest` `{title?, description?, status?, changesetComment?, changesetSource?}` | `Draft` (omitted fields are kept; `status` only `open` or `closed`) |
 | POST | `/api/drafts/{id}/changes` | `ProposeChangesRequest` | `ProposalResult[]` |
 | POST | `/api/drafts/{id}/refresh` | | `DraftDetail` (refetches live versions; marks conflicts, auto-rebases where possible) |
@@ -152,8 +164,12 @@ to the rest. The import:
   a new element already in the draft or a live element), nothing referencing an element the draft
   deletes. Any problem rejects the whole import with a 400 listing them.
 - fetches the live elements of modifies and deletes in batches (missing or deleted ones are a 400)
-  and stores base and new state per element. An element with an open change in another draft is a
-  400.
+  and stores base and new state per element. An element with an open (pending, approved or
+  conflict) change in another draft is a 400 with `code` `open_change_elsewhere` and `openChanges`
+  `OpenChangeElsewhere[]` `{ref, changeId, status, draftId, draftTitle}` (other validation problems
+  take precedence as a plain 400). With `takeOver: true` those changes are withdrawn instead:
+  rejected with the comment `moved to draft "<title>" (<id>)`, their dependents in that draft
+  rejected as with MCP `withdraw`, and a `draft_updated` event sent for that draft.
 - gives new elements server-wide unique negative ids. `results[].ref` is the stored ref and
   `sourceRef` the ref from the document when they differ; the export uses the stored ids, and
   importing an element whose negative id is a new element of the draft updates it.
@@ -354,7 +370,7 @@ Preset ids contain `/` and go into the path unencoded.
 | POST | `/api/presets/detach` | `DetachPresetRequest` `{id?, path?}` | `WriteRuleFileResult`: the overlay rewritten as a full preset without `extends` |
 | GET | `/api/presets/smart` | | `SmartPreset[]` from `presets/smart/` without errors |
 | GET | `/api/presets/id-schema` | | `IdSchemaInfo` `{version, locales, files, baseUrl}` |
-| GET | `/api/presets/id-schema/{file}` | | The raw iD file: `presets.json`, `fields.json`, `preset_categories.json`, `translations/en.json`, `translations/cs.json`, `package.json`; `ETag` is the version, cached for a day |
+| GET | `/api/presets/id-schema/{file}` | | The raw iD file: `presets.json`, `fields.json`, `preset_categories.json`, `preset_defaults.json`, `deprecated.json`, `discarded.json`, `translations/en.json`, `translations/cs.json`, `package.json`; `ETag` is the version, cached for a day |
 
 `ResolvedPreset` has every key filled in: `name` (localised; a user preset's own `name` wins, a
 `{presetId}` name takes that preset's localised name), `geometry`, `tags`, `addTags` (default

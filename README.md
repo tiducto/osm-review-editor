@@ -125,9 +125,9 @@ plugs in its loader.
 
 ### iD presets
 
-The server ships `presets.json`, `fields.json`, `preset_categories.json` and the `en` and `cs`
-translations of [id-tagging-schema](https://github.com/openstreetmap/id-tagging-schema) 7.3.0 (ISC),
-about 1.6 MB. `npm install` fetches the package (`devDependencies` of the root `package.json`, exact
+The server ships `presets.json`, `fields.json`, `preset_categories.json`, `preset_defaults.json`,
+`deprecated.json`, `discarded.json` and the `en` and `cs` translations of
+[id-tagging-schema](https://github.com/openstreetmap/id-tagging-schema) 7.3.0 (ISC), about 1.6 MB. `npm install` fetches the package (`devDependencies` of the root `package.json`, exact
 version), and the Gradle task `:server:copyIdTaggingSchema` copies the minified files and its
 `package.json` (the recorded version) into the server's resources, so run `npm install` before
 building the server. The web app gets the same files from the server at

@@ -28,6 +28,7 @@ import eu.tiducto.osmreview.shared.ReviewRequest
 import eu.tiducto.osmreview.shared.TagEdit
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -55,6 +56,7 @@ class GeometryDraftTest {
     private lateinit var merge: MergeService
     private lateinit var account: Account
     private lateinit var repo: DraftRepo
+    private lateinit var events: EventBus
 
     @BeforeTest
     fun setUp() {
@@ -67,7 +69,7 @@ class GeometryDraftTest {
         account = Account(config, SettingsRepo(db), http)
         val mirror = GolMirror(Files.createTempDirectory("gol"))
         val rules = RuleEngine(mirror)
-        val events = EventBus()
+        events = EventBus()
         drafts = DraftService(repo, account, mirror, MirrorQueries(mirror), rules, events)
         merge = MergeService(config, repo, drafts, account, rules, events)
     }
@@ -400,6 +402,67 @@ class GeometryDraftTest {
         val dropped = exported.replace(Regex("""<delete if-unused="true">.*</delete>"""), "")
         val after = drafts.importOsmChange(d.draft.id, OsmChangeImportRequest(dropped, replace = true))
         assertEquals(ChangeStatus.REJECTED, after.draft.changes.first { it.ref == n(14) }.status)
+    }
+
+    @Test
+    fun takeOverMovesOpenChangesFromAnotherDraft(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        connect()
+        val (first, ch) = import(
+            osmChange(
+                modify = """<way id="60" version="5"><nd ref="11"/><nd ref="12"/><nd ref="14"/><tag k="highway" v="residential"/><tag k="name" v="Dlouhá"/></way>""" +
+                    """<node id="21" version="3" lat="49.9401" lon="17.94"><tag k="amenity" v="bench"/></node>""",
+                delete = """<node id="13" version="2" lat="49.932" lon="17.934"/>""",
+            ),
+        )
+        val oldWay = ch.getValue(w(60))
+        val oldDelete = ch.getValue(n(13))
+        val oldBench = ch.getValue(n(21))
+        assertEquals(listOf(oldWay.id), oldDelete.dependsOn.map { it.changeId })
+        val second = drafts.createDraft("Second session", "", Authors.USER)
+        val move = osmChange(modify = """<way id="60" version="5"><nd ref="11"/><nd ref="12"/><nd ref="13"/><tag k="highway" v="residential"/><tag k="name" v="Dlouhá"/></way>""")
+
+        val refused = assertFailsWith<OpenChangeElsewhereException> { drafts.importOsmChange(second.id, OsmChangeImportRequest(move)) }
+        assertEquals(listOf(w(60)), refused.openChanges.map { it.ref })
+        assertEquals(first.draft.id, refused.openChanges.single().draftId)
+        assertEquals("Editor session", refused.openChanges.single().draftTitle)
+        assertEquals(oldWay.id, refused.openChanges.single().changeId)
+        assertTrue(first.draft.id in refused.message!!, refused.message)
+        assertTrue("takeOver" in refused.message!!, refused.message)
+        assertTrue(drafts.detail(second.id).changes.isEmpty())
+        assertEquals(ChangeStatus.PENDING, reload(oldWay).status)
+
+        val seen = java.util.concurrent.CopyOnWriteArrayList<eu.tiducto.osmreview.shared.UiEvent>()
+        val collector = launch(kotlinx.coroutines.Dispatchers.Unconfined) { events.events.collect { seen += it } }
+        val r = drafts.importOsmChange(second.id, OsmChangeImportRequest(move, takeOver = true))
+        collector.cancel()
+        val moved = r.draft.changes.single()
+        assertEquals(w(60), moved.ref)
+        assertEquals(ChangeStatus.PENDING, moved.status)
+        assertEquals(listOf(11L, 12L, 13L), moved.newShape!!.nodes)
+
+        val taken = reload(oldWay)
+        assertEquals(ChangeStatus.REJECTED, taken.status)
+        assertEquals("moved to draft \"Second session\" (${second.id})", taken.reviews.last().comment)
+        assertEquals(ChangeStatus.REJECTED, reload(oldDelete).status)
+        assertTrue("depends on w60" in reload(oldDelete).reviews.last().comment.orEmpty())
+        assertEquals(ChangeStatus.PENDING, reload(oldBench).status)
+        assertTrue(eu.tiducto.osmreview.shared.UiEvent.DraftUpdated(first.draft.id) in seen, seen.toString())
+
+        val fromNew = drafts.draftFromOsmChange(
+            DraftFromOsmChangeRequest(
+                title = "Third",
+                osmChange = osmChange(modify = """<node id="21" version="3" lat="49.9402" lon="17.94"><tag k="amenity" v="bench"/></node>"""),
+                takeOver = true,
+            ),
+            Authors.USER,
+        )
+        assertEquals(n(21), fromNew.draft.changes.single().ref)
+        assertEquals(ChangeStatus.REJECTED, reload(oldBench).status)
+        assertFailsWith<OpenChangeElsewhereException> {
+            drafts.draftFromOsmChange(DraftFromOsmChangeRequest(title = "Fourth", osmChange = move), Authors.USER)
+        }
+        assertTrue(repo.listDrafts().none { it.title == "Fourth" })
     }
 
     @Test

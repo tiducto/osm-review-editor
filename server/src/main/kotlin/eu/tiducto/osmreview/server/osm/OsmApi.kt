@@ -1,6 +1,7 @@
 package eu.tiducto.osmreview.server.osm
 
 import eu.tiducto.osmreview.server.OsmTargetConfig
+import eu.tiducto.osmreview.shared.BBox
 import eu.tiducto.osmreview.shared.OsmRef
 import eu.tiducto.osmreview.shared.OsmType
 import io.ktor.client.HttpClient
@@ -11,7 +12,12 @@ import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.request.prepareGet
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.contentLength
+import io.ktor.utils.io.readAvailable
+import java.io.ByteArrayOutputStream
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -69,6 +75,24 @@ class OsmApi(
         }
     }
 
+    suspend fun map(bbox: BBox, maxBytes: Long = MAP_MAX_BYTES): String {
+        val box = listOf(bbox.west, bbox.south, bbox.east, bbox.north).joinToString(",") { it.toBigDecimal().stripTrailingZeros().toPlainString() }
+        return http.prepareGet("${target.apiUrl}/map?bbox=$box") { header(HttpHeaders.UserAgent, userAgent) }.execute { resp ->
+            if (!resp.status.isSuccess()) throw OsmApiException(resp.status, resp.bodyAsText(), "map")
+            resp.contentLength()?.let { if (it > maxBytes) throw MapTooLargeException(maxBytes) }
+            val channel = resp.bodyAsChannel()
+            val out = ByteArrayOutputStream()
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val n = channel.readAvailable(buf, 0, buf.size)
+                if (n < 0) break
+                out.write(buf, 0, n)
+                if (out.size() > maxBytes) throw MapTooLargeException(maxBytes)
+            }
+            out.toString(Charsets.UTF_8)
+        }
+    }
+
     suspend fun userDetails(token: String): XUser {
         val resp = http.get("${target.apiUrl}/user/details") {
             header(HttpHeaders.UserAgent, userAgent)
@@ -114,8 +138,13 @@ class OsmApi(
 
     companion object {
         const val BATCH = 700
+        const val MAP_MAX_BYTES = 25L * 1024 * 1024
     }
 }
 
 class OsmApiException(val status: HttpStatusCode, val body: String, what: String) :
     RuntimeException("OSM API $what failed: ${status.value} ${body.take(300)}")
+
+class MapTooLargeException(val maxBytes: Long) : RuntimeException(
+    "the OSM API response exceeds " + if (maxBytes >= 1024 * 1024) "${maxBytes / (1024 * 1024)} MB" else "$maxBytes bytes",
+)

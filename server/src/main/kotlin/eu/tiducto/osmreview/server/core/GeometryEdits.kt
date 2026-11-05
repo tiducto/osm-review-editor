@@ -16,6 +16,7 @@ import eu.tiducto.osmreview.shared.Confidence
 import eu.tiducto.osmreview.shared.ElementShape
 import eu.tiducto.osmreview.shared.LngLat
 import eu.tiducto.osmreview.shared.MapFeature
+import eu.tiducto.osmreview.shared.OpenChangeElsewhere
 import eu.tiducto.osmreview.shared.OsmRef
 import eu.tiducto.osmreview.shared.OsmType
 import eu.tiducto.osmreview.shared.ProposalOutcome
@@ -91,6 +92,7 @@ class GeometryEdits(
         input: List<EditElement>,
         replace: Boolean,
         confidence: Confidence = Confidence.NEEDS_REVIEW,
+        takeOver: (suspend (List<Change>) -> Unit)? = null,
     ): List<ProposalResult> {
         val dupes = input.groupBy { it.ref }.filterValues { it.size > 1 }.keys
         require(dupes.isEmpty()) { "Each element may appear only once: ${dupes.joinToString()}" }
@@ -165,7 +167,13 @@ class GeometryEdits(
             }
         }
         val openElsewhere = repo.openChangesFor(existingRefs).filter { it.draftId != draftId.toString() }
-        openElsewhere.forEach { problems += "${it.ref} already has an open change in draft ${it.draftId}" }
+        if (openElsewhere.isNotEmpty() && takeOver == null) {
+            val elsewhere = openElsewhere.map { c ->
+                OpenChangeElsewhere(c.ref, c.id, c.status, c.draftId, repo.getDraft(UUID.fromString(c.draftId))?.title.orEmpty())
+            }
+            if (problems.isEmpty()) throw OpenChangeElsewhereException(elsewhere)
+            problems += OpenChangeElsewhereException.describe(elsewhere)
+        }
         check()
 
         val openByRef = openInDraft.filter { it.id !in withdrawn }.associateBy { it.ref }
@@ -208,6 +216,7 @@ class GeometryEdits(
             }
         }
 
+        if (openElsewhere.isNotEmpty()) takeOver?.invoke(openElsewhere)
         val results = ArrayList<ProposalResult>()
         for (c in withdrawn.values) {
             val id = UUID.fromString(c.id)
@@ -359,5 +368,15 @@ class GeometryEdits(
         return api.fetch(ids.distinct().map { OsmRef(OsmType.NODE, it) }).values
             .mapNotNull { e -> e.location?.let { e.id to it } }
             .toMap()
+    }
+}
+
+class OpenChangeElsewhereException(val openChanges: List<OpenChangeElsewhere>) : IllegalArgumentException(describe(openChanges)) {
+    companion object {
+        fun describe(open: List<OpenChangeElsewhere>): String =
+            open.groupBy { it.draftId }.entries.joinToString("; ") { (id, list) ->
+                val title = list.first().draftTitle.takeIf { it.isNotBlank() }?.let { " \"$it\"" }.orEmpty()
+                "${list.joinToString(", ") { it.ref.toString() }} already ${if (list.size == 1) "has an open change" else "have open changes"} in draft $id$title"
+            } + "; import with takeOver to move ${if (open.size == 1) "it" else "them"} here"
     }
 }
