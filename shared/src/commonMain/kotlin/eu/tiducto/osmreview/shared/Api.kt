@@ -134,6 +134,20 @@ data class MirrorStatus(
     val openedAt: String? = null,
     val dataTimestamp: String? = null,
     val message: String? = null,
+    val sidecar: SidecarStatus? = null,
+)
+
+@Serializable
+data class SidecarStatus(
+    val lastRunAt: String? = null,
+    val lastRunKind: String? = null,
+    val result: String? = null,
+    val error: String? = null,
+    val lastFullBuildAt: String? = null,
+    val nextFullBuildDue: String? = null,
+    val replicationSequence: Long? = null,
+    val replicationTimestamp: String? = null,
+    val current: String? = null,
 )
 
 @Serializable
@@ -153,6 +167,7 @@ data class ImagerySource(
     val url: String,
     val attribution: String = "",
     val maxZoom: Int = 20,
+    val sourceTag: String = "",
 )
 
 @Serializable

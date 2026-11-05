@@ -51,9 +51,36 @@ uploads on dev with objects created on dev.
 | `TOKEN_ENCRYPTION_KEY` | Encrypts stored OAuth tokens (`openssl rand -base64 32`); without it tokens live in memory only |
 | `MCP_TOKEN` | Bearer token for `/mcp`; generated and shown in Settings when empty |
 | `OVERPASS_URL` | Overpass endpoint for `query_osm` (default `overpass-api.de`) |
-| `DEFAULT_AREAS` | GeoJSON FeatureCollection whose features' `properties.name` become area presets |
+| `DEFAULT_AREAS` | Path to a GeoJSON FeatureCollection of area presets (see below); compose mounts `./config` at `/config` |
+| `BING_KEY` | Optional Bing Maps key; when set, Bing aerial imagery is offered (see Imagery) |
 | `EXTRACT_URL` | Geofabrik extract the gol sidecar mirrors (default Czechia) |
 | `CONTACT` | Contact for the User-Agent sent to the OSM API |
+
+### Area presets
+
+`DEFAULT_AREAS` points at a GeoJSON FeatureCollection. Every feature with `properties.name` becomes a
+preset: a `Polygon` or `MultiPolygon` geometry is used as is (its bbox computed from it); a feature
+with no or another geometry is looked up by name among the mirror's admin boundaries, like the
+built-in presets (Opava, Opava-Kateřinky, Brno, Brno-střed, Ostrava, Olomouc, Praha), which are
+always added. A missing or invalid file is logged and ignored.
+
+```sh
+cp config/areas.example.geojson config/areas.geojson
+```
+
+### Imagery
+
+The imagery list lives in the settings table (key `imagery`) and is seeded with ČÚZK orthophoto, the
+ČÚZK cadastral map overlay and Esri World Imagery. Replace it with `PUT /api/settings/imagery` or go
+back with `POST /api/settings/imagery/reset` ([API](docs/api.md#imagery-sources)). Each source has a
+`sourceTag` used for the changeset `source` tag.
+
+Bing aerial imagery needs a key: its tile URL comes from the Bing Maps Imagery Metadata API, which
+the server calls once at start when `BING_KEY` is set, then offers the layer with
+`© Microsoft Corporation` attribution and `source=Bing`. Microsoft allows tracing Bing aerial
+imagery for OSM only in an OSM editor ([OSM wiki](https://wiki.openstreetmap.org/wiki/Bing_Maps)).
+Basic Bing Maps keys stopped working on 30 June 2025 and Enterprise keys work until 30 June 2028, so
+without an Enterprise key leave `BING_KEY` empty.
 
 ### How the mirror stays current
 
@@ -63,6 +90,28 @@ names the one the app reads. Each day it copies the current file under a tempora
 atomically. The app notices within 15 seconds, opens the new file, swaps it in under a write lock,
 drops rule caches and closes the old one; the UI refreshes its layers. Because `gol update` is
 marked experimental, a full rebuild from a fresh extract runs every 7 days (`REBUILD_DAYS`).
+
+After every run the sidecar atomically rewrites `/data/status.json`, which the app serves as
+`mirror.sidecar` in `/api/status`:
+
+```json
+{
+  "lastRunAt": "2026-11-05T03:00:12Z",
+  "lastRunKind": "update",
+  "result": "ok",
+  "error": null,
+  "lastFullBuildAt": "2026-11-01T02:10:00Z",
+  "nextFullBuildDue": "2026-11-08T02:10:00Z",
+  "replicationSequence": 4612,
+  "replicationTimestamp": "2026-11-04T20:21:03Z",
+  "current": "b.gol"
+}
+```
+
+`replicationSequence` and `replicationTimestamp` are the GOL's revision from `gol info`. A failed
+run keeps the previous GOL and records the last lines of the tool's error output; a failed first
+build is retried every 15 minutes (`RETRY_SECONDS`). Without the sidecar (local development) the
+file is absent and `mirror.sidecar` is `null`.
 
 ## Claude over MCP
 

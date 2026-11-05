@@ -31,6 +31,7 @@ data class Config(
     val overpassUrl: String,
     val defaultAreasFile: Path?,
     val contact: String,
+    val bingKey: String? = null,
 ) {
     fun target(t: OsmTarget) = if (t == OsmTarget.PROD) prod else dev
 
@@ -70,6 +71,7 @@ data class Config(
                 overpassUrl = get("OVERPASS_URL") ?: "https://overpass-api.de/api/interpreter",
                 defaultAreasFile = get("DEFAULT_AREAS")?.let(Path::of),
                 contact = get("CONTACT") ?: "https://github.com/tiducto/osm-review-editor",
+                bingKey = get("BING_KEY"),
             )
         }
     }

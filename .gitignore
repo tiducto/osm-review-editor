@@ -23,6 +23,7 @@ data/
 
 # Secrets
 .env
+config/areas.geojson
 
 # Claude Code
 .claude/worktrees/

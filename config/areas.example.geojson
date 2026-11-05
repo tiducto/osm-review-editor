@@ -1,0 +1,27 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Opava-Kateřinky",
+        "source": "simplified from OSM relation 434832 (Kateřinky u Opavy), © OpenStreetMap contributors, ODbL"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [17.8772617, 49.9627545], [17.888625, 49.9569217], [17.8888896, 49.9518648],
+          [17.9299248, 49.932532], [17.9410286, 49.9501511], [17.9417181, 49.9642575],
+          [17.9444591, 49.9677241], [17.9300708, 49.9662302], [17.9325717, 49.97166],
+          [17.9216162, 49.9757139], [17.9228469, 49.9787509], [17.9091562, 49.9765104],
+          [17.8895053, 49.980085], [17.8858225, 49.962838], [17.8772617, 49.9627545]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Brno-střed" },
+      "geometry": null
+    }
+  ]
+}

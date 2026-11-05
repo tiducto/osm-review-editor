@@ -144,6 +144,7 @@ export interface ImagerySource {
   url: string
   attribution: string
   maxZoom: number
+  sourceTag: string
 }
 
 export interface UiEventDraftUpdated {
@@ -326,6 +327,7 @@ export interface MirrorStatus {
   openedAt: string | null
   dataTimestamp: string | null
   message: string | null
+  sidecar: SidecarStatus | null
 }
 
 export type SearchHitKind = 'area' | 'object' | 'query'
@@ -341,3 +343,15 @@ export interface ProposedChange {
 }
 
 export type OsmType = 'node' | 'way' | 'relation'
+
+export interface SidecarStatus {
+  lastRunAt: string | null
+  lastRunKind: string | null
+  result: string | null
+  error: string | null
+  lastFullBuildAt: string | null
+  nextFullBuildDue: string | null
+  replicationSequence: number | null
+  replicationTimestamp: string | null
+  current: string | null
+}

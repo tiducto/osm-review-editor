@@ -10,15 +10,12 @@ import eu.tiducto.osmreview.server.core.MergeService
 import eu.tiducto.osmreview.server.db.Db
 import eu.tiducto.osmreview.server.db.DraftRepo
 import eu.tiducto.osmreview.server.db.SettingsRepo
-import eu.tiducto.osmreview.shared.Area
 import eu.tiducto.osmreview.shared.BBox
 import eu.tiducto.osmreview.shared.EditorLinks
-import eu.tiducto.osmreview.shared.ImagerySource
 import eu.tiducto.osmreview.shared.OsmRef
 import eu.tiducto.osmreview.shared.SearchHit
 import eu.tiducto.osmreview.shared.SearchHitKind
 import eu.tiducto.osmreview.shared.UiEvent
-import eu.tiducto.osmreview.shared.WireJson
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -29,13 +26,10 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.slf4j.LoggerFactory
 import java.security.SecureRandom
 import java.util.Base64
-import kotlin.io.path.readText
 
 class App(val config: Config) : AutoCloseable {
     private val log = LoggerFactory.getLogger(App::class.java)
@@ -60,7 +54,7 @@ class App(val config: Config) : AutoCloseable {
     val merge = MergeService(config, repo, drafts, account, rules, events)
     val areas = AreaPresets(config, queries)
     val search = Search(queries)
-    val imagery: List<ImagerySource> = DEFAULT_IMAGERY
+    val imagery = ImageryStore(settings)
 
     val mcpToken: String = config.mcpToken ?: settings.get(MCP_TOKEN_KEY) ?: ByteArray(24)
         .also(SecureRandom()::nextBytes)
@@ -68,6 +62,13 @@ class App(val config: Config) : AutoCloseable {
         .also { settings.put(MCP_TOKEN_KEY, it) }
 
     fun start() {
+        config.bingKey?.let { key ->
+            scope.launch {
+                runCatching { BingImagery.resolve(http, key) }
+                    .onSuccess { imagery.bing = it; log.info("Bing imagery enabled") }
+                    .onFailure { log.warn("Bing imagery disabled: {}", it.message) }
+            }
+        }
         if (mirror.reloadIfChanged()) log.info("Opened GOL {}", mirror.status().file) else log.warn(mirror.status().message)
         scope.launch {
             while (isActive) {
@@ -106,55 +107,6 @@ class App(val config: Config) : AutoCloseable {
     companion object {
         private const val SWAP_POLL_MS = 15_000L
         private const val MCP_TOKEN_KEY = "mcp.token"
-
-        val DEFAULT_IMAGERY = listOf(
-            ImagerySource(
-                id = "cuzk-ortofoto",
-                name = "ČÚZK orthophoto",
-                type = "wms",
-                url = "https://ags.cuzk.gov.cz/arcgis1/services/ORTOFOTO/MapServer/WMSServer?FORMAT=image/png&TRANSPARENT=TRUE" +
-                    "&VERSION=1.3.0&SERVICE=WMS&REQUEST=GetMap&LAYERS=0&STYLES=&CRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}",
-                attribution = "© ČÚZK",
-                maxZoom = 20,
-            ),
-            ImagerySource(
-                id = "cuzk-km",
-                name = "ČÚZK cadastral map (overlay)",
-                type = "wms",
-                url = "https://wms.cuzk.cz/wms.asp?LAYERS=parcelni_cisla_i,obrazy_parcel_i,RST_KMD_I,hranice_parcel_i,DEF_BUDOVY,RST_KN_I,dalsi_p_mapy_i" +
-                    "&STYLES=&FORMAT=image/png&TRANSPARENT=TRUE&CRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}&VERSION=1.3.0&SERVICE=WMS&REQUEST=GetMap",
-                attribution = "© ČÚZK",
-                maxZoom = 21,
-            ),
-            ImagerySource(
-                id = "esri-world-imagery",
-                name = "Esri World Imagery",
-                type = "tms",
-                url = "https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-                attribution = "Esri, Maxar, Earthstar Geographics",
-                maxZoom = 22,
-            ),
-        )
-    }
-}
-
-class AreaPresets(private val config: Config, private val queries: eu.tiducto.osmreview.rules.MirrorQueries) {
-    private val names: List<String> by lazy {
-        val fromFile = config.defaultAreasFile?.let { f ->
-            runCatching {
-                WireJson.parseToJsonElement(f.readText()).jsonObject["features"]!!.jsonArray
-                    .mapNotNull { it.jsonObject["properties"]?.jsonObject?.get("name")?.jsonPrimitive?.content }
-            }.getOrElse { emptyList() }
-        }.orEmpty()
-        (fromFile + DEFAULT_NAMES).distinct()
-    }
-
-    fun presets(): List<Area> = names.mapNotNull { n ->
-        runCatching { queries.area(n)?.first?.copy(geometry = null) }.getOrNull()
-    }
-
-    private companion object {
-        val DEFAULT_NAMES = listOf("Opava", "Opava-Kateřinky", "Brno", "Brno-střed", "Ostrava", "Olomouc", "Praha")
     }
 }
 
