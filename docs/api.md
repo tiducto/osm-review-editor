@@ -494,7 +494,7 @@ Preset ids contain `/` and go into the path unencoded.
 | POST | `/api/presets/apply/bulk` | `PresetBulkApplyRequest` `{presetId, refs, dryRun?, title?, draftId?, reason?, area?, locale?}` | `PresetBulkApplyResult` `{presetId, presetName, total, changed, unchanged, skipped, preview, truncated, draft, results}`; 400 above 5000 refs, 404 for an unknown preset, 503 without a GOL |
 | POST | `/api/presets/import` | `ImportPresetRequest` `{presetId, id?, path?}` | 201 `WriteRuleFileResult`: a new overlay file `{id, extends, apply}`; `id` defaults to `custom/<presetId>`, `path` to `presets/<id with dashes>.json`; 409 when the id or file exists |
 | POST | `/api/presets/detach` | `DetachPresetRequest` `{id?, path?}` | `WriteRuleFileResult`: the overlay rewritten as a full preset without `extends` |
-| GET | `/api/presets/smart` | | `SmartPreset[]` from `presets/smart/` without errors |
+| GET | `/api/presets/smart?locale=` | | `SmartPreset[]` from `presets/smart/` without errors; `name` in the locale (default `en`), `names` with every translation |
 | GET | `/api/presets/user?locale=` | | `ResolvedPreset[]`: every preset from the rules folder (local, remote and built-in files) that resolves, in the locale, sorted by name |
 | GET | `/api/presets/id-schema` | | `IdSchemaInfo` `{version, locales, files, baseUrl}` |
 | GET | `/api/presets/id-schema/{file}` | | The raw iD file: `presets.json`, `fields.json`, `preset_categories.json`, `preset_defaults.json`, `deprecated.json`, `discarded.json`, `translations/en.json`, `translations/cs.json`, `package.json`; `ETag` is the version, cached for a day |
@@ -538,7 +538,22 @@ draft) or into the open draft `draftId`, one proposal per object with `reason` (
 "<name>"`) and confidence `needs_review`; `draft` is its `DraftDetail` and `results` the
 `ProposalResult[]`. Nothing is uploaded.
 
+The MCP tool `apply_preset_bulk` runs the same bulk apply (`preset_id`, `refs` as `"w45"` or
+`{type, id}`, `dry_run`, `title`, `draft_id`, `reason`, `area`, `locale`); its drafts are authored by
+`claude`, it returns at most 50 preview rows and 50 skipped objects (`truncated` when cut), and with a
+draft its `draft_id`, `title`, `author` and `results` (count per outcome).
+
+`name` in a preset or smart preset file is a string or an object of locale to name
+(`{"cs": "Přechod", "en": "Crossing"}`; keys like `en`, `cs`, `cs-CZ`; at least one entry, each a
+non-empty string). A name is resolved for a locale by the exact locale, then its language, then `en`,
+then the first entry. For presets the object form feeds `ResolvedPreset.name`; the string form may
+still be a `{presetId}` reference.
+
 Smart presets (`presets/smart/*.json`) are `{id, name, geometry, match, params, steps, description?}`.
+`SmartPreset.name` is the resolved name and `names` holds every translation of an object-form name
+(empty for a plain string), so the editor can switch language without refetching. Smart presets run
+in the editor only, with iD actions (crossing lookup, shared nodes, splitting ways); there is no REST
+or MCP endpoint that applies them.
 Validation checks the keys and types, parameter definitions (`combo` needs `options` and a default
 among them), each step's `op` and arguments, that names used in steps are bound earlier (`self` is
 always bound) and of the right type (way or node), `distance` expressions, and `{param}` placeholders

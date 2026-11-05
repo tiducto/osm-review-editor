@@ -72,6 +72,12 @@ id-tagging-schema: `"fields": ["{highway/footway/sidewalk}", "lit"]` is that pre
 `lit`. A file holds one preset object or an array of them. `presets/sidewalk-cz.json` is an overlay
 of iD's sidewalk preset with a Czech name and paving stones as the default surface.
 
+`name`, in presets and smart presets, is either one string (`"Chodník"`, or `"{presetId}"` for
+another preset's translated name) or an object of locale to name:
+`{"cs": "Chodník", "en": "Sidewalk (Czech)"}`. Locales are language codes like `en`, `cs` or
+`cs-CZ`; give at least one, each a non-empty string. The app picks the user's locale, then its
+language, then `en`, then the first entry.
+
 ## Smart presets
 
 `presets/smart/footway-crossing.json` turns the part of a footway that crosses a road into a

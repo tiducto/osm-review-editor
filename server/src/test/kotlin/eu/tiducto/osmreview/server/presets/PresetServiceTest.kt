@@ -124,6 +124,8 @@ class PresetServiceTest {
         RulesFolder(empty, null, listOf(PresetFileLoader { data.index }, SmartPresetLoader()), builtInFiles = BuiltInRules.fromResources()).use { f ->
             f.rescan()
             assertEquals(listOf("smart/footway-crossing"), PresetService(data, f).smartPresets().map { it.id })
+            assertEquals("Chodník → přechod", PresetService(data, f).smartPresets("cs").single().name)
+            assertEquals(emptyList(), f.info("presets/smart/footway-crossing.json")!!.diagnostics)
             assertTrue(f.info("presets/smart/footway-crossing.json")!!.origin!!.builtIn)
         }
     }
@@ -156,7 +158,12 @@ class PresetServiceTest {
         assertEquals(RuleKind.entries.toSet(), files.map { it.kind }.toSet())
         files.forEach { assertEquals(emptyList(), it.diagnostics, it.path) }
         assertEquals("Chodník", presets.get("custom/sidewalk-cz", "cs").name)
+        assertEquals("Sidewalk (Czech)", presets.get("custom/sidewalk-cz", "en").name)
         assertEquals(listOf("smart/footway-crossing"), presets.smartPresets().map { it.id })
+        assertEquals("Footway → crossing", presets.smartPresets().single().name)
+        val cs = presets.smartPresets("cs-CZ").single()
+        assertEquals("Chodník → přechod", cs.name)
+        assertEquals(mapOf("en" to "Footway → crossing", "cs" to "Chodník → přechod"), cs.names)
     }
 
     companion object {

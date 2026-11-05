@@ -191,6 +191,7 @@ class PresetIndex(
     private fun localName(ref: Ref, locale: String, depth: Int = 0): String {
         if (depth > MAX_DEPTH) return ref.id
         val raw = rawOf(ref)
+        raw.names?.let { n -> LocalizedNames.resolve(n, locale)?.let { return it } }
         raw.name?.let { n -> return expandName(n, ref, locale, depth) }
         if (raw.extends != null) parentOf(ref)?.let { return localName(it, locale, depth + 1) }
         return texts(ref.id, locale)?.name ?: ref.id
@@ -381,7 +382,8 @@ class PresetIndex(
         val literalName = raw.name?.takeIf { referenced(it) == null }
         return Preset(
             id = m.id,
-            name = literalName ?: localName(ref, DEFAULT_LOCALE),
+            name = if (raw.names != null) null else literalName ?: localName(ref, DEFAULT_LOCALE),
+            names = raw.names,
             geometry = m.geometry,
             tags = m.tags,
             addTags = m.addTags.takeIf { it != m.tags },

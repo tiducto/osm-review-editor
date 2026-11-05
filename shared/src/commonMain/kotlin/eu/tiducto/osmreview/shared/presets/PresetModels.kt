@@ -71,6 +71,7 @@ data class Preset(
     val searchable: Boolean? = null,
     val extends: String? = null,
     val apply: PresetApplyMode? = null,
+    val names: Map<String, String>? = null,
 )
 
 @Serializable

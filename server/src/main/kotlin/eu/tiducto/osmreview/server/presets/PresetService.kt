@@ -95,10 +95,11 @@ class PresetService(val data: IdPresetData, private val folder: RulesFolder) {
         throw NotFoundException(e.message.orEmpty())
     }
 
-    fun smartPresets(): List<SmartPreset> = folder.loaded(RuleKind.SMART_PRESET)
+    fun smartPresets(locale: String? = null): List<SmartPreset> = folder.loaded(RuleKind.SMART_PRESET)
         .filter { !it.diagnostics.hasErrors() }
         .mapNotNull { it.value as? SmartPreset }
         .distinctBy { it.id }
+        .map { it.localized(locale) }
 
     fun import(req: ImportPresetRequest): WriteRuleFileResult {
         if (!index.contains(req.presetId)) throw NotFoundException("Unknown preset '${req.presetId}'")

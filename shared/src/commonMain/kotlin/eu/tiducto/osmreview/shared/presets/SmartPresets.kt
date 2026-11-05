@@ -45,7 +45,11 @@ data class SmartPreset(
     val params: Map<String, SmartParam> = emptyMap(),
     val steps: List<JsonObject>,
     val description: String? = null,
-)
+    val names: Map<String, String> = emptyMap(),
+) {
+    fun localized(locale: String?): SmartPreset =
+        if (names.isEmpty()) this else copy(name = LocalizedNames.resolve(names, locale ?: LocalizedNames.FALLBACK) ?: name)
+}
 
 data class SelectorProblem(val offset: Int, val severity: DiagnosticSeverity, val message: String)
 
@@ -141,8 +145,9 @@ object SmartPresets {
 
         val id = root.string("id", sink, required = true)
         if (id != null && !ID.matches(id)) sink.error("id", "Invalid id '$id'")
-        val name = root.string("name", sink, required = true)
-        if (name != null && name.isBlank()) sink.error("name", "name must not be empty")
+        if (root["name"] == null || root["name"] == JsonNull) sink.error("", "Missing \"name\"")
+        val localName = LocalizedNames.parse(root["name"], "name", sink)
+        val name = localName?.resolve(LocalizedNames.FALLBACK)
         val description = root.string("description", sink, required = false)
 
         val geometry = when (val g = root["geometry"]) {
@@ -184,7 +189,7 @@ object SmartPresets {
         val preset = if (sink.hasErrors || id == null || name == null || geometry == null || match == null || steps == null) {
             null
         } else {
-            SmartPreset(id, name, geometry, match, params, steps, description)
+            SmartPreset(id, name, geometry, match, params, steps, description, localName?.names.orEmpty())
         }
         return ParsedSmartPreset(preset, sink.diagnostics)
     }

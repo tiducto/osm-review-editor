@@ -12,7 +12,13 @@ const root = resolve(import.meta.dirname, '../../../../node_modules') + '/'
 const json = (path: string) => JSON.parse(readFileSync(root + path, 'utf8'))
 const fixture = readFileSync(resolve(import.meta.dirname, '../id/fixtures/katerinky.osm'), 'utf8')
 const presetFile = resolve(import.meta.dirname, '../../../../user-rules.example/presets/smart/footway-crossing.json')
-const preset: SmartPreset = { description: null, ...JSON.parse(readFileSync(presetFile, 'utf8')) }
+const rawPreset = JSON.parse(readFileSync(presetFile, 'utf8'))
+const preset: SmartPreset = {
+  description: null,
+  ...rawPreset,
+  name: typeof rawPreset.name === 'string' ? rawPreset.name : rawPreset.name.en,
+  names: typeof rawPreset.name === 'string' ? {} : rawPreset.name,
+}
 
 type Loc = [number, number]
 
