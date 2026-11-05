@@ -8,13 +8,22 @@
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "type-check": "vue-tsc -b",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/lint": "^6.9.7",
+    "@codemirror/merge": "^6.12.3",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@lezer/highlight": "^1.2.5",
     "@mapbox/vector-tile": "^3.0.0",
     "@maplibre/vt-pbf": "^4.3.3",
+    "codemirror": "^6.0.2",
     "maplibre-gl": "^6.16.0",
     "osm-review-shared": "*",
     "pbf": "^5.1.2",
@@ -22,6 +31,7 @@
     "vue": "^3.5.45"
   },
   "devDependencies": {
+    "@maplibre/maplibre-gl-style-spec": "^26.5.1",
     "@openstreetmap/id": "^2.42.3",
     "@openstreetmap/id-tagging-schema": "^7.3.0",
     "@tailwindcss/vite": "^4.3.4",
@@ -32,6 +42,7 @@
     "tailwindcss": "^4.3.4",
     "typescript": "^6.0.3",
     "vite": "^8.3.6",
+    "vitest": "^5.1.0",
     "vue-tsc": "^3.3.14"
   }
 }

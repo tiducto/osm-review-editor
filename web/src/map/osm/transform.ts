@@ -28,8 +28,32 @@ const LABEL_AREA_KEYS = ['aeroway', 'amenity', 'building', 'historic', 'leisure'
 
 export function tagsOf(p: Props): Tags {
   const t: Tags = {}
-  for (const k in p) if (k[0] !== '@') t[k] = String(p[k])
+  for (const k in p) if (k[0] !== '@' && k[0] !== '$') t[k] = String(p[k])
   return t
+}
+
+export const TILE_PROPS = { type: '$type', closed: '$closed', id: '$id' } as const
+
+export function convention(layer: string, p: Props): Props {
+  if (p['@id'] === undefined) return {}
+  const closed = layer === OUT.area || layer === OUT.band || p['@closed'] === true
+  return { [TILE_PROPS.type]: p['@type'], [TILE_PROPS.id]: p['@id'], [TILE_PROPS.closed]: closed }
+}
+
+const RAW_LAYERS: string[] = ['area', 'line', 'point', 'vertex']
+
+export function rawLayers(tile: VectorTile): Record<string, VectorTileLayerLike> {
+  const out: Record<string, OutLayer> = {}
+  for (const name of RAW_LAYERS) {
+    const src = tile.layers[name]
+    if (!src) continue
+    const layer = (out[name] = new OutLayer(name, src.extent))
+    each(src, (f, p) => {
+      if (p['@id'] === undefined) return
+      layer.push(f, { ...p, ...convention(name, p) })
+    })
+  }
+  return out
 }
 
 export function dashKey(s: Stroke, low: boolean): string {
@@ -135,7 +159,7 @@ export function transform(tile: VectorTile, presets: PresetMatcher, z: number): 
     const pat = pattern ? `pat:${pattern}` : ''
     const sort = Number(p['@fz'] ?? 0)
     areas.set(`${p['@type']}${p['@id']}`, { fc: st.fill, pat, sort, props: p })
-    layer(OUT.area).push(f, { ...p, '@fc': st.fill, '@sc': st.stroke, '@pat': pat, '@sort': sort, '@bld': isBuilding(t) })
+    layer(OUT.area).push(f, { ...p, ...convention(OUT.area, p), '@fc': st.fill, '@sc': st.stroke, '@pat': pat, '@sort': sort, '@bld': isBuilding(t) })
   })
   each(tile.layers.band, (f, p) => {
     const a = areas.get(`${p['@type']}${p['@id']}`)
@@ -172,6 +196,7 @@ export function transform(tile: VectorTile, presets: PresetMatcher, z: number): 
     const dark = !!t.railway || (!!t.bridge && t.bridge !== 'no' && !!t.construction)
     layer(OUT.line).push(f, {
       ...p,
+      ...convention(OUT.line, p),
       '@sort': (lvl + bridge) * 100 + ls.rank,
       '@name': t.highway || t.railway || t.waterway ? (t.name ?? '') : '',
       '@ow': dir,
@@ -188,6 +213,7 @@ export function transform(tile: VectorTile, presets: PresetMatcher, z: number): 
     if (icon) icons.add(`vicon:${icon}`)
     layer(OUT.vertex).push(f, {
       ...p,
+      ...convention(OUT.vertex, p),
       '@tagged': tagged,
       '@icon': icon ? `vicon:${icon}` : '',
       '@hasIcon': !!icon,
@@ -200,11 +226,11 @@ export function transform(tile: VectorTile, presets: PresetMatcher, z: number): 
     const t = tagsOf(p)
     if (t.place && !detail) {
       const rank = ({ city: 4, town: 3, village: 2, suburb: 2, quarter: 1 } as Record<string, number>)[t.place] ?? 0
-      layer(OUT.place).push(f, { ...p, '@name': t.name ?? '', '@rank': rank })
+      layer(OUT.place).push(f, { ...p, ...convention(OUT.point, p), '@name': t.name ?? '', '@rank': rank })
       return
     }
     if (isAddressPoint(t)) {
-      layer(OUT.point).push(f, { ...p, '@addr': true, '@hn': t['addr:housenumber'] ?? t['addr:housename'] ?? '', '@name': '' })
+      layer(OUT.point).push(f, { ...p, ...convention(OUT.point, p), '@addr': true, '@hn': t['addr:housenumber'] ?? t['addr:housename'] ?? '', '@name': '' })
       return
     }
     const preset = presets.match(t, 'point')
@@ -212,7 +238,7 @@ export function transform(tile: VectorTile, presets: PresetMatcher, z: number): 
     const wd = isWikidata(t)
     const pin = `pin:${icon ?? ''}:${wd ? 'w' : ''}`
     icons.add(pin)
-    layer(OUT.point).push(f, { ...p, '@addr': false, '@pin': pin, '@name': t.name ?? '' })
+    layer(OUT.point).push(f, { ...p, ...convention(OUT.point, p), '@addr': false, '@pin': pin, '@name': t.name ?? '' })
   })
   return { layers: out, icons: [...icons], dashes: [...dashes] }
 }

@@ -39,12 +39,12 @@ function pool(): Worker[] {
   return workers
 }
 
-function request(url: string, z: number, signal: AbortSignal): Promise<Done> {
+function request(url: string, z: number, signal: AbortSignal, raw = false): Promise<Done> {
   const w = pool()[next++ % pool().length]
   const id = ++seq
   return new Promise<Done>((resolve, reject) => {
     waiting.set(id, { resolve, reject })
-    w.postMessage({ id, url, z } satisfies TileRequest)
+    w.postMessage({ id, url, z, raw } satisfies TileRequest)
     signal.addEventListener('abort', () => {
       if (!waiting.has(id)) return
       waiting.delete(id)
@@ -68,7 +68,7 @@ export function registerTileProtocol(m: MlMap, dashes: (keys: string[]) => void)
     if (done) {
       cache.delete(url)
     } else {
-      done = await request(url, z, abort.signal)
+      done = await request(url, z, abort.signal, new URL(url).searchParams.has('raw'))
     }
     cache.set(url, done)
     while (cache.size > CACHE_TILES) cache.delete(cache.keys().next().value!)
@@ -90,4 +90,9 @@ export function clearTileCache(): void {
 
 export function tileUrl(version: string): string {
   return `${PROTOCOL}://api/tiles/{z}/{x}/{y}.mvt?v=${encodeURIComponent(version)}`
+}
+
+export function rawTileUrl(version: string, keys: string[]): string {
+  const k = keys.length ? `&keys=${encodeURIComponent(keys.join(','))}` : ''
+  return `${PROTOCOL}://api/tiles/{z}/{x}/{y}.mvt?v=${encodeURIComponent(version)}&raw=1${k}`
 }

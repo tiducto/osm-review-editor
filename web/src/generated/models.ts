@@ -817,6 +817,7 @@ export interface RuleOrigin {
   licence: string
   fetchedAt: string | null
   error: string | null
+  builtIn: boolean
 }
 
 export type DiagnosticSeverity = 'error' | 'warning' | 'info'
@@ -837,6 +838,7 @@ export interface HighlightRule {
   color: string | null
   compiled: boolean
   filter: JsonValue | null
+  style: Record<string, JsonValue>
 }
 
 export interface StyleResult {

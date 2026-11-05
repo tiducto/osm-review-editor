@@ -8,7 +8,9 @@ import { connectEvents } from '@/stores/events'
 import { hasModifier, isTyping } from '@/lib/keyboard'
 import MapView from '@/map/MapView.vue'
 import TopBar from '@/components/TopBar.vue'
-import RulesPanel from '@/components/RulesPanel.vue'
+import SidePanel from '@/components/SidePanel.vue'
+import HighlightLegend from '@/components/HighlightLegend.vue'
+import { usePanelStore } from '@/stores/panel'
 import Inspector from '@/components/Inspector.vue'
 import ReviewCard from '@/components/ReviewCard.vue'
 import BottomDrawer from '@/components/BottomDrawer.vue'
@@ -21,6 +23,7 @@ const app = useAppStore()
 const mapStore = useMapStore()
 const rules = useRulesStore()
 const drafts = useDraftsStore()
+const panel = usePanelStore()
 
 const topBar = ref<InstanceType<typeof TopBar> | null>(null)
 const leftOpen = ref(window.innerWidth >= 768)
@@ -87,7 +90,6 @@ onMounted(async () => {
   stopEvents = connectEvents()
   await app.init()
   await rules.load()
-  void rules.refresh()
   void drafts.loadDrafts()
   const linked = new URLSearchParams(location.search).get('draft')
   if (linked) void drafts.open(linked, { review: true })
@@ -119,17 +121,18 @@ onBeforeUnmount(() => {
     <div class="relative flex min-h-0 flex-1">
       <aside
         class="shrink-0 overflow-hidden border-r border-line bg-surface transition-[width] duration-200 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-20 max-md:shadow-panel"
-        :class="leftOpen ? 'w-[296px]' : 'w-0 border-r-0'"
+        :class="leftOpen ? (panel.wide ? 'w-[min(560px,100vw)]' : 'w-[296px]') : 'w-0 border-r-0'"
       >
-        <div class="h-full w-[296px] max-w-[100vw]"><RulesPanel /></div>
+        <div class="h-full max-w-[100vw]" :class="panel.wide ? 'w-[min(560px,100vw)]' : 'w-[296px]'"><SidePanel /></div>
       </aside>
 
       <main class="flex min-w-0 flex-1 flex-col">
         <div ref="mapBox" class="relative min-h-0 flex-1">
           <MapView />
+          <HighlightLegend />
           <button
             class="absolute top-1/2 left-0 z-10 grid h-12 w-4 -translate-y-1/2 place-items-center rounded-r-md border border-l-0 border-line bg-surface text-fg-3 shadow-panel hover:text-fg"
-            :class="leftOpen && 'max-md:left-[296px] max-md:z-30'"
+            :class="leftOpen && (panel.wide ? 'max-md:hidden' : 'max-md:left-[296px] max-md:z-30')"
             :title="leftOpen ? 'Hide layers ([)' : 'Show layers ([)'"
             @click="leftOpen = !leftOpen"
           >

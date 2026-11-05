@@ -79,6 +79,10 @@ area relations are assembled once per generation and cached. Geometry is clipped
 buffer (16 px at z15+, 8 px below); below z15 it is simplified (Douglas-Peucker, 0.5 units at extent
 4096) and areas under a few pixels are dropped. z15+ tiles use extent 8192.
 
+`?keys=k1,k2` (at most 64 keys besides the curated ones) adds those tags to tiles below z15, so
+highlight filters that test other keys (`sidewalk`, `sidewalk:both`, ...) work when zoomed out; the
+`ETag` and the server cache are per key set. z15+ tiles carry every tag anyway and ignore it.
+
 Layers (feature ids are `osmId * 4 + type`, with type 0 node, 1 way, 2 relation; every feature has
 `@id` and `@type`):
 
@@ -87,7 +91,7 @@ Layers (feature ids are `osmId * 4 + type`, with type 0 node, 1 way, 2 relation;
 | `area` | Polygon | `@fz`: the highest zoom at which the area is filled whole (its `2·area/perimeter` is at most iD's 30 px partial-fill band) |
 | `band` | Polygon | `@bz`: display zoom; the area minus its 30 px inset at that zoom, for iD's partial fill above `@fz` (z15 tiles carry bands for 15-20) |
 | `label` | Point | Label point (centroid, or the centre of the largest inscribed circle when the centroid falls outside); `@area` and `@width` in z0 pixels |
-| `line` | LineString | Untagged ways that belong to a relation are left out |
+| `line` | LineString | Untagged ways that belong to a relation are left out; `@closed` on closed ways |
 | `point` | Point | Tagged nodes that are not way nodes |
 | `vertex` | Point (z15+) | Tagged way nodes, plus untagged way nodes that end a way or join two ways at least one of which is a tagged line (iD's rule); `@junction` (2+ parent ways), `@end` (end of a single way), `@bonly` (only buildings use it) |
 
@@ -368,8 +372,13 @@ Tile property convention (`TileProperties` in every `HighlightList`): every OSM 
 feature property under its own key (`highway`, `sidewalk:both`, ...; `tagPrefix` is empty), plus
 `$type` (`node`, `way` or `relation`), `$closed` (boolean, closed ring or area relation) and `$id`
 (the OSM id). Compiled filters read exactly these, e.g. `way.street[!sidewalk]` becomes
-`["all", ["==", ["get", "$type"], "way"], ..., ["!", ["has", "sidewalk"]]]`. Tiles must carry them for
-the filters to match.
+`["all", ["==", ["get", "$type"], "way"], ..., ["!", ["has", "sidewalk"]]]`. The server's tiles carry
+`@type`, `@id` and `@closed`; the web app's tile worker adds `$type`, `$id` and `$closed` (true on the
+`area` layer and on lines with `@closed`) to every feature it re-encodes, and a unit test
+(`web/src/map/osm/highlightFilter.test.ts`) checks on synthetic and real Opava tiles that every
+compiled filter selects exactly the features the MapCSS engine matches. Each rule also carries
+`style`, its declarations with literal values (`color`, `width`, `dashes`, `casing-*`, `fill-*`,
+`symbol-*`, `text` as `{tag}` or a literal), which the map uses to draw it.
 
 | Method | Path | Returns |
 | --- | --- | --- |

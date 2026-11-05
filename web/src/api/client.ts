@@ -150,3 +150,5 @@ export function errorMessage(e: unknown): string {
 export function isAbort(e: unknown): boolean {
   return e instanceof DOMException && e.name === 'AbortError'
 }
+
+export { request as apiRequest, withQuery }

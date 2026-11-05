@@ -4,12 +4,18 @@ import { useAppStore } from './app'
 import { useMapStore } from './map'
 import { useRulesStore } from './rules'
 import { useDraftsStore } from './drafts'
+import { useHighlightsStore } from './highlights'
+import { useRuleFilesStore } from './ruleFiles'
+import { useScansStore } from './scans'
 
 export function connectEvents(): () => void {
   const app = useAppStore()
   const mapStore = useMapStore()
   const rules = useRulesStore()
   const drafts = useDraftsStore()
+  const highlights = useHighlightsStore()
+  const ruleFiles = useRuleFilesStore()
+  const scans = useScansStore()
 
   function remote(cmd: UiEventRemoteCommand) {
     if (cmd.imagery) {
@@ -55,6 +61,14 @@ export function connectEvents(): () => void {
         void rules.refresh()
         mapStore.refreshTiles()
         app.toast('Local mirror updated')
+        void highlights.load()
+        break
+      case 'rules_changed':
+        void highlights.load()
+        void ruleFiles.onRulesChanged(e.changed, e.removed)
+        break
+      case 'scan_finished':
+        void scans.onScanFinished(e)
         break
     }
   }

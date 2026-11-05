@@ -337,8 +337,32 @@ colours, casings, dashes, patterns, preset icons from id-tagging-schema) and re-
 MapLibre. Large areas get iD's 30 px partial fill as an inset band computed on the server per display
 zoom; buildings, points and address points are hidden when too dense, with iD's thresholds. Imagery,
 when chosen, replaces the light grey background under the data. Above the data and below the
-overlays (scope, issues, drafts) the style keeps an empty `ore-highlight-slot` layer: future highlight
+overlays (scope, issues, drafts) the style keeps an empty `ore-highlight-slot` layer, and highlight
 layers are inserted before it.
+
+The left panel has three tabs:
+
+- **Map**: imagery, a quick tag filter (`highway=footway !surface`, drawn at once and saved as a
+  highlight file with one click) and the highlight files. Each active file is drawn per rule with its
+  colour, width, dashes, casing, fill, node symbols and text; MapCSS cascading is kept by building
+  each paint property as a `case` over the rules. Compiled rules are filters on the tiles (below z15
+  a second tile source asks for the extra keys the filters read); the other rules are evaluated on
+  the server per z13 tile of the view (zoom 12 or closer, cached per file hash) and drawn by OSM id.
+  `-ore-dim-others` lays a translucent background over the base map under the highlights. A legend on
+  the map shows coverage per legend entry (km, count or km² and %) for the area from the area
+  picker, the drawn polygon or the map view (refreshed on pan). `?hl=`, `hlq=`, `area=` and `at=` in
+  the URL restore the highlights, filter, area and view.
+- **Validate**: pick the area, check files (local, built-in, remote) and built-in Kotlin rules
+  (`deprecated-tags`, `platform-node-only`, `sidewalk-separate`), run a scan, read counts per group
+  and severity, filter the issues, fly to each one, see the markers and the diff with the previous
+  scan (new, resolved, unchanged), and turn selected fixes into a draft that opens in review.
+- **Rules**: the rules folder by kind, an editor (CodeMirror 6, MapCSS and JSON) with live validation
+  as inline markers and a list, save with the file's hash (a conflict shows a diff to reload or
+  overwrite), templates for highlights, checks, preset overlays and smart presets, delete to the
+  trash, copy of built-in and remote files into the folder, and a live map preview of unsaved
+  highlight edits. Everything reloads on `rules_changed`.
+
+Web unit tests: `npm test -w web` (Vitest).
 
 ### Layout
 
