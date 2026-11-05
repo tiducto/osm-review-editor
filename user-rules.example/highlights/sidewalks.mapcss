@@ -1,0 +1,15 @@
+way[highway=footway][footway=sidewalk] {
+  color: #2563eb;
+  width: 3;
+}
+
+way[highway=footway][footway=sidewalk][!surface] {
+  color: #dc2626;
+  dashes: 6, 4;
+}
+
+node[highway=crossing][!crossing] {
+  symbol-shape: circle;
+  symbol-size: 10;
+  symbol-fill-color: #f59e0b;
+}

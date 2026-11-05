@@ -189,7 +189,13 @@ export interface UiEventRemoteCommand {
   message: string | null
 }
 
-export type UiEvent = UiEventDraftUpdated | UiEventMergeProgress | UiEventMirrorSwapped | UiEventRemoteCommand
+export interface UiEventRulesChanged {
+  type: 'rules_changed'
+  changed: string[]
+  removed: string[]
+}
+
+export type UiEvent = UiEventDraftUpdated | UiEventMergeProgress | UiEventMirrorSwapped | UiEventRemoteCommand | UiEventRulesChanged
 
 export interface ApiError {
   error: string
@@ -228,6 +234,120 @@ export interface McpInfo {
 export interface OsmChangeImportResult {
   draft: DraftDetail
   results: ProposalResult[]
+}
+
+export interface RuleFileList {
+  rulesDir: string
+  files: RuleFileInfo[]
+}
+
+export interface RuleFileContent {
+  file: RuleFileInfo
+  content: string
+}
+
+export interface ValidateRuleFileResult {
+  path: string
+  kind: RuleKind
+  valid: boolean
+  diagnostics: RuleDiagnostic[]
+}
+
+export interface WriteRuleFileResult {
+  saved: boolean
+  file: RuleFileInfo | null
+  diagnostics: RuleDiagnostic[]
+}
+
+export interface DeleteRuleFileResult {
+  path: string
+  trashedTo: string
+}
+
+export interface RuleSource {
+  name: string
+  url: string
+  kind: RuleKind
+  refreshHours: number
+  licence: string | null
+}
+
+export interface ResolvedPreset {
+  id: string
+  name: string
+  geometry: PresetGeometry[]
+  tags: Record<string, string>
+  addTags: Record<string, string>
+  removeTags: Record<string, string>
+  fields: string[]
+  moreFields: string[]
+  icon: string | null
+  terms: string[]
+  aliases: string[]
+  matchScore: number
+  searchable: boolean
+  extends: string | null
+  apply: PresetApplyMode
+  origin: PresetOrigin
+  file: string | null
+  locale: string
+  fieldInfo: PresetFieldInfo[]
+}
+
+export interface PresetSummary {
+  id: string
+  name: string
+  geometry: PresetGeometry[]
+  icon: string | null
+  origin: PresetOrigin
+  extends: string | null
+  file: string | null
+}
+
+export interface PresetMatch {
+  preset: ResolvedPreset
+  score: number
+}
+
+export interface PresetApplyResult {
+  presetId: string
+  edit: TagEdit
+  tags: Record<string, string>
+}
+
+export interface IdSchemaInfo {
+  version: string
+  locales: string[]
+  files: string[]
+  baseUrl: string
+}
+
+export interface SmartPreset {
+  id: string
+  name: string
+  geometry: PresetGeometry[]
+  match: string
+  params: Record<string, SmartParam>
+  steps: (Record<string, JsonValue>)[]
+  description: string | null
+}
+
+export interface Preset {
+  id: string
+  name: string | null
+  geometry: PresetGeometry[] | null
+  tags: Record<string, string> | null
+  addTags: Record<string, string> | null
+  removeTags: Record<string, string> | null
+  fields: string[] | null
+  moreFields: string[] | null
+  icon: string | null
+  terms: string[] | null
+  aliases: string[] | null
+  matchScore: number | null
+  searchable: boolean | null
+  extends: string | null
+  apply: PresetApplyMode | null
 }
 
 export interface CreateDraftRequest {
@@ -308,6 +428,47 @@ export interface DraftFromOsmChangeRequest {
   changesetSource?: string | null
   reasons?: Record<string, string>
   reason?: string | null
+}
+
+export interface WriteRuleFileRequest {
+  content: string
+  force?: boolean
+  expectedHash?: string | null
+}
+
+export interface CreateRuleFileRequest {
+  path: string
+  content: string
+  force?: boolean
+}
+
+export interface ValidateRuleFileRequest {
+  path: string
+  content: string
+}
+
+export interface PresetMatchRequest {
+  tags: Record<string, string>
+  geometry: PresetGeometry
+  locale?: string | null
+}
+
+export interface PresetApplyRequest {
+  presetId: string
+  tags?: Record<string, string>
+  geometry?: PresetGeometry | null
+  fromPresetId?: string | null
+}
+
+export interface ImportPresetRequest {
+  presetId: string
+  id?: string | null
+  path?: string | null
+}
+
+export interface DetachPresetRequest {
+  id?: string | null
+  path?: string | null
 }
 
 export type DraftStatus = 'open' | 'merged' | 'partially_merged' | 'closed'
@@ -409,6 +570,51 @@ export interface MirrorStatus {
 
 export type SearchHitKind = 'area' | 'object' | 'query'
 
+export interface RuleFileInfo {
+  path: string
+  kind: RuleKind
+  hash: string
+  modifiedAt: string
+  size: number
+  readOnly: boolean
+  diagnostics: RuleDiagnostic[]
+  origin: RuleOrigin | null
+}
+
+export type RuleKind = 'highlight' | 'check' | 'preset' | 'smart_preset' | 'sources'
+
+export interface RuleDiagnostic {
+  file: string
+  line: number
+  column: number
+  severity: DiagnosticSeverity
+  message: string
+}
+
+export type PresetGeometry = 'point' | 'vertex' | 'line' | 'area' | 'relation'
+
+export type PresetApplyMode = 'merge' | 'replace' | 'create'
+
+export type PresetOrigin = 'id' | 'user'
+
+export interface PresetFieldInfo {
+  id: string
+  key: string | null
+  keys: string[]
+  type: string
+  label: string
+  placeholder: string | null
+  options: string[]
+  optionLabels: Record<string, string>
+}
+
+export interface SmartParam {
+  type: SmartParamType
+  options: string[]
+  default: string | null
+  label: string | null
+}
+
 export interface ProposedChange {
   ref: OsmRef
   edit: TagEdit
@@ -438,3 +644,15 @@ export interface SidecarStatus {
   replicationTimestamp: string | null
   current: string | null
 }
+
+export interface RuleOrigin {
+  source: string
+  url: string
+  licence: string
+  fetchedAt: string | null
+  error: string | null
+}
+
+export type DiagnosticSeverity = 'error' | 'warning' | 'info'
+
+export type SmartParamType = 'combo' | 'text' | 'number' | 'check'

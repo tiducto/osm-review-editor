@@ -1,0 +1,12 @@
+{
+  "id": "custom/sidewalk-cz",
+  "extends": "highway/footway/sidewalk",
+  "name": "Chodník",
+  "apply": "merge",
+  "addTags": {
+    "highway": "footway",
+    "footway": "sidewalk",
+    "surface": "paving_stones"
+  },
+  "fields": ["{highway/footway/sidewalk}", "width", "lit"]
+}

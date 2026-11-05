@@ -56,6 +56,7 @@ uploads on dev with objects created on dev.
 | `OVERPASS_URL` | Overpass endpoint for `query_osm` (default `overpass-api.de`) |
 | `DEFAULT_AREAS` | Path to a GeoJSON FeatureCollection of area presets (see below); compose mounts `./config` at `/config` |
 | `BING_KEY` | Optional Bing Maps key; when set, Bing aerial imagery is offered (see Imagery) |
+| `RULES_DIR` | Your rules folder (see below); default `user-rules`, compose mounts `./user-rules` at `/rules` and sets `RULES_DIR=/rules` |
 | `EXTRACT_URL` | Geofabrik extract the gol sidecar mirrors (default Czechia) |
 | `CONTACT` | Contact for the User-Agent sent to the OSM API |
 
@@ -86,6 +87,56 @@ the server calls once at start when `BING_KEY` is set, then offers the layer wit
 imagery for OSM only in an OSM editor ([OSM wiki](https://wiki.openstreetmap.org/wiki/Bing_Maps)).
 Basic Bing Maps keys stopped working on 30 June 2025 and Enterprise keys work until 30 June 2028, so
 without an Enterprise key leave `BING_KEY` empty.
+
+### Rules folder
+
+Your own highlights, checks and presets live as plain text files in one folder that you edit in any
+editor, in the app, or through Claude over MCP:
+
+| Path | Kind |
+| --- | --- |
+| `highlights/*.mapcss` | MapCSS map highlights |
+| `checks/*.validator.mapcss` | MapCSS validator checks |
+| `presets/*.json` | iD-style presets and overlays of iD presets (`extends`, `apply`) |
+| `presets/smart/*.json` | Smart presets: multi-step edits (schema and validation now, execution later) |
+| `sources.json` | Remote rule files, fetched read-only |
+
+```sh
+cp -R user-rules.example user-rules
+```
+
+[`user-rules.example/README.md`](user-rules.example/README.md) explains every format with one example
+per kind. The server indexes the folder at start (path, kind, SHA-256, modification time,
+diagnostics), watches it (`java.nio` WatchService, changes debounced; on macOS the JDK polls, so
+edits show up within a few seconds) and sends `rules_changed` over the WebSocket. Writes from the API
+and MCP are validated first and written atomically; deletes move the file to `.trash/<timestamp>/`
+in the folder. Paths that leave the folder, symlinks pointing out of it and other file types are
+refused.
+
+Remote sources in `sources.json` (`[{name, url, kind, refreshHours, licence?}]`) are fetched into
+`DATA_DIR/rule-cache`, refreshed when due, and listed read-only as `remote/<name>.<ext>` with their
+source and a licence note. The repository ships no JOSM rule files (they are GPL); you can point a
+source at one, for example
+`https://josm.openstreetmap.de/export/HEAD/josm/trunk/resources/data/validator/unnecessary.mapcss`.
+
+Each file kind has a pluggable loader that parses it and reports diagnostics with line and column.
+Presets and smart presets are checked fully; MapCSS files are indexed as text until the MapCSS engine
+plugs in its loader.
+
+### iD presets
+
+The server ships `presets.json`, `fields.json`, `preset_categories.json` and the `en` and `cs`
+translations of [id-tagging-schema](https://github.com/openstreetmap/id-tagging-schema) 7.3.0 (ISC),
+about 1.6 MB. `npm install` fetches the package (`devDependencies` of the root `package.json`, exact
+version), and the Gradle task `:server:copyIdTaggingSchema` copies the minified files and its
+`package.json` (the recorded version) into the server's resources, so run `npm install` before
+building the server. The web app gets the same files from the server at
+`/api/presets/id-schema/{file}` ([API](docs/api.md#presets)).
+
+Presets from the rules folder are layered over iD's: an overlay `extends` an iD preset and lists only
+what it changes, `{presetId}` references work as in id-tagging-schema, and matching follows iD
+(exact tag at the preset's `matchScore`, `*` at half, `addTags` bonus, geometry `point`, `vertex`,
+`line`, `area` or `relation`), with your preset winning ties.
 
 ### How the mirror stays current
 
@@ -150,6 +201,12 @@ queries, creates a draft with a reason per change, and reads your rejection comm
 | `propose_geometry` | Up to 500 osmChange-style elements: new nodes (also inserted into existing ways), way node lists and splits, relation member lists, deletes with `if_unused` |
 | `update_change` | Revise or withdraw a proposed change (withdrawing also withdraws changes that depend on it) |
 | `list_drafts`, `get_draft` | Drafts, changes, your review decisions and comments |
+| `list_rule_files`, `read_rule_file` | Files in the rules folder and remote sources, with kind, hash and diagnostics |
+| `validate_rule_file` | Diagnostics for content without saving |
+| `write_rule_file` | Validate and write atomically; refused on errors unless `force=true`; optional `expected_hash` |
+| `delete_rule_file` | Move a file to the folder's `.trash/` |
+| `search_presets`, `get_preset`, `match_preset` | iD and user presets: search (cs, en), resolved preset, best preset for tags and geometry |
+| `import_preset`, `detach_preset` | Create an overlay file for an iD preset; turn an overlay into a full copy |
 
 `propose_geometry` limits: relations can only be modified (member list), not created or deleted;
 way node lists and relation member lists are complete replacements (or `insert_nodes` for a node
@@ -217,7 +274,8 @@ GOL_FILE=/path/to/czechia.gol ./gradlew :server:run
 npm run dev
 ```
 
-Tests: `./gradlew :shared:allTests :rules:test :server:test`. Rule tests against a real GOL run when
+Tests: `./gradlew :shared:allTests :rules:test :server:test` (after `npm install`: the server build
+copies the iD tagging schema from `node_modules`). Rule tests against a real GOL run when
 `OSM_REVIEW_TEST_GOL` points at one; `DraftFlowTest`, `McpTest` and `RemoteControlTest` use
 Testcontainers and skip without Docker.
 
@@ -228,9 +286,10 @@ fails when `web/src/generated/models.ts` is stale.
 
 ```
 server/   Ktor app: REST, WebSocket, MCP, JOSM remote control, core (drafts, merge, OSM API)
-shared/   KMP module (jvm + js): wire models, TagDiff logic, TS model generator
+shared/   KMP module (jvm + js): wire models, TagDiff logic, presets (resolve, match, apply), TS model generator
 rules/    rule(...) DSL, GOL mirror with hot swap, rule engine, built-in rules
 web/      Vue 3 app (MapLibre, Pinia, Tailwind), consumes the shared JS build and generated types
+user-rules.example/  Example rules folder (highlights, checks, presets, smart presets, sources.json)
 infra/    gol sidecar: build, update, check, swap
 docs/     API reference
 ```
@@ -278,5 +337,5 @@ the mirror and again before anything is proposed or uploaded.
 ## License
 
 Apache-2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE). Map data © OpenStreetMap contributors,
-ODbL. The gol sidecar downloads GOL Tool (AGPL-3.0) at image build time; it is not part of this
+ODbL. The bundled iD tagging schema files are ISC (see NOTICE). The gol sidecar downloads GOL Tool (AGPL-3.0) at image build time; it is not part of this
 repository.

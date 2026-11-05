@@ -7,4 +7,9 @@ This product includes rules/src/main/resources/id-tagging-schema/deprecated.json
 id-tagging-schema (https://github.com/openstreetmap/id-tagging-schema),
 Copyright (c) iD Contributors, ISC License.
 
+The server bundles presets.json, fields.json, preset_categories.json and the en and cs
+translations of @openstreetmap/id-tagging-schema 7.3.0
+(https://github.com/openstreetmap/id-tagging-schema), copied from node_modules at build time,
+Copyright (c) iD Contributors, ISC License.
+
 Map data © OpenStreetMap contributors, available under the Open Database License (ODbL).

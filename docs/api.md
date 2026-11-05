@@ -260,6 +260,92 @@ build or update: `lastRunAt`, `lastRunKind` (`build` or `update`), `result` (`ok
 `replicationSequence` and `replicationTimestamp` (the GOL's revision as `gol info` reports it) and
 `current` (the published GOL file). Every field is optional.
 
+## Rules folder
+
+Files in `RULES_DIR` (see the README). Paths are relative to the folder and use `/`:
+`highlights/<name>.mapcss`, `checks/<name>.validator.mapcss`, `presets/<name>.json`,
+`presets/smart/<name>.json` or `sources.json`, where `<name>` is letters, digits, `_`, `.` and `-`.
+Anything else is a 400: other extensions, `..`, absolute paths, hidden segments (`.trash`), and paths
+that resolve through a symlink to outside the folder. Remote files are listed as
+`remote/<name>.<ext>` and are read-only (409 on write or delete).
+
+| Method | Path | Body | Returns |
+| --- | --- | --- | --- |
+| GET | `/api/rule-files?kind=` | | `RuleFileList` `{rulesDir, files: RuleFileInfo[]}`; `kind` is `highlight`, `check`, `preset`, `smart_preset` or `sources` |
+| GET | `/api/rule-files/{path}` | | `RuleFileContent` `{file, content}`; 404 when missing |
+| POST | `/api/rule-files` | `CreateRuleFileRequest` `{path, content, force?}` | 201 `WriteRuleFileResult`; 409 when the file exists |
+| PUT | `/api/rule-files/{path}` | `WriteRuleFileRequest` `{content, force?, expectedHash?}` | `WriteRuleFileResult` (creates or replaces); 409 when `expectedHash` is not the current hash |
+| POST | `/api/rule-files/validate` | `ValidateRuleFileRequest` `{path, content}` | `ValidateRuleFileResult` `{path, kind, valid, diagnostics}`; nothing is written |
+| DELETE | `/api/rule-files/{path}` | | `DeleteRuleFileResult` `{path, trashedTo}`: the file moves to `.trash/<UTC timestamp>/<path>` |
+| POST | `/api/rule-files/sources/refresh` | | `RuleFileList` after fetching every source in `sources.json` again |
+
+`RuleFileInfo` is `{path, kind, hash, modifiedAt, size, readOnly, diagnostics, origin}`: `hash` is the
+SHA-256 of the file's bytes, `origin` is `null` for local files and `{source, url, licence,
+fetchedAt, error}` for remote ones. A diagnostic is `{file, line, column, severity, message}` with
+`severity` `error`, `warning` or `info`; lines and columns start at 1.
+
+Writes validate the content with the loader for the path's kind, including checks across files (a
+preset's `extends` and `{presetId}` references, duplicate ids). With an `error` diagnostic the file is
+not written and the answer is 422 with `WriteRuleFileResult` `{saved: false, file: null,
+diagnostics}`, unless `force` is true. Successful writes go to a temporary file in the same folder
+and are renamed over the target. Files over 2 MB are refused.
+
+Remote sources: `sources.json` is `[{name, url, kind, refreshHours = 24, licence?}]`. Each source is
+fetched with the server's User-Agent into `DATA_DIR/rule-cache/<name>.<ext>` when it is new, its URL
+or kind changed, or `refreshHours` passed (checked every 15 minutes and whenever `sources.json`
+changes). A failed fetch keeps the last good copy and reports `origin.error`. Without a `licence`,
+`origin.licence` is a note that the file is third-party, read-only and not redistributed.
+
+## Presets
+
+iD presets (id-tagging-schema 7.3.0, `en` and `cs`) with the presets from the rules folder layered
+over them. `locale` is `en` (default) or `cs`; other values fall back to their language, then `en`.
+Preset ids contain `/` and go into the path unencoded.
+
+| Method | Path | Body | Returns |
+| --- | --- | --- | --- |
+| GET | `/api/presets/search?q=&locale=&geometry=&limit=` | | `PresetSummary[]` `{id, name, geometry, icon, origin, extends, file}` |
+| GET | `/api/presets/{id}?locale=` | | `ResolvedPreset`; 404 for unknown ids |
+| POST | `/api/presets/match` | `PresetMatchRequest` `{tags, geometry, locale?}` | `PresetMatch` `{preset, score}` |
+| POST | `/api/presets/apply` | `PresetApplyRequest` `{presetId, tags, geometry?, fromPresetId?}` | `PresetApplyResult` `{presetId, edit: TagEdit, tags}` |
+| POST | `/api/presets/import` | `ImportPresetRequest` `{presetId, id?, path?}` | 201 `WriteRuleFileResult`: a new overlay file `{id, extends, apply}`; `id` defaults to `custom/<presetId>`, `path` to `presets/<id with dashes>.json`; 409 when the id or file exists |
+| POST | `/api/presets/detach` | `DetachPresetRequest` `{id?, path?}` | `WriteRuleFileResult`: the overlay rewritten as a full preset without `extends` |
+| GET | `/api/presets/smart` | | `SmartPreset[]` from `presets/smart/` without errors |
+| GET | `/api/presets/id-schema` | | `IdSchemaInfo` `{version, locales, files, baseUrl}` |
+| GET | `/api/presets/id-schema/{file}` | | The raw iD file: `presets.json`, `fields.json`, `preset_categories.json`, `translations/en.json`, `translations/cs.json`, `package.json`; `ETag` is the version, cached for a day |
+
+`ResolvedPreset` has every key filled in: `name` (localised; a user preset's own `name` wins, a
+`{presetId}` name takes that preset's localised name), `geometry`, `tags`, `addTags` (default
+`tags`), `removeTags` (default `addTags`), `fields` and `moreFields` as field ids with `{presetId}`
+references expanded (a preset without fields inherits them from its `extends` or, for iD presets,
+from the parent id like `highway/crossing` for `highway/crossing/zebra`), `icon`, `terms`, `aliases`,
+`matchScore`, `searchable`, `extends`, `apply` (`merge`, `replace`, `create`), `origin` (`id` or
+`user`), `file`, `locale` and `fieldInfo` (`{id, key, keys, type, label, placeholder, options,
+optionLabels}` in the locale).
+
+Search matches the localised name, aliases and terms without diacritics (`chodnik` finds
+`Chodník`): exact name first, then name prefix, aliases, word prefix, terms, substrings; in `cs` the
+English name is searched too, ranked lower. Unsearchable presets and `@templates` are left out.
+
+Matching scores every preset whose `geometry` includes the given one like iD: each preset tag adds
+`matchScore` (default 1) when equal and half of it when the preset's value is `*`; any other tag
+mismatch rules the preset out; `addTags` that are not in `tags` and match add `matchScore`;
+unsearchable presets score 0.999 times. The highest score wins, a user preset wins ties, and with no
+match the generic `point`, `line`, `area` or `relation` preset is returned with score 0. `geodesk:`
+pseudo-tags are ignored.
+
+Applying: `merge` removes `fromPresetId`'s `removeTags` (and `area`) when given, then sets `addTags`,
+keeping every other tag; a `*` value keeps the object's value or becomes `yes`. `replace` makes
+`addTags` the whole tag set (`TagEdit.replaceAll`). `create` does the same but only for objects with
+no tags (400 otherwise). A geometry the preset does not support is a 400.
+
+Smart presets (`presets/smart/*.json`) are `{id, name, geometry, match, params, steps, description?}`.
+Validation checks the keys and types, parameter definitions (`combo` needs `options` and a default
+among them), each step's `op` and arguments, that names used in steps are bound earlier (`self` is
+always bound) and of the right type (way or node), `distance` expressions, and `{param}` placeholders
+in `tag` values. `match` and `with` are MapCSS selectors kept as strings; the smart preset loader takes
+a selector validator that the MapCSS engine provides.
+
 ## WebSocket `/api/events`
 
 Server → UI messages, one `UiEvent` JSON per frame, discriminated by `type`:
@@ -272,3 +358,5 @@ Server → UI messages, one `UiEvent` JSON per frame, discriminated by `type`:
 - `draft_updated`: a draft changed (e.g. Claude proposed changes over MCP); refetch it.
 - `merge_progress`: upload progress for a draft.
 - `mirror_swapped`: the GOL was updated and swapped; refetch rule layers.
+- `rules_changed`: files in the rules folder or remote sources changed; `changed` and `removed` list
+  their paths. Refetch `/api/rule-files` and presets.

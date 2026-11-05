@@ -10,6 +10,12 @@ import eu.tiducto.osmreview.server.core.MergeService
 import eu.tiducto.osmreview.server.db.Db
 import eu.tiducto.osmreview.server.db.DraftRepo
 import eu.tiducto.osmreview.server.db.SettingsRepo
+import eu.tiducto.osmreview.server.presets.IdPresetData
+import eu.tiducto.osmreview.server.presets.PresetService
+import eu.tiducto.osmreview.server.rulesfolder.PresetFileLoader
+import eu.tiducto.osmreview.server.rulesfolder.RemoteRuleSources
+import eu.tiducto.osmreview.server.rulesfolder.RulesFolder
+import eu.tiducto.osmreview.server.rulesfolder.SmartPresetLoader
 import eu.tiducto.osmreview.shared.BBox
 import eu.tiducto.osmreview.shared.EditorLinks
 import eu.tiducto.osmreview.shared.OsmRef
@@ -48,6 +54,14 @@ class App(val config: Config, val http: HttpClient = defaultHttpClient()) : Auto
     val merge = MergeService(config, repo, drafts, account, rules, events)
     val search = Search(queries)
     val imagery = ImageryStore(settings)
+    val idPresets = IdPresetData.fromResources()
+    val ruleFiles = RulesFolder(
+        config.rulesDir,
+        events,
+        listOf(PresetFileLoader { idPresets.index }, SmartPresetLoader()),
+    )
+    val ruleSources = RemoteRuleSources(ruleFiles, config.dataDir.resolve("rule-cache"), http, config.userAgent)
+    val presets = PresetService(idPresets, ruleFiles)
 
     val mcpToken: String = config.mcpToken ?: settings.get(MCP_TOKEN_KEY) ?: ByteArray(24)
         .also(SecureRandom()::nextBytes)
@@ -55,6 +69,10 @@ class App(val config: Config, val http: HttpClient = defaultHttpClient()) : Auto
         .also { settings.put(MCP_TOKEN_KEY, it) }
 
     fun start() {
+        runCatching { ruleFiles.rescan() }.onFailure { log.warn("Could not scan rules folder {}", ruleFiles.root, it) }
+        log.info("Rules folder {}: {} files", ruleFiles.root, ruleFiles.list().size)
+        ruleFiles.startWatching()
+        ruleSources.start(scope)
         config.bingKey?.let { key ->
             scope.launch {
                 runCatching { BingImagery.resolve(http, key) }
@@ -97,6 +115,7 @@ class App(val config: Config, val http: HttpClient = defaultHttpClient()) : Auto
 
     override fun close() {
         scope.cancel()
+        ruleFiles.close()
         mirror.close()
         db.close()
         http.close()

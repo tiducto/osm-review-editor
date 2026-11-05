@@ -1,5 +1,16 @@
 package eu.tiducto.osmreview.shared
 
+import eu.tiducto.osmreview.shared.presets.DetachPresetRequest
+import eu.tiducto.osmreview.shared.presets.IdSchemaInfo
+import eu.tiducto.osmreview.shared.presets.ImportPresetRequest
+import eu.tiducto.osmreview.shared.presets.Preset
+import eu.tiducto.osmreview.shared.presets.PresetApplyRequest
+import eu.tiducto.osmreview.shared.presets.PresetApplyResult
+import eu.tiducto.osmreview.shared.presets.PresetMatch
+import eu.tiducto.osmreview.shared.presets.PresetMatchRequest
+import eu.tiducto.osmreview.shared.presets.PresetSummary
+import eu.tiducto.osmreview.shared.presets.ResolvedPreset
+import eu.tiducto.osmreview.shared.presets.SmartPreset
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.descriptors.PolymorphicKind
@@ -117,11 +128,17 @@ fun main(args: Array<String>) {
         serializer<MergeProgress>(), serializer<Upload>(), serializer<AppStatus>(), serializer<ImagerySource>(),
         serializer<UiEvent>(), serializer<ApiError>(), serializer<SearchHit>(), serializer<EditorLinks>(), serializer<AccountStatus>(), serializer<McpInfo>(),
         serializer<OsmChangeImportResult>(),
+        serializer<RuleFileList>(), serializer<RuleFileContent>(), serializer<ValidateRuleFileResult>(), serializer<WriteRuleFileResult>(),
+        serializer<DeleteRuleFileResult>(), serializer<RuleSource>(),
+        serializer<ResolvedPreset>(), serializer<PresetSummary>(), serializer<PresetMatch>(), serializer<PresetApplyResult>(),
+        serializer<IdSchemaInfo>(), serializer<SmartPreset>(), serializer<Preset>(),
     ).forEach(gen::addResponse)
     listOf(
         serializer<CreateDraftRequest>(), serializer<DraftFromRuleRequest>(), serializer<RuleIssuesRequest>(), serializer<ProposeChangesRequest>(),
         serializer<ReviewRequest>(), serializer<ResolveConflictRequest>(), serializer<ManualEditRequest>(),
         serializer<UpdateDraftRequest>(), serializer<SetTargetRequest>(), serializer<OsmChangeImportRequest>(), serializer<DraftFromOsmChangeRequest>(),
+        serializer<WriteRuleFileRequest>(), serializer<CreateRuleFileRequest>(), serializer<ValidateRuleFileRequest>(),
+        serializer<PresetMatchRequest>(), serializer<PresetApplyRequest>(), serializer<ImportPresetRequest>(), serializer<DetachPresetRequest>(),
     ).forEach(gen::addRequest)
     val out = File(args.firstOrNull() ?: "models.ts")
     out.parentFile.mkdirs()

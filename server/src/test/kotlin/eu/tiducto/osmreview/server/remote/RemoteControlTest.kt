@@ -54,6 +54,7 @@ class RemoteControlTest {
                 "DB_USER" to pg.username,
                 "DB_PASSWORD" to pg.password,
                 "DATA_DIR" to Files.createTempDirectory("gol").toString(),
+                "RULES_DIR" to Files.createTempDirectory("rules").toString(),
                 "OSM_CLIENT_ID_DEV" to "client",
                 "TOKEN_ENCRYPTION_KEY" to "k",
             ),

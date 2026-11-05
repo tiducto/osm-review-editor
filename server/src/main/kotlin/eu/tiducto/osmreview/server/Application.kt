@@ -77,32 +77,7 @@ fun Application.module(app: App) {
         level = Level.INFO
         filter { it.request.path().startsWith("/api") || it.request.path().startsWith("/mcp") }
     }
-    install(StatusPages) {
-        exception<Throwable> { call, e ->
-            if (call.request.local.localPort == app.config.remoteControlPort) {
-                val bad = e is IllegalArgumentException || e is BadRequestException || e is SerializationException
-                if (!bad) log.error("Remote control error on {}", call.request.path(), e)
-                val status = if (bad) HttpStatusCode.BadRequest else HttpStatusCode.InternalServerError
-                call.respondText(e.message ?: status.description, ContentType.Text.Plain, status)
-                return@exception
-            }
-            val (status, msg) = when (e) {
-                is NotFoundException -> HttpStatusCode.NotFound to e.message
-                is UnknownRuleException -> HttpStatusCode.NotFound to e.message
-                is StateException -> HttpStatusCode.Conflict to e.message
-                is NotAuthorizedException -> HttpStatusCode.Unauthorized to e.message
-                is MirrorUnavailableException -> HttpStatusCode.ServiceUnavailable to e.message
-                is IllegalArgumentException, is BadRequestException, is SerializationException ->
-                    HttpStatusCode.BadRequest to (e.cause?.message?.takeIf { e is BadRequestException } ?: e.message)
-                is OsmApiException -> HttpStatusCode.BadGateway to e.message
-                else -> {
-                    log.error("Unhandled error on {}", call.request.path(), e)
-                    HttpStatusCode.InternalServerError to e.message
-                }
-            }
-            call.respond(status, ApiError(status.description, msg))
-        }
-    }
+    installErrorPages(app.config.remoteControlPort)
 
     routing {
         localPort(app.config.remoteControlPort) { remoteControlRoutes(app) }
@@ -126,6 +101,35 @@ fun Application.module(app: App) {
             }
             route("/api/{path...}") { handle { call.respond(HttpStatusCode.NotFound, ApiError("Not Found", call.request.path())) } }
             staticResources("/", "static") { default("index.html") }
+        }
+    }
+}
+
+fun Application.installErrorPages(remoteControlPort: Int) {
+    install(StatusPages) {
+        exception<Throwable> { call, e ->
+            if (call.request.local.localPort == remoteControlPort) {
+                val bad = e is IllegalArgumentException || e is BadRequestException || e is SerializationException
+                if (!bad) log.error("Remote control error on {}", call.request.path(), e)
+                val status = if (bad) HttpStatusCode.BadRequest else HttpStatusCode.InternalServerError
+                call.respondText(e.message ?: status.description, ContentType.Text.Plain, status)
+                return@exception
+            }
+            val (status, msg) = when (e) {
+                is NotFoundException -> HttpStatusCode.NotFound to e.message
+                is UnknownRuleException -> HttpStatusCode.NotFound to e.message
+                is StateException -> HttpStatusCode.Conflict to e.message
+                is NotAuthorizedException -> HttpStatusCode.Unauthorized to e.message
+                is MirrorUnavailableException -> HttpStatusCode.ServiceUnavailable to e.message
+                is IllegalArgumentException, is BadRequestException, is SerializationException ->
+                    HttpStatusCode.BadRequest to (e.cause?.message?.takeIf { e is BadRequestException } ?: e.message)
+                is OsmApiException -> HttpStatusCode.BadGateway to e.message
+                else -> {
+                    log.error("Unhandled error on {}", call.request.path(), e)
+                    HttpStatusCode.InternalServerError to e.message
+                }
+            }
+            call.respond(status, ApiError(status.description, msg))
         }
     }
 }
