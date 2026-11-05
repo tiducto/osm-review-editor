@@ -43,18 +43,24 @@ const rightContent = computed<'review' | 'inspector' | 'edit' | null>(() =>
         : null,
 )
 const rightOpen = computed(() => !!rightContent.value && !rightCollapsed.value)
-const mapBox = ref<HTMLElement | null>(null)
-const rightPanel = ref<HTMLElement | null>(null)
+const rowBox = ref<HTMLElement | null>(null)
+const viewport = ref({ width: window.innerWidth, height: 0 })
+const phone = computed(() => viewport.value.width < 768)
+const leftWidth = computed(() => (panel.wide ? Math.min(560, viewport.value.width) : 296))
 
-function syncInset() {
-  const map = mapBox.value?.getBoundingClientRect()
-  const box = rightPanel.value?.parentElement?.getBoundingClientRect()
-  if (!map || !box || window.innerWidth >= 768 || !rightOpen.value) {
-    mapStore.setBottomInset(0)
-    return
+const insets = computed(() => {
+  const drawer = drafts.drawerOpen ? 260 : 36
+  if (phone.value) {
+    const sheet = rightOpen.value ? Math.round(viewport.value.height * 0.58) : 0
+    return { top: 0, left: 0, right: 0, bottom: Math.max(drawer, sheet) }
   }
-  mapStore.setBottomInset(Math.max(0, map.bottom - (box.bottom - box.height * 0.58)))
+  return { top: 0, left: leftOpen.value ? leftWidth.value : 0, right: rightOpen.value ? 392 : 0, bottom: drawer }
+})
+
+function syncViewport() {
+  viewport.value = { width: window.innerWidth, height: rowBox.value?.clientHeight ?? 0 }
 }
+watch(insets, (i) => mapStore.setInsets(i), { immediate: true })
 watch(
   () => drafts.reviewing,
   (r) => {
@@ -68,7 +74,6 @@ watch(
   },
 )
 watch(rightOpen, () => {
-  syncInset()
   if (drafts.reviewing && window.innerWidth < 768) setTimeout(() => drafts.focusCurrent(), 220)
 })
 
@@ -101,8 +106,8 @@ watch(
 
 onMounted(async () => {
   window.addEventListener('keydown', onKey)
-  window.addEventListener('resize', syncInset)
-  syncInset()
+  window.addEventListener('resize', syncViewport)
+  syncViewport()
   stopEvents = connectEvents()
   await app.init()
   await rules.load()
@@ -113,7 +118,7 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey)
-  window.removeEventListener('resize', syncInset)
+  window.removeEventListener('resize', syncViewport)
   stopEvents?.()
 })
 </script>
@@ -134,42 +139,57 @@ onBeforeUnmount(() => {
       appear once it is ready.
     </div>
 
-    <div class="relative flex min-h-0 flex-1">
-      <aside
-        class="shrink-0 overflow-hidden border-r border-line bg-surface transition-[width] duration-200 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-20 max-md:shadow-panel"
-        :class="leftOpen ? (panel.wide ? 'w-[min(560px,100vw)]' : 'w-[296px]') : 'w-0 border-r-0'"
-      >
-        <div class="h-full max-w-[100vw]" :class="panel.wide ? 'w-[min(560px,100vw)]' : 'w-[296px]'"><SidePanel /></div>
-      </aside>
-
-      <main class="flex min-w-0 flex-1 flex-col">
-        <div ref="mapBox" class="relative min-h-0 flex-1">
-          <MapView />
+    <div ref="rowBox" class="relative min-h-0 flex-1 overflow-hidden" data-testid="map-area">
+      <div class="absolute inset-0">
+        <MapView />
+        <div
+          class="pointer-events-none absolute transition-[left,right,bottom] duration-200"
+          :style="{ left: `${insets.left}px`, right: `${insets.right}px`, top: `${insets.top}px`, bottom: `${insets.bottom}px` }"
+        >
           <HighlightLegend />
-          <button
-            class="absolute top-1/2 left-0 z-10 grid h-12 w-4 -translate-y-1/2 place-items-center rounded-r-md border border-l-0 border-line bg-surface text-fg-3 shadow-panel hover:text-fg"
-            :class="leftOpen && (panel.wide ? 'max-md:hidden' : 'max-md:left-[296px] max-md:z-30')"
-            :title="leftOpen ? 'Hide layers ([)' : 'Show layers ([)'"
-            @click="leftOpen = !leftOpen"
-          >
-            <Icon :name="leftOpen ? 'chevron-left' : 'chevron-right'" :size="12" />
-          </button>
-          <button
-            v-if="rightContent"
-            class="absolute top-1/2 right-0 z-10 grid h-12 w-4 -translate-y-1/2 place-items-center rounded-l-md border border-r-0 border-line bg-surface text-fg-3 shadow-panel hover:text-fg max-md:hidden"
-            :title="rightOpen ? 'Hide panel (])' : 'Show panel (])'"
-            @click="rightCollapsed = !rightCollapsed"
-          >
-            <Icon :name="rightOpen ? 'chevron-right' : 'chevron-left'" :size="12" />
-          </button>
         </div>
-        <BottomDrawer />
-      </main>
+      </div>
 
       <aside
-        class="shrink-0 border-line bg-surface md:overflow-hidden md:border-l md:transition-[width] md:duration-200 max-md:absolute max-md:inset-x-0 max-md:bottom-0 max-md:z-20 max-md:border-t max-md:shadow-pop max-md:transition-[height]"
+        class="absolute inset-y-0 left-0 z-20 overflow-hidden border-r border-line bg-surface transition-[width] duration-200 max-md:shadow-panel"
+        :style="{ width: leftOpen ? `${leftWidth}px` : '0px' }"
+        :class="!leftOpen && 'border-r-0'"
+        data-testid="left-panel"
+      >
+        <div class="h-full max-w-[100vw]" :style="{ width: `${leftWidth}px` }"><SidePanel /></div>
+      </aside>
+      <button
+        class="absolute top-1/2 z-30 grid h-12 w-4 -translate-y-1/2 place-items-center rounded-r-md border border-l-0 border-line bg-surface text-fg-3 shadow-panel transition-[left] duration-200 hover:text-fg"
+        :class="leftOpen && panel.wide && 'max-md:hidden'"
+        :style="{ left: leftOpen ? `${leftWidth}px` : '0px' }"
+        :title="leftOpen ? 'Hide layers ([)' : 'Show layers ([)'"
+        data-testid="left-toggle"
+        @click="leftOpen = !leftOpen"
+      >
+        <Icon :name="leftOpen ? 'chevron-left' : 'chevron-right'" :size="12" />
+      </button>
+
+      <div
+        class="absolute bottom-0 z-10 transition-[left,right] duration-200"
+        :style="{ left: `${insets.left}px`, right: `${insets.right}px` }"
+        data-testid="bottom-panel"
+      >
+        <BottomDrawer />
+      </div>
+
+      <button
+        v-if="rightContent"
+        class="absolute top-1/2 z-30 grid h-12 w-4 -translate-y-1/2 place-items-center rounded-l-md border border-r-0 border-line bg-surface text-fg-3 shadow-panel transition-[right] duration-200 hover:text-fg max-md:hidden"
+        :style="{ right: `${insets.right}px` }"
+        :title="rightOpen ? 'Hide panel (])' : 'Show panel (])'"
+        data-testid="right-toggle"
+        @click="rightCollapsed = !rightCollapsed"
+      >
+        <Icon :name="rightOpen ? 'chevron-right' : 'chevron-left'" :size="12" />
+      </button>
+      <aside
+        class="absolute z-20 border-line bg-surface md:inset-y-0 md:right-0 md:overflow-hidden md:border-l md:transition-[width] md:duration-200 max-md:inset-x-0 max-md:bottom-0 max-md:border-t max-md:shadow-pop max-md:transition-[height]"
         :class="[rightOpen ? 'md:w-[392px] max-md:h-[58%]' : 'md:w-0 md:border-l-0 max-md:h-0 max-md:border-t-0', !rightContent && 'max-md:hidden']"
-        ref="rightPanel"
         data-testid="right-panel"
       >
         <button

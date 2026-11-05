@@ -12,6 +12,7 @@ import type { Feature, FeatureCollection } from 'geojson'
 import { DETAIL_MIN_ZOOM, LAYER, MAX_BAND_ZOOM, OSM_SRC, SHADOW, osmLayers } from '@/map/osm/style'
 import { ensureIcon } from '@/map/osm/icons'
 import { setFilterPart } from '@/map/filters'
+import { applyFeatureFilters } from '@/map/osm/features'
 import { getDashState } from '@/stores/map'
 import type { IdAdapter } from './id/adapter'
 import { bandFeatureIds, EDIT_LAYERS, featureId, midpoints, render, tileFeatureId, type EditLayer } from './render'
@@ -193,6 +194,7 @@ export class EditController {
       },
       before,
     )
+    applyFeatureFilters(m)
   }
 
   private tileLayers(): { id: string; sourceLayer: string }[] {

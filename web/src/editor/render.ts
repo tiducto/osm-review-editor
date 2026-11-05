@@ -2,6 +2,7 @@ import type { Feature, Geometry, Position } from 'geojson'
 import { areaStyle, hasInterestingTags, isAddressPoint, isWikidata, lineStyle, type Stroke } from '@/map/osm/classify'
 import { areaPattern } from '@/map/osm/patterns'
 import { isBuilding, onewayDir, strokeProps, type Props } from '@/map/osm/transform'
+import { featureGroup } from '@/map/osm/features'
 import { bandPolygons } from './band'
 import type { EntityGeometry, IdEntity, IdGraph, IdNode, IdRelation, IdWay, LngLatTuple } from './types'
 
@@ -146,6 +147,7 @@ export function render(input: RenderInput): RenderResult {
         '@sort': fz,
         '@fz': fz,
         '@bld': isBuilding(t),
+        '@feat': featureGroup(t, 'area'),
         '@mp': mp,
       }),
     )
@@ -157,7 +159,7 @@ export function render(input: RenderInput): RenderResult {
         type: 'Feature',
         id: bandFeatureId(e.id, bz),
         geometry: band.length === 1 ? { type: 'Polygon', coordinates: band[0] } : { type: 'MultiPolygon', coordinates: band },
-        properties: { '@fc': st.fill, '@pat': pat, '@sort': fz, '@bz': bz, '@bld': isBuilding(t), eid: e.id },
+        properties: { '@fc': st.fill, '@pat': pat, '@sort': fz, '@bz': bz, '@bld': isBuilding(t), '@feat': featureGroup(t, 'area'), eid: e.id },
       })
     }
     const geom: EntityGeometry = 'area'
@@ -177,6 +179,7 @@ export function render(input: RenderInput): RenderResult {
           '@lw': name.length * 7 + 20,
           '@sort': -lp.area0,
           '@bld': isBuilding(t),
+          '@feat': featureGroup(t, 'area'),
         }),
       )
     }
@@ -207,6 +210,7 @@ export function render(input: RenderInput): RenderResult {
         '@name': t.highway || t.railway || t.waterway ? (t.name ?? '') : '',
         '@ow': onewayDir(t),
         '@owimg': dark ? 'oneway-white' : 'oneway-black',
+        '@feat': featureGroup(t, 'line'),
         ...strokeProps('@c', ls.casing, dashes),
         ...strokeProps('@s', ls.stroke, dashes),
       }),
@@ -263,13 +267,13 @@ export function render(input: RenderInput): RenderResult {
     const t = n.tags
     if (!parents.length) {
       if (isAddressPoint(t)) {
-        layers.point.push(feature(n.id, { type: 'Point', coordinates: n.loc }, { '@addr': true, '@hn': t['addr:housenumber'] ?? t['addr:housename'] ?? '', '@name': '' }))
+        layers.point.push(feature(n.id, { type: 'Point', coordinates: n.loc }, { '@addr': true, '@hn': t['addr:housenumber'] ?? t['addr:housename'] ?? '', '@name': '', '@feat': 'address_points' }))
         continue
       }
       const icon = presetIcon(n, 'point').icon
       const pin = `pin:${icon ?? ''}:${isWikidata(t) ? 'w' : ''}`
       icons.add(pin)
-      layers.point.push(feature(n.id, { type: 'Point', coordinates: n.loc }, { '@addr': false, '@pin': pin, '@name': t.name ?? '' }))
+      layers.point.push(feature(n.id, { type: 'Point', coordinates: n.loc }, { '@addr': false, '@pin': pin, '@name': t.name ?? '', '@feat': 'points' }))
       continue
     }
     const tagged = hasInterestingTags(t)
@@ -289,6 +293,7 @@ export function render(input: RenderInput): RenderResult {
         '@loose': end && parents.length === 1,
         '@name': t.name ?? '',
         '@forced': forcedVertices.has(id),
+        '@bonly': parents.every((w) => isBuilding(w.tags)),
       }),
     )
   }

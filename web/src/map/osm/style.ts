@@ -59,18 +59,6 @@ export const DASHED_LAYERS = LINE_GROUPS.flatMap((g) => [
 
 export const BAND_LAYERS = ['osm-band-low', ...Array.from({ length: MAX_BAND_ZOOM - DETAIL_MIN_ZOOM + 1 }, (_, i) => `osm-band-${DETAIL_MIN_ZOOM + i}`)].flatMap((id) => [id, `${id}-pattern`])
 export const INTERACTIVE_OSM = ['osm-pin', 'osm-addr', 'osm-vertex', 'osm-point-dot', 'osm-line-hit', 'osm-area-hit', 'osm-fill', 'osm-fill-pattern', ...BAND_LAYERS]
-export const AUTO_HIDE: Record<'buildings' | 'points' | 'addresses', { layers: string[]; hide: ExpressionSpecification }[]> = {
-  buildings: [
-    {
-      layers: ['osm-fill', 'osm-fill-pattern', ...BAND_LAYERS, 'osm-area-shadow', 'osm-area-stroke', 'osm-area-hit', 'osm-area-icon', 'osm-area-label'],
-      hide: ['!', ['boolean', ['get', '@bld'], false]],
-    },
-    { layers: ['osm-vertex', 'osm-vertex-dot', 'osm-vertex-icon', 'osm-vertex-shadow'], hide: ['!', ['boolean', ['get', '@bonly'], false]] },
-  ],
-  points: [{ layers: ['osm-pin', 'osm-pin-label', 'osm-pin-shadow', 'osm-point-dot'], hide: ['==', ['get', '@addr'], true] }],
-  addresses: [{ layers: ['osm-addr', 'osm-addr-shadow'], hide: ['!=', ['get', '@addr'], true] }],
-}
-
 export const HOVER_LAYERS = [OUT.area, OUT.line, OUT.point, OUT.vertex]
 
 function lineGroup(group: string, filter: ExpressionSpecification, lz: number, dashes: Map<string, number[]>): LayerSpecification[] {

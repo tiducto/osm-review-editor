@@ -7,6 +7,7 @@ import { api } from '@/api/client'
 import { useAppStore } from './app'
 import { refString, sameRef } from '@/lib/osm'
 import { asGeometry, geometryBBox } from '@/lib/geo'
+import { readHiddenFeatures, writeHiddenFeatures, type FeatureGroup } from '@/map/osm/features'
 
 const IMAGERY_KEY = 'ore.imagery'
 
@@ -93,16 +94,38 @@ export const useMapStore = defineStore('map', () => {
     return map
   }
 
-  const padding: FitPadding = { top: 64, bottom: 64, left: 64, right: 64 }
-  function setBottomInset(px: number) {
-    padding.bottom = Math.max(64, Math.round(px) + 24)
+  const insets = ref<FitPadding>({ top: 0, bottom: 0, left: 0, right: 0 })
+  function setInsets(next: FitPadding) {
+    const cur = insets.value
+    if (cur.top === next.top && cur.bottom === next.bottom && cur.left === next.left && cur.right === next.right) return
+    insets.value = { ...next }
+  }
+  function fitPadding(): FitPadding {
+    const i = insets.value
+    return { top: i.top + 64, bottom: i.bottom + 64, left: i.left + 64, right: i.right + 64 }
+  }
+  function visibleOffset(): [number, number] {
+    const i = insets.value
+    return [(i.left - i.right) / 2, (i.top - i.bottom) / 2]
+  }
+
+  const hiddenFeatures = ref<FeatureGroup[]>(readHiddenFeatures())
+  function setFeatureVisible(group: FeatureGroup, visible: boolean) {
+    const next = hiddenFeatures.value.filter((g) => g !== group)
+    if (!visible) next.push(group)
+    hiddenFeatures.value = next
+    writeHiddenFeatures(next)
+  }
+  function setHiddenFeatures(groups: FeatureGroup[]) {
+    hiddenFeatures.value = [...new Set(groups)]
+    writeHiddenFeatures(hiddenFeatures.value)
   }
 
   function fitBBox(b: BBox, maxZoom = 18, animate = true) {
     if (!map) return
     const degenerate = b.west === b.east && b.south === b.north
     if (degenerate) {
-      map.flyTo({ center: [b.west, b.south], zoom: Math.max(map.getZoom(), Math.min(maxZoom, 18)), animate })
+      map.flyTo({ center: [b.west, b.south], zoom: Math.max(map.getZoom(), Math.min(maxZoom, 18)), offset: visibleOffset(), animate })
       return
     }
     map.fitBounds(
@@ -110,12 +133,12 @@ export const useMapStore = defineStore('map', () => {
         [b.west, b.south],
         [b.east, b.north],
       ],
-      { padding, maxZoom, animate, duration: animate ? 900 : 0 },
+      { padding: fitPadding(), maxZoom, animate, duration: animate ? 900 : 0 },
     )
   }
 
   function flyTo(p: LngLat, z?: number) {
-    map?.flyTo({ center: [p.lng, p.lat], zoom: z ?? Math.max(map.getZoom(), 17), duration: 900 })
+    map?.flyTo({ center: [p.lng, p.lat], zoom: z ?? Math.max(map.getZoom(), 17), offset: visibleOffset(), duration: 900 })
   }
 
   function updateView(b: BBox, z: number) {
@@ -182,7 +205,8 @@ export const useMapStore = defineStore('map', () => {
     selected, selectedFeature, selectedLoading, highlighted,
     area, areaLoading, polygon, drawing, scopeName, setPolygon,
     imageryId, allImagery, activeImagery, setImagery, addImagery,
-    attach, detach, instance, setBottomInset, fitBBox, flyTo, updateView,
+    attach, detach, instance, insets, setInsets, fitPadding, visibleOffset, fitBBox, flyTo, updateView,
+    hiddenFeatures, setFeatureVisible, setHiddenFeatures,
     select, patchSelectedTags, setArea,
   }
 })
