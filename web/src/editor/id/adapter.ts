@@ -39,6 +39,12 @@ const LOCALE_INDEX = { en: { rtl: false, pct: 1 } }
 
 let dataReady: Promise<void> | null = null
 
+let loadedCheck: (loc: LngLatTuple) => boolean = () => true
+
+const osmServiceStub = {
+  isDataLoaded: (loc: LngLatTuple) => loadedCheck(loc),
+}
+
 function polyfillIdle() {
   const w = globalThis as any
   w.requestIdleCallback ??= (cb: AnyFn) => setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 50 }), 0)
@@ -62,6 +68,7 @@ export async function initIdData(): Promise<void> {
   const registry = iD.services as Record<string, unknown>
   delete registry.nsi
   delete registry.maprules
+  registry.osm = osmServiceStub
 }
 
 async function fetchJson(url: string): Promise<unknown> {
@@ -261,6 +268,25 @@ interface DragState {
   created: boolean
 }
 
+export interface IdIssueFix {
+  id: string
+  title: string
+  disabled: string | null
+}
+
+export interface IdIssue {
+  id: string
+  type: string
+  subtype: string | null
+  severity: 'error' | 'warning' | 'suggestion'
+  message: string
+  entityIds: string[]
+  loc: LngLatTuple | null
+  fixes: IdIssueFix[]
+}
+
+const SKIPPED_VALIDATIONS = ['help_request', 'incompatible_source', 'maprules', 'osm_api_limits']
+
 interface TransformState {
   kind: 'move' | 'rotate'
   ids: string[]
@@ -275,7 +301,9 @@ export class IdAdapter {
   readonly context: any
   readonly history: any
   readonly projection: any
+  readonly validator: any
   selected: string[] = []
+  private fixSelection: string[] | null = null
   drawing: DrawingState | null = null
   onEnter: (mode: EnteredMode) => void = () => {}
   private view: ViewState
@@ -323,14 +351,17 @@ export class IdAdapter {
       redo: () => self.history.redo(),
       selectedIDs: () => self.selected,
       enter: (mode: any) => self.handleEnter(mode),
-      mode: () => null,
+      mode: () => {
+        const ids = self.fixSelection ?? self.selected
+        return ids.length ? { id: 'select', selectedIDs: () => ids } : { id: 'browse', selectedIDs: () => [] }
+      },
       map: () => mapProxy,
       editable: () => true,
       inIntro: () => false,
       hasHiddenConnections: () => false,
       connection: () => connection,
       loadTileAtLoc: () => undefined,
-      validator: () => fallback,
+      validator: () => self.validator,
       on: () => context,
     }
     const context: any = new Proxy(target, {
@@ -343,7 +374,103 @@ export class IdAdapter {
     this.context = context
     this.history = iD.coreHistory(context)
     this.history.checkpoint('ore-base')
+    this.validator = iD.coreValidator(context)
+    this.validator.init()
+    this.history.on('merge.validator', null)
+    loadedCheck = (loc) => self.isLoaded(loc)
     this.setView(this.view)
+  }
+
+  validate(): Promise<void> {
+    loadedCheck = (loc) => this.isLoaded(loc)
+    return Promise.resolve(this.validator.validate()).catch(() => undefined)
+  }
+
+  private issueFixes(issue: any): any[] {
+    this.fixSelection = issue.entityIds?.length ? [issue.entityIds[0]] : []
+    try {
+      return issue.fixes(this.context)
+    } catch {
+      return []
+    } finally {
+      this.fixSelection = null
+    }
+  }
+
+  idIssues(): IdIssue[] {
+    const g = this.history.graph()
+    const out: IdIssue[] = []
+    for (const issue of this.validator.getIssues({ what: 'edited', where: 'all', includeIgnored: false })) {
+      if (SKIPPED_VALIDATIONS.includes(issue.type)) continue
+      let loc: LngLatTuple | null = issue.loc ?? null
+      if (!loc) {
+        try {
+          const ext = issue.extent(g)
+          loc = ext ? (ext.center() as LngLatTuple) : null
+        } catch {
+          loc = null
+        }
+      }
+      let message = ''
+      try {
+        message = idText(typeof issue.message === 'function' ? issue.message(this.context) : issue.message)
+      } catch {
+        message = issue.type
+      }
+      out.push({
+        id: issue.id,
+        type: issue.type,
+        subtype: issue.subtype ?? null,
+        severity: issue.severity,
+        message: message || issue.type,
+        entityIds: [...(issue.entityIds ?? [])],
+        loc,
+        fixes: this.issueFixes(issue).map((f: any, i: number) => ({ id: String(i), title: idText(f.title), disabled: f.disabledReason ? String(f.disabledReason) : null })),
+      })
+    }
+    return out
+  }
+
+  applyIdFix(issueId: string, fixId: string): boolean {
+    const issue = this.validator.getIssues({ what: 'edited', where: 'all', includeIgnored: true }).find((i: any) => i.id === issueId)
+    if (!issue) return false
+    const fix = this.issueFixes(issue)[Number(fixId)]
+    if (!fix || fix.disabledReason || typeof fix.onClick !== 'function') return false
+    this.tagEdit = null
+    if (issue.entityIds?.length) this.selected = [issue.entityIds[0]]
+    this.fixSelection = issue.entityIds?.length ? [issue.entityIds[0]] : null
+    try {
+      fix.onClick(this.context, () => undefined)
+    } finally {
+      this.fixSelection = null
+    }
+    this.pruneSelection()
+    return true
+  }
+
+  applyTagEdit(id: string, edit: { set?: Record<string, string>; remove?: string[]; replaceAll?: Record<string, string> | null }, annotation: string): boolean {
+    const e = this.history.graph().hasEntity(id)
+    if (!e) return false
+    const tags: Tags = { ...(edit.replaceAll ?? e.tags) }
+    for (const k of edit.remove ?? []) delete tags[k]
+    Object.assign(tags, edit.set ?? {})
+    this.tagEdit = null
+    this.history.perform(iD.actionChangeTags(id, tags), annotation)
+    return true
+  }
+
+  deleteEntities(ids: string[], annotation: string): boolean {
+    const g = this.history.graph()
+    const present = ids.filter((id) => g.hasEntity(id))
+    if (!present.length) return false
+    this.tagEdit = null
+    this.history.perform(iD.actionDeleteMultiple(present), annotation)
+    this.pruneSelection()
+    return true
+  }
+
+  touchedIds(): string[] {
+    return this.history.difference().summary().filter((s: any) => s.changeType !== 'deleted').map((s: any) => s.entity.id)
   }
 
   private handleEnter(mode: any) {

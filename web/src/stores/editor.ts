@@ -4,13 +4,14 @@ import type { DraftDetail, OpenChangeElsewhere, OsmChangeImportResult, ProposalR
 import { api, ApiError, errorMessage } from '@/api/client'
 import type { EditSession } from '@/editor/session'
 import type { EditMode } from '@/editor/controller'
-import type { EntitySnapshot, OperationInfo, Tags } from '@/editor/types'
+import type { EntityGeometry, EntitySnapshot, OperationInfo, Tags } from '@/editor/types'
 import { asGeometry, geometryBBox } from '@/lib/geo'
 import { isTyping } from '@/lib/keyboard'
 import { refString } from '@/lib/osm'
 import { useAppStore } from './app'
 import { useMapStore } from './map'
 import { useDraftsStore } from './drafts'
+import { useEditIssuesStore } from './editIssues'
 
 export const EDIT_MIN_ZOOM = 15
 
@@ -19,6 +20,15 @@ let session: EditSession | null = null
 export interface SaveRequest {
   title: string
   changesetComment: string
+}
+
+export interface NeedsPreset {
+  entityId: string
+  geometry: EntityGeometry
+}
+
+export function currentEditSession(): EditSession | null {
+  return session
 }
 
 export interface TakeOverPrompt {
@@ -30,6 +40,7 @@ export const useEditorStore = defineStore('editor', () => {
   const app = useAppStore()
   const mapStore = useMapStore()
   const drafts = useDraftsStore()
+  const issues = useEditIssuesStore()
 
   const active = ref(false)
   const starting = ref(false)
@@ -51,6 +62,36 @@ export const useEditorStore = defineStore('editor', () => {
   const hover = ref<{ x: number; y: number; id: string } | null>(null)
   const notice = ref<string | null>(null)
   const version = ref<string | null>(null)
+  const needsPreset = ref<NeedsPreset | null>(null)
+  const presetListeners = new Set<(req: NeedsPreset) => void>()
+
+  function onNeedsPreset(fn: (req: NeedsPreset) => void): () => void {
+    presetListeners.add(fn)
+    return () => presetListeners.delete(fn)
+  }
+
+  function isUntagged(tags: Tags): boolean {
+    return Object.keys(tags).every((k) => k === 'area')
+  }
+
+  function requestPreset(id: string) {
+    const snap = session?.adapter.snapshot(id)
+    if (!snap || !snap.isNew || !isUntagged(snap.tags)) return
+    const req: NeedsPreset = { entityId: id, geometry: snap.geometry }
+    needsPreset.value = req
+    for (const fn of presetListeners) fn(req)
+  }
+
+  function clearNeedsPreset() {
+    needsPreset.value = null
+  }
+
+  function checkNeedsPreset() {
+    const req = needsPreset.value
+    if (!req || !session) return
+    const snap = session.adapter.snapshot(req.entityId)
+    if (!snap || !isUntagged(snap.tags) || !selected.value.includes(req.entityId)) needsPreset.value = null
+  }
 
   const zoomOk = computed(() => mapStore.zoom >= EDIT_MIN_ZOOM)
 
@@ -74,6 +115,8 @@ export const useEditorStore = defineStore('editor', () => {
     undoLabel.value = a.undoLabel()
     redoLabel.value = a.redoLabel()
     selected.value = [...a.selected]
+    checkNeedsPreset()
+    issues.schedule()
   }
 
   async function enter(): Promise<boolean> {
@@ -94,7 +137,10 @@ export const useEditorStore = defineStore('editor', () => {
           selected.value = [...ids]
           menu.value = null
           revision.value++
+          checkNeedsPreset()
         },
+        featureCreated: (id) => requestPreset(id),
+        issueClicked: (id) => issues.focusById(id),
         modeChanged: (m) => (mode.value = m),
         historyChanged: () => sync(),
         openMenu: (x, y) => (menu.value = { x, y }),
@@ -114,6 +160,8 @@ export const useEditorStore = defineStore('editor', () => {
       version.value = session.version
       if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__oreEdit = session
       active.value = true
+      const s = session
+      void issues.attach(s, () => s.controller.mode === 'draw' || s.controller.mode === 'move' || s.controller.mode === 'rotate' || !!s.adapter.dragging())
       window.addEventListener('keydown', onKey)
       sync()
       return true
@@ -127,6 +175,8 @@ export const useEditorStore = defineStore('editor', () => {
 
   function teardown() {
     window.removeEventListener('keydown', onKey)
+    issues.detach()
+    needsPreset.value = null
     session?.dispose()
     session = null
     active.value = false
@@ -193,7 +243,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function onKey(e: KeyboardEvent) {
-    if (!session || isTyping(e) || app.settingsOpen || saveDialog.value || takeOver.value || exitConfirm.value) return
+    if (!session || isTyping(e) || app.settingsOpen || saveDialog.value || takeOver.value || exitConfirm.value || issues.summary) return
     const mod = e.ctrlKey || e.metaKey
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key
     if (mod && key === 'z') {
@@ -209,7 +259,7 @@ export const useEditorStore = defineStore('editor', () => {
     }
     if (mod && key === 's') {
       e.preventDefault()
-      requestSave()
+      void requestSave()
       return
     }
     if (((mod && key === 'Backspace') || (!mod && key === 'Delete')) && selected.value.length && (mode.value === 'select' || mode.value === 'browse')) {
@@ -249,14 +299,23 @@ export const useEditorStore = defineStore('editor', () => {
     }
   }
 
-  function requestSave() {
-    if (!session || saving.value) return
+  async function requestSave() {
+    if (!session || saving.value || issues.summary) return
     if (!editCount.value && !draftId.value) {
       app.toast('Nothing to save yet')
       return
     }
+    if (mode.value === 'draw') session.controller.finishDrawing()
+    if (!(await issues.confirmSave())) return
     if (draftId.value) void save(null)
     else saveDialog.value = true
+  }
+
+  function applyIssueFix(issueId: string, fixId: string) {
+    const issue = issues.issues.find((i) => i.id === issueId)
+    if (!issue || !session) return
+    menu.value = null
+    issues.applyFix(issue, fixId, sync)
   }
 
   function askTakeOver(openChanges: OpenChangeElsewhere[]): Promise<boolean> {
@@ -394,7 +453,8 @@ export const useEditorStore = defineStore('editor', () => {
 
   return {
     active, starting, mode, selected, revision, editCount, undoLabel, redoLabel, loadingTiles, draftId, draftTitle,
-    saving, saveDialog, exitConfirm, takeOver, menu, hover, notice, version, zoomOk, selection, operations,
+    saving, saveDialog, exitConfirm, takeOver, menu, hover, notice, version, zoomOk, selection, operations, needsPreset,
     enter, exit, teardown, setMode, undo, redo, runOperation, setTags, select, requestSave, save, editDraft, describe,
+    onNeedsPreset, requestPreset, clearNeedsPreset, applyIssueFix,
   }
 })

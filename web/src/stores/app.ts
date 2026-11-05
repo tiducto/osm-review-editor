@@ -6,10 +6,17 @@ import type { ConnectionState } from '@/api/events'
 
 export type ToastKind = 'info' | 'success' | 'error'
 
+export interface ToastAction {
+  label: string
+  run: () => void
+}
+
 export interface Toast {
   id: number
   kind: ToastKind
   text: string
+  action?: ToastAction
+  testId?: string
 }
 
 export const useAppStore = defineStore('app', () => {
@@ -25,10 +32,11 @@ export const useAppStore = defineStore('app', () => {
 
   const toasts = ref<Toast[]>([])
   let toastSeq = 0
-  function toast(text: string, kind: ToastKind = 'info', ms = kind === 'error' ? 7000 : 3500) {
+  function toast(text: string, kind: ToastKind = 'info', ms = kind === 'error' ? 7000 : 3500, extra: { action?: ToastAction; testId?: string } = {}) {
     const id = ++toastSeq
-    toasts.value.push({ id, kind, text })
+    toasts.value.push({ id, kind, text, ...extra })
     setTimeout(() => dismiss(id), ms)
+    return id
   }
   function dismiss(id: number) {
     toasts.value = toasts.value.filter((t) => t.id !== id)

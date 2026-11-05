@@ -2,11 +2,15 @@
 import { computed } from 'vue'
 import { useEditorStore } from '@/stores/editor'
 import { useMapStore } from '@/stores/map'
+import { useEditIssuesStore } from '@/stores/editIssues'
 import Icon from '../Icon.vue'
 import Spinner from '../Spinner.vue'
 
 const editor = useEditorStore()
 const mapStore = useMapStore()
+const issues = useEditIssuesStore()
+
+const issueTone = computed(() => (issues.errors.length ? 'text-error' : issues.warnings.length ? 'text-warning' : 'text-fg-3'))
 
 const tools = [
   { mode: 'add-point', label: 'Point', key: '1', path: 'M12 21s6-5.4 6-10.5a6 6 0 1 0-12 0C6 15.6 12 21 12 21zM12 12.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4z' },
@@ -61,6 +65,16 @@ function isActive(mode: string) {
       </button>
       <button class="btn btn-ghost btn-icon btn-sm" :disabled="!editor.redoLabel" :title="editor.redoLabel ? `Redo: ${editor.redoLabel} (⇧⌘Z)` : 'Nothing to redo'" data-testid="edit-redo" @click="editor.redo()">
         <Icon name="undo" :size="14" class="-scale-x-100" />
+      </button>
+      <button
+        class="btn btn-sm"
+        :class="issues.panelOpen ? 'btn-primary' : 'btn-ghost'"
+        :title="`Issues in your edits: ${issues.errors.length} errors, ${issues.warnings.length} warnings`"
+        data-testid="edit-issues-toggle"
+        @click="issues.panelOpen = !issues.panelOpen"
+      >
+        <Icon name="alert" :size="13" :class="issues.panelOpen ? '' : issueTone" />
+        <span class="font-mono tabular-nums">{{ issues.errors.length + issues.warnings.length }}</span>
       </button>
       <span class="chip bg-surface-3 font-mono text-fg-2 tabular-nums" :title="`${editor.editCount} edited element${editor.editCount === 1 ? '' : 's'}`" data-testid="edit-count">
         {{ editor.editCount }}

@@ -24,12 +24,15 @@ import Icon from '@/components/Icon.vue'
 import Spinner from '@/components/Spinner.vue'
 import EditToolbar from '@/components/editor/EditToolbar.vue'
 import EditMenu from '@/components/editor/EditMenu.vue'
+import EditIssues from '@/components/editor/EditIssues.vue'
+import { useEditIssuesStore } from '@/stores/editIssues'
 import { useEditorStore } from '@/stores/editor'
 
 const mapStore = useMapStore()
 const rules = useRulesStore()
 const drafts = useDraftsStore()
 const editor = useEditorStore()
+const editIssues = useEditIssuesStore()
 
 const el = ref<HTMLDivElement | null>(null)
 let map: maplibregl.Map | null = null
@@ -524,6 +527,10 @@ const currentHasGeometryChange = computed(() => {
           <Spinner :size="12" /> Running rules…
         </div>
       </Transition>
+    </div>
+
+    <div v-if="editor.active && editIssues.panelOpen && !drafts.reviewing" class="absolute top-3 left-3 z-20">
+      <EditIssues />
     </div>
 
     <Transition name="fade">

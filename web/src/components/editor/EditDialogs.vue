@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useEditorStore } from '@/stores/editor'
 import { useMapStore } from '@/stores/map'
+import { useEditIssuesStore } from '@/stores/editIssues'
 import { refString } from '@/lib/osm'
 import Modal from '../Modal.vue'
 import ConfirmDialog from '../ConfirmDialog.vue'
@@ -9,6 +10,7 @@ import Spinner from '../Spinner.vue'
 
 const editor = useEditorStore()
 const mapStore = useMapStore()
+const issues = useEditIssuesStore()
 
 const title = ref('')
 const comment = ref('')
@@ -59,6 +61,28 @@ function submit() {
       <button class="btn btn-primary" :disabled="editor.saving || !title.trim()" data-testid="edit-save-submit" @click="submit">
         <Spinner v-if="editor.saving" :size="12" /> Save draft
       </button>
+    </template>
+  </Modal>
+
+  <Modal v-if="issues.summary" title="Issues in your edits" width="520px" @close="issues.summary.resolve(false)">
+    <div class="space-y-3 px-5 py-4 text-[12.5px]" data-testid="edit-issue-summary">
+      <p class="text-fg-2">
+        The edited features have
+        <b v-if="issues.summary.errors.length" class="text-error">{{ issues.summary.errors.length }} error{{ issues.summary.errors.length === 1 ? '' : 's' }}</b>
+        <template v-if="issues.summary.errors.length && issues.summary.warnings.length"> and </template>
+        <b v-if="issues.summary.warnings.length" class="text-warning">{{ issues.summary.warnings.length }} warning{{ issues.summary.warnings.length === 1 ? '' : 's' }}</b>.
+        You can fix them first or save anyway; the draft is reviewed before anything is uploaded.
+      </p>
+      <ul class="max-h-64 space-y-1 overflow-y-auto">
+        <li v-for="i in [...issues.summary.errors, ...issues.summary.warnings]" :key="i.id" class="flex items-start gap-2">
+          <span class="mt-1 size-2 shrink-0 rounded-full" :class="i.severity === 'error' ? 'bg-error' : 'bg-warning'" />
+          <span>{{ i.message }} <span class="font-mono text-[10.5px] text-fg-3">{{ i.source === 'id' ? i.type : `${i.file}:${i.line}` }}</span></span>
+        </li>
+      </ul>
+    </div>
+    <template #footer>
+      <button class="btn ml-auto" data-testid="edit-issue-review" @click="issues.review()">Review issues</button>
+      <button class="btn btn-primary" data-testid="edit-issue-save-anyway" @click="issues.summary.resolve(true)">Save anyway</button>
     </template>
   </Modal>
 

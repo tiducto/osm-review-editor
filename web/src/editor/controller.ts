@@ -9,12 +9,14 @@ import type {
   PointLike,
 } from 'maplibre-gl'
 import type { Feature, FeatureCollection } from 'geojson'
-import { LAYER, OSM_SRC, SHADOW, osmLayers } from '@/map/osm/style'
+import { DETAIL_MIN_ZOOM, LAYER, MAX_BAND_ZOOM, OSM_SRC, SHADOW, osmLayers } from '@/map/osm/style'
 import { ensureIcon } from '@/map/osm/icons'
 import { setFilterPart } from '@/map/filters'
 import { getDashState } from '@/stores/map'
 import type { IdAdapter } from './id/adapter'
-import { EDIT_LAYERS, featureId, midpoints, render, tileFeatureId, type EditLayer } from './render'
+import { bandFeatureIds, EDIT_LAYERS, featureId, midpoints, render, tileFeatureId, type EditLayer } from './render'
+import { issueLayerIds } from './issueLayer'
+import { lassoNodes } from './lasso'
 import type { Bounds, IdEntity, IdNode, IdRelation, IdWay, LngLatTuple, SnapTarget } from './types'
 
 export type EditMode = 'browse' | 'select' | 'add-point' | 'add-line' | 'add-area' | 'draw' | 'move' | 'rotate'
@@ -26,22 +28,28 @@ export interface ControllerHooks {
   openMenu(x: number, y: number): void
   hover(info: { x: number; y: number; id: string } | null): void
   notice(text: string): void
+  featureCreated?(id: string): void
+  issueClicked?(id: string): void
 }
 
-const SRC: Record<EditLayer | 'mid' | 'draw', string> = {
+const SRC: Record<EditLayer | 'mid' | 'draw' | 'lasso', string> = {
   area: 'ore-edit-area',
+  band: 'ore-edit-band',
   line: 'ore-edit-line',
   vertex: 'ore-edit-vertex',
   point: 'ore-edit-point',
   label: 'ore-edit-label',
   mid: 'ore-edit-mid',
   draw: 'ore-edit-draw',
+  lasso: 'ore-edit-lasso',
 }
 
 const EMPTY: FeatureCollection = { type: 'FeatureCollection', features: [] }
 const NODE_LAYERS = ['edit-osm-vertex', 'edit-osm-pin', 'edit-osm-addr', 'edit-osm-point-dot']
 const WAY_LAYERS = ['edit-osm-line-hit', 'edit-osm-area-hit']
-const FILL_LAYERS = ['edit-osm-fill', 'edit-osm-fill-pattern', 'edit-band', 'edit-band-pattern']
+const BAND_EDIT_LAYERS = Array.from({ length: MAX_BAND_ZOOM - DETAIL_MIN_ZOOM + 1 }, (_, i) => `edit-osm-band-${DETAIL_MIN_ZOOM + i}`).flatMap((id) => [id, `${id}-pattern`])
+const FILL_LAYERS = ['edit-osm-fill', 'edit-osm-fill-pattern', ...BAND_EDIT_LAYERS]
+const PARTIAL_LIMIT = 400
 const MID_LAYER = 'edit-midpoint'
 const TILE_GROUPS: Record<string, 'ways' | 'nodes'> = { area: 'ways', band: 'ways', label: 'ways', line: 'ways', vertex: 'nodes', point: 'nodes' }
 
@@ -49,15 +57,15 @@ const hovered: ExpressionSpecification = ['boolean', ['feature-state', 'hover'],
 const selected: ExpressionSpecification = ['boolean', ['feature-state', 'sel'], false]
 const shadowOpacity = (hover: number, sel: number): ExpressionSpecification => ['case', selected, sel, hovered, hover, 0]
 
-function zoomSteps(fn: (z: number) => ExpressionSpecification | number, from = 8, to = 22): ExpressionSpecification {
-  const out: unknown[] = ['step', ['zoom'], fn(from)]
-  for (let z = from + 1; z <= to; z++) out.push(z, fn(z))
-  return out as ExpressionSpecification
-}
-
 type Hit =
   | { kind: 'entity'; id: string; layer: string }
+  | { kind: 'issue'; id: string }
   | { kind: 'midpoint'; way: string; edge: [string, string]; loc: LngLatTuple }
+
+interface Lasso {
+  points: [number, number][]
+  active: boolean
+}
 
 interface Pointer {
   x: number
@@ -82,6 +90,12 @@ export class EditController {
   private unsubscribe: (() => void) | null = null
   private cursorLoc: LngLatTuple | null = null
   private hideCount = -1
+  private lasso: Lasso | null = null
+  private fullPending = false
+  private pendingIds = new Set<string>()
+  fullEveryFrame = false
+  private iconsTried = new Set<string>()
+  stats = { full: 0, partial: 0, lastMs: 0 }
 
   constructor(
     readonly map: MlMap,
@@ -102,9 +116,9 @@ export class EditController {
     m.on('moveend', this.onMoveEnd)
     m.on('mouseout', this.onOut)
     m.boxZoom.disable()
-    this.unsubscribe = this.adapter.onChange(() => {
+    this.unsubscribe = this.adapter.onChange((diff) => {
       this.hooks.historyChanged()
-      this.scheduleRender()
+      this.scheduleChange(diff)
     })
     this.refreshHidden()
     this.scheduleRender()
@@ -139,7 +153,6 @@ export class EditController {
     for (const id of Object.values(SRC)) if (!m.getSource(id)) m.addSource(id, { type: 'geojson', data: EMPTY })
     const before = m.getLayer(LAYER.highlightSlot) ? LAYER.highlightSlot : undefined
     const dashes = getDashState()?.dashes ?? new Map<string, number[]>()
-    const bandOpacity = zoomSteps((z) => ['case', ['>=', ['get', '@fz'], z], 0, 1])
     for (const spec of osmLayers(m.getCenter().lat, dashes)) {
       const s = spec as LayerSpecification & { source?: string; 'source-layer'?: string }
       if (s.source !== OSM_SRC) continue
@@ -159,30 +172,6 @@ export class EditController {
       copy.paint = paint
       if (s.id === 'osm-area-hit') copy.filter = ['!=', ['get', '@mp'], true]
       m.addLayer(copy as LayerSpecification, before)
-      if (s.id === 'osm-fill-pattern') {
-        m.addLayer(
-          {
-            id: 'edit-band',
-            type: 'line',
-            source: SRC.area,
-            filter: ['==', ['get', '@pat'], ''],
-            layout: { 'line-join': 'round' },
-            paint: { 'line-color': ['get', '@fc'], 'line-width': 30, 'line-offset': 15, 'line-opacity': bandOpacity },
-          },
-          before,
-        )
-        m.addLayer(
-          {
-            id: 'edit-band-pattern',
-            type: 'line',
-            source: SRC.area,
-            filter: ['!=', ['get', '@pat'], ''],
-            layout: { 'line-join': 'round' },
-            paint: { 'line-pattern': ['get', '@pat'], 'line-width': 30, 'line-offset': 15, 'line-opacity': bandOpacity },
-          },
-          before,
-        )
-      }
     }
     m.addLayer(
       {
@@ -193,6 +182,8 @@ export class EditController {
       },
       before,
     )
+    m.addLayer({ id: 'edit-lasso-fill', type: 'fill', source: SRC.lasso, paint: { 'fill-color': '#7092ff', 'fill-opacity': 0.12 } }, before)
+    m.addLayer({ id: 'edit-lasso-line', type: 'line', source: SRC.lasso, paint: { 'line-color': '#7092ff', 'line-width': 1.5, 'line-dasharray': [2, 2] } }, before)
     m.addLayer(
       {
         id: MID_LAYER,
@@ -263,11 +254,39 @@ export class EditController {
   }
 
   scheduleRender() {
+    this.fullPending = true
+    this.requestFrame()
+  }
+
+  private scheduleChange(diff: { complete?: () => Record<string, unknown> } | undefined) {
+    if (!diff?.complete || this.fullPending || this.fullEveryFrame) {
+      this.scheduleRender()
+      return
+    }
+    for (const id of Object.keys(diff.complete())) this.pendingIds.add(id)
+    if (this.pendingIds.size > PARTIAL_LIMIT) this.fullPending = true
+    this.requestFrame()
+  }
+
+  private requestFrame() {
     if (this.frame) return
     this.frame = requestAnimationFrame(() => {
       this.frame = 0
-      this.renderNow()
+      const t0 = performance.now()
+      if (this.fullPending) this.renderNow()
+      else if (this.pendingIds.size) this.renderPartial([...this.pendingIds])
+      this.pendingIds.clear()
+      this.stats.lastMs = performance.now() - t0
     })
+  }
+
+  private bandZooms(): number[] {
+    const z = Math.floor(this.map.getZoom())
+    const from = Math.max(DETAIL_MIN_ZOOM, z - 1)
+    const to = Math.min(MAX_BAND_ZOOM, z + 1)
+    const out: number[] = []
+    for (let bz = from; bz <= to; bz++) out.push(bz)
+    return out
   }
 
   private forcedVertices(): Set<string> {
@@ -290,7 +309,10 @@ export class EditController {
 
   renderNow() {
     const m = this.map
+    this.fullPending = false
+    this.pendingIds.clear()
     if (!this.installed) return
+    this.stats.full++
     const g = this.adapter.graph()
     const ents = this.adapter.intersects(this.paddedBounds())
     const extra: IdEntity[] = []
@@ -303,15 +325,54 @@ export class EditController {
       entities: [...ents, ...extra],
       forcedVertices: this.forcedVertices(),
       presetIcon: (e) => this.adapter.presetIcon(e),
+      bandZooms: this.bandZooms(),
     })
-    const missing = [...result.icons].filter((n) => !m.hasImage(n))
     for (const layer of EDIT_LAYERS) (m.getSource(SRC[layer]) as GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: result.layers[layer] })
-    if (missing.length) void Promise.all(missing.map((n) => ensureIcon(m, n))).then(() => this.scheduleRender())
+    this.afterRender(result)
+  }
+
+  private afterRender(result: ReturnType<typeof render>) {
+    const m = this.map
+    const missing = [...result.icons].filter((n) => !m.hasImage(n) && !this.iconsTried.has(n))
+    for (const n of missing) this.iconsTried.add(n)
+    if (missing.length) void Promise.all(missing.map((n) => ensureIcon(m, n))).then(() => {
+      if (missing.some((n) => m.hasImage(n))) this.scheduleRender()
+    })
     const ds = getDashState()
     if (ds && result.dashes.size) ds.add([...result.dashes])
     this.renderMidpoints()
     this.renderDraw()
     this.syncStates()
+  }
+
+  renderPartial(ids: string[]) {
+    const m = this.map
+    if (!this.installed) return
+    this.stats.partial++
+    const g = this.adapter.graph()
+    const touched = new Set<string>(ids)
+    const entities: IdEntity[] = []
+    for (const id of ids) {
+      const e = g.hasEntity(id)
+      if (!e) continue
+      entities.push(e)
+      if (e.type === 'way') for (const n of (e as IdWay).nodes) touched.add(n)
+    }
+    const result = render({
+      graph: g,
+      entities,
+      forcedVertices: this.forcedVertices(),
+      presetIcon: (e) => this.adapter.presetIcon(e),
+      bandZooms: this.bandZooms(),
+    })
+    const remove = [...touched].map(featureId)
+    const bandRemove = [...touched].filter((id) => id[0] !== 'n').flatMap(bandFeatureIds)
+    for (const layer of EDIT_LAYERS) {
+      const src = m.getSource(SRC[layer]) as GeoJSONSource | undefined
+      if (!src) continue
+      void src.updateData({ remove: layer === 'band' ? bandRemove : remove, add: result.layers[layer] })
+    }
+    this.afterRender(result)
   }
 
   private renderMidpoints() {
@@ -409,6 +470,11 @@ export class EditController {
   }
 
   escape(): boolean {
+    if (this.lasso) {
+      this.lasso = null
+      ;(this.map.getSource(SRC.lasso) as GeoJSONSource | undefined)?.setData(EMPTY)
+      return true
+    }
     if (this.adapter.dragging()) {
       this.adapter.cancelDrag()
       this.pointer = null
@@ -437,6 +503,7 @@ export class EditController {
   finishDrawing() {
     const id = this.adapter.finishWay()
     this.select(id ? [id] : [])
+    if (id) this.hooks.featureCreated?.(id)
   }
 
   afterUndoRedo() {
@@ -458,13 +525,15 @@ export class EditController {
   }
 
   private topHit(p: { x: number; y: number }): Hit | null {
-    const layers = this.layersPresent([MID_LAYER, ...NODE_LAYERS, ...WAY_LAYERS, ...FILL_LAYERS])
+    const issueLayers = issueLayerIds()
+    const layers = this.layersPresent([...issueLayers, MID_LAYER, ...NODE_LAYERS, ...WAY_LAYERS, ...FILL_LAYERS])
     const hits = this.map.queryRenderedFeatures(this.box(p, 5), { layers })
     const rank = (f: MapGeoJSONFeature) =>
-      f.layer.id === MID_LAYER ? 0 : NODE_LAYERS.includes(f.layer.id) ? 1 : f.layer.id === 'edit-osm-line-hit' ? 2 : f.layer.id === 'edit-osm-area-hit' ? 3 : 4
+      issueLayers.includes(f.layer.id) ? -1 : f.layer.id === MID_LAYER ? 0 : NODE_LAYERS.includes(f.layer.id) ? 1 : f.layer.id === 'edit-osm-line-hit' ? 2 : f.layer.id === 'edit-osm-area-hit' ? 3 : 4
     const f = hits.sort((a, b) => rank(a) - rank(b))[0]
     if (!f) return null
     const props = f.properties as Record<string, unknown>
+    if (issueLayers.includes(f.layer.id)) return { kind: 'issue', id: String(props.issue) }
     if (f.layer.id === MID_LAYER) {
       const g = f.geometry
       return { kind: 'midpoint', way: String(props.way), edge: [String(props.a), String(props.b)], loc: (g.type === 'Point' ? g.coordinates : [0, 0]) as LngLatTuple }
@@ -532,6 +601,15 @@ export class EditController {
     const p = e.point
     this.cursorLoc = [e.lngLat.lng, e.lngLat.lat]
     this.adapter.mouseLoc = this.cursorLoc
+    if (this.lasso) {
+      const first = this.lasso.points[0]
+      if (!this.lasso.active && Math.hypot(p.x - first[0], p.y - first[1]) > 3) this.lasso.active = true
+      if (this.lasso.active) {
+        this.lasso.points.push([p.x, p.y])
+        this.renderLasso()
+      }
+      return
+    }
     const ptr = this.pointer
     if (ptr && !ptr.dragging && Math.hypot(p.x - ptr.x, p.y - ptr.y) > 3) {
       if (ptr.hit.kind === 'midpoint') this.adapter.beginMidpointDrag(ptr.hit.edge, ptr.hit.loc)
@@ -557,22 +635,60 @@ export class EditController {
     }
     const hit = this.topHit(p)
     const id = hit?.kind === 'entity' ? hit.id : null
-    this.map.getCanvas().style.cursor = hit ? 'pointer' : ''
+    this.map.getCanvas().style.cursor = hit ? 'pointer' : e.originalEvent.shiftKey ? 'crosshair' : ''
     this.setHover(id, p)
   }
 
   private onDown = (e: MapMouseEvent) => {
     if (e.originalEvent.button !== 0) return
     if (this.mode !== 'browse' && this.mode !== 'select') return
+    if (e.originalEvent.shiftKey) {
+      this.lasso = { points: [[e.point.x, e.point.y]], active: false }
+      e.preventDefault()
+      return
+    }
     const hit = this.topHit(e.point)
-    if (!hit) return
+    if (!hit || hit.kind === 'issue') return
     if (hit.kind === 'midpoint' || (hit.kind === 'entity' && kindOf(hit.id) === 'node')) {
       this.pointer = { x: e.point.x, y: e.point.y, hit, dragging: false }
       e.preventDefault()
     }
   }
 
+  private finishLasso(): boolean {
+    const lasso = this.lasso
+    this.lasso = null
+    if (!lasso) return false
+    ;(this.map.getSource(SRC.lasso) as GeoJSONSource | undefined)?.setData(EMPTY)
+    if (!lasso.active || lasso.points.length < 3) return false
+    const polygon = lasso.points.map(([x, y]) => {
+      const l = this.map.unproject([x, y])
+      return [l.lng, l.lat] as LngLatTuple
+    })
+    const ids = lassoNodes(this.adapter, polygon)
+    this.suppressClick = true
+    setTimeout(() => (this.suppressClick = false), 0)
+    if (ids.length) this.select(ids)
+    else this.hooks.notice('No nodes inside the lasso')
+    return true
+  }
+
+  private renderLasso() {
+    const src = this.map.getSource(SRC.lasso) as GeoJSONSource | undefined
+    if (!src || !this.lasso) return
+    const coords = this.lasso.points.map(([x, y]) => {
+      const l = this.map.unproject([x, y])
+      return [l.lng, l.lat]
+    })
+    if (coords.length < 3) return
+    src.setData({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [[...coords, coords[0]]] }, properties: {} })
+  }
+
   private onUp = (e: MapMouseEvent) => {
+    if (this.lasso) {
+      this.finishLasso()
+      return
+    }
     const ptr = this.pointer
     this.pointer = null
     if (!ptr?.dragging) return
@@ -595,6 +711,10 @@ export class EditController {
       case 'browse':
       case 'select': {
         const hit = this.topHit(p)
+        if (hit?.kind === 'issue') {
+          this.hooks.issueClicked?.(hit.id)
+          return
+        }
         if (hit?.kind === 'midpoint') {
           this.adapter.beginMidpointDrag(hit.edge, hit.loc)
           const id = this.adapter.endDrag(null)
@@ -614,6 +734,7 @@ export class EditController {
       case 'add-point': {
         const id = this.adapter.addPoint(this.snapAt(p, null, e.originalEvent.altKey))
         this.select([id])
+        this.hooks.featureCreated?.(id)
         return
       }
       case 'add-line':
@@ -625,8 +746,10 @@ export class EditController {
       }
       case 'draw': {
         const r = this.adapter.extendWay(this.snapAt(p, null, e.originalEvent.altKey))
-        if (r === 'finished' || !this.adapter.drawing) this.select(this.adapter.selected)
-        else this.scheduleRender()
+        if (r === 'finished' || !this.adapter.drawing) {
+          this.select(this.adapter.selected)
+          if (r === 'finished' && this.adapter.selected.length === 1) this.hooks.featureCreated?.(this.adapter.selected[0])
+        } else this.scheduleRender()
         return
       }
       case 'move':

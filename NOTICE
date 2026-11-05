@@ -28,4 +28,11 @@ Icons in iD's sprites come from:
 - Font Awesome Free (https://fontawesome.com), icons under CC BY 4.0
 - Roentgen (https://github.com/enzet/Roentgen), CC BY 4.0
 
+The web app bundles clipper2-ts (https://github.com/countertype/clipper2-ts), a TypeScript port of
+Clipper2, Copyright (c) Angus Johnson 2010-2025, Boost Software License 1.0.
+
+The rules tests include a GOL built from OpenStreetMap highways of Opava-Kateřinky
+(rules/src/test/resources/fixtures/katerinky-highways.gol, also as web/src/editor/validation/fixtures/
+katerinky-highways.osm.gz), © OpenStreetMap contributors, ODbL.
+
 Map data © OpenStreetMap contributors, available under the Open Database License (ODbL).

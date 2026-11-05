@@ -2,9 +2,10 @@ import type { Feature, Geometry, Position } from 'geojson'
 import { areaStyle, hasInterestingTags, isAddressPoint, isWikidata, lineStyle, type Stroke } from '@/map/osm/classify'
 import { areaPattern } from '@/map/osm/patterns'
 import { isBuilding, onewayDir, strokeProps, type Props } from '@/map/osm/transform'
+import { bandPolygons } from './band'
 import type { EntityGeometry, IdEntity, IdGraph, IdNode, IdRelation, IdWay, LngLatTuple } from './types'
 
-export const EDIT_LAYERS = ['area', 'line', 'vertex', 'point', 'label'] as const
+export const EDIT_LAYERS = ['area', 'band', 'line', 'vertex', 'point', 'label'] as const
 export type EditLayer = (typeof EDIT_LAYERS)[number]
 
 export type RenderOutput = Record<EditLayer, Feature[]>
@@ -14,6 +15,7 @@ export interface RenderInput {
   entities: IdEntity[]
   forcedVertices: Set<string>
   presetIcon: (entity: IdEntity, geometry: EntityGeometry) => { id: string; icon: string | null }
+  bandZooms?: number[]
 }
 
 export interface RenderResult {
@@ -31,6 +33,16 @@ export function featureId(id: string): number {
   const osm = Number(id.slice(1))
   const code = TYPE_CODE[{ n: 'node', w: 'way', r: 'relation' }[id[0]] ?? 'node']
   return osm < 0 ? NEW_OFFSET + -osm * 4 + code : osm * 4 + code
+}
+
+export const BAND_ZOOM_SLOTS = 32
+
+export function bandFeatureId(id: string, bz: number): number {
+  return featureId(id) * BAND_ZOOM_SLOTS + bz
+}
+
+export function bandFeatureIds(id: string): number[] {
+  return Array.from({ length: 25 }, (_, bz) => bandFeatureId(id, bz))
 }
 
 export function tileFeatureId(id: string): number | null {
@@ -95,9 +107,23 @@ function isMultipolygon(r: IdEntity): r is IdRelation {
   return r.type === 'relation' && r.isMultipolygon()
 }
 
+const bandCache = new Map<string, { sig: string; polys: Position[][][] }>()
+
+function cachedBand(id: string, bz: number, polys: Position[][][]): Position[][][] {
+  const key = `${id}:${bz}`
+  const sig = polys.map((p) => p.map((r) => r.map((c) => `${c[0]},${c[1]}`).join(';')).join('|')).join('#')
+  const hit = bandCache.get(key)
+  if (hit && hit.sig === sig) return hit.polys
+  const out = bandPolygons(polys, bz)
+  if (bandCache.size > 20000) bandCache.clear()
+  bandCache.set(key, { sig, polys: out })
+  return out
+}
+
 export function render(input: RenderInput): RenderResult {
   const { graph, entities, forcedVertices, presetIcon } = input
-  const layers: RenderOutput = { area: [], line: [], vertex: [], point: [], label: [] }
+  const bandZooms = input.bandZooms ?? []
+  const layers: RenderOutput = { area: [], band: [], line: [], vertex: [], point: [], label: [] }
   const icons = new Set<string>()
   const dashes = new Set<string>()
   const hiddenWays: number[] = []
@@ -123,6 +149,17 @@ export function render(input: RenderInput): RenderResult {
         '@mp': mp,
       }),
     )
+    for (const bz of bandZooms) {
+      if (bz <= fz) continue
+      const band = cachedBand(e.id, bz, oriented)
+      if (!band.length) continue
+      layers.band.push({
+        type: 'Feature',
+        id: bandFeatureId(e.id, bz),
+        geometry: band.length === 1 ? { type: 'Polygon', coordinates: band[0] } : { type: 'MultiPolygon', coordinates: band },
+        properties: { '@fc': st.fill, '@pat': pat, '@sort': fz, '@bz': bz, '@bld': isBuilding(t), eid: e.id },
+      })
+    }
     const geom: EntityGeometry = 'area'
     const preset = presetIcon(e, geom)
     const icon = !preset.icon || /building|landuse|natural/.test(preset.id) ? null : preset.icon

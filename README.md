@@ -18,8 +18,8 @@ and edit drafts, never upload.
 > edits (new, moved and deleted nodes, way node lists, relation members) imported from an editor
 > session, reviewed per object with their dependencies and uploaded in dependency-safe changesets
 > ([API](docs/api.md#geometry-drafts-osmchange)). The map has an in-browser editor built on iD's
-> editing engine that saves into such drafts (see [Editing](#editing)); preset fields and validation
-> are not wired into it yet.
+> editing engine that saves into such drafts (see [Editing](#editing)), with iD's validations and your
+> MapCSS checks on the edited features.
 
 ## Quick start (Docker)
 
@@ -327,7 +327,11 @@ copies the iD tagging schema from `node_modules`). Rule tests against a real GOL
 `OSM_REVIEW_TEST_GOL` points at one (the MapCSS host tests also check that every GOQL prefilter the
 compiler emits is accepted by GeoDesk and selects a superset of the matches); `DraftFlowTest`,
 `McpTest`, `ScansMcpTest` and `RemoteControlTest` use Testcontainers and skip without Docker. Web tests: `npm test -w web` (Vitest, jsdom; they load the iD
-editing core against an Opava-Kateřinky fixture).
+editing core against an Opava-Kateřinky fixture). `HostParityTest` (rules) runs the server's MapCSS
+host on a small GOL of Kateřinky's highways and compares `odd_segment` and `network_island_size` with
+`web/src/editor/validation/fixtures/host-parity.json`, which the browser host's Vitest checks against
+the same data; after changing either host, regenerate it with `UPDATE_HOST_PARITY=1 ./gradlew
+:rules:test --tests '*HostParityTest*'`.
 
 After changing a `@Serializable` model in `shared/`, run `./gradlew :shared:generateTsModels`; CI
 fails when `web/src/generated/models.ts` is stale.
@@ -379,6 +383,7 @@ features with the same ids are hidden, so you always see the edited state.
 | Input | Action |
 | --- | --- |
 | Click, Shift+click | Select, add to selection; right-click opens iD's operations with their availability and reasons |
+| Shift+drag | Lasso: select the loaded nodes (points and vertices) inside the drawn shape |
 | Drag a node or vertex, drag a midpoint | Move it (snaps to nodes and ways, Alt to not snap), add a vertex |
 | `1` / `2` / `3` | Draw a point, line or area; clicking an existing node or way connects to it; click the last node or Enter to finish |
 | `X` `D` `C` `V` `Q` `O` `S` `M` `R` `A` `E` | Split, disconnect, combine, reverse, square, circularize, straighten, move, rotate, continue, extract |
@@ -390,7 +395,53 @@ the review, back into that draft with `replace`), then opens the review. Element
 other drafts are moved over with `takeOver` after a confirm. The editor keeps the ids the server
 assigned and never reuses a negative id the draft already uses. "Edit draft" loads the draft's
 osmChange over the live data, so a stale modify keeps its old version and comes back as a conflict.
-The editor chunk adds about 650 kB gzip and is only fetched on entering edit mode.
+The editor chunk adds about 680 kB gzip and is only fetched on entering edit mode.
+
+**Validation.** About 350 ms after each edit (not while drawing, dragging, moving or rotating) the
+editor validates the features touched by the session, like iD's issues panel:
+
+- iD's own validations through `coreValidator` (crossing ways, almost junctions, disconnected ways,
+  close nodes, missing and outdated tags, mismatched geometry, impossible oneways, unsquare buildings
+  and the rest; `help_request`, `incompatible_source`, `maprules` and `osm_api_limits` are left out).
+  Only issues on features you edited are listed (`what: 'edited'`). iD's "data loaded here" checks ask
+  the editor's tile loader.
+- Your MapCSS check files: the active ones of the Validate tab (by default every check file without
+  errors, local, built-in and remote), parsed by the shared MapCSS engine and run in the browser over
+  iD's graph with `web/src/editor/validation/mapcssHost.ts`. It provides parents and children with
+  roles and indexes, `:closed`, `:unconnected`, `:connection`, `⧉` (proper segment crossings, not at
+  shared nodes), `∈`, `waylength()`, `areasize()`, `half_width()`, `connected_value()`,
+  `odd_segment()` and `network_island_size()` with the server host's semantics (only linear ways
+  count as neighbours, like GOQL `w`; the island search stops at 100). Only the loaded tiles are seen,
+  so islands and neighbours at the edge of the loaded data can differ from a scan. `inside()` and
+  `outside()` have no region index in the browser and match nothing; traffic is right-hand.
+
+Issues show in a panel (the warning button in the edit toolbar, with the count of errors and
+warnings) and as markers on the map; clicking a marker or an issue selects the feature. Fix buttons
+run iD's fix actions (connect, add a bridge or tunnel, extend to the other way, upgrade tags, ...) and
+for MapCSS checks apply the check's `fixAdd`/`fixRemove`/`fixChangeKey` as one tag edit or delete the
+feature for `fixDeleteObject`. Every fix is one undoable step in the history, labelled after the
+issue. Warnings can be ignored for the session. Saving first shows the errors and warnings of the
+edits, like iD's save screen: "Review issues" opens the panel at the first one, "Save anyway"
+continues.
+
+**Choosing a preset.** Finishing a new line or area (or placing a point) without tags other than
+`area=yes` asks for a preset, like iD. The editor store exposes this for the Inspector:
+
+- `editor.needsPreset`: `{entityId, geometry}` (`'w-1'`, `'line' | 'area' | 'point'`) or `null`.
+- `editor.onNeedsPreset((req) => ...)`: called each time a feature needs a preset; returns an
+  unsubscribe function.
+- `editor.clearNeedsPreset()`: call it after a preset was picked or the picker was dismissed.
+
+`needsPreset` clears itself when the feature gets tags, is deleted or undone, or is deselected.
+
+**Rendering.** The edited graph is redrawn once per animation frame. A change from the history
+(dragging a node, an operation, a fix) updates only the features of the changed entities and their
+parents in the GeoJSON sources (`updateData`); panning, zooming, selection and newly loaded tiles
+redraw everything. Dragging a vertex with about 2,100 features drawn (26,000 entities loaded,
+Opava centre at zoom 16.3, headless Chrome) went from 18 fps (a full `setData` per frame, 4.3 s of
+script for 120 mouse moves) to 62 fps (0.7 s). The partial fill of large areas is computed like the
+tile renderer's band: the polygon minus its 30 px inset (Clipper2 offset with mitre joins, limit 3)
+for the display zooms around the current one, so concave corners stay clean.
 
 ### Layout
 

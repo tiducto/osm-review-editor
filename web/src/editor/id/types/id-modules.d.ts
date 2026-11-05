@@ -20,6 +20,7 @@ export const actionAddMidpoint: any
 export const actionAddVertex: any
 export const actionChangeTags: any
 export const actionConnect: any
+export const actionDeleteMultiple: any
 export const actionMove: any
 export const actionMoveNode: any
 export const actionNoop: any
