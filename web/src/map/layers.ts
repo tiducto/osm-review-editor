@@ -188,6 +188,13 @@ export function installLayers(map: MlMap): void {
     paint: { 'line-color': ['get', 'color'], 'line-width': 5 },
   })
   add({
+    id: 'ore-before-vertex',
+    type: 'circle',
+    source: SRC.before,
+    filter: ['==', ['get', 'g'], 'vx'],
+    paint: { 'circle-radius': 3.5, 'circle-color': '#ffffff', 'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 1.5 },
+  })
+  add({
     id: 'ore-before-point',
     type: 'circle',
     source: SRC.before,

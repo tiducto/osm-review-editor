@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { PbfReader } from 'pbf'
@@ -11,8 +11,8 @@ import { rawLayers, tagsOf, TILE_PROPS, transform, type Props } from './transfor
 import type { PresetMatcher } from './presets'
 
 const OPTIONS = { tagPrefix: '', typeProperty: TILE_PROPS.type, closedProperty: TILE_PROPS.closed }
-const ROOT = fileURLToPath(new URL('../../../../', import.meta.url))
-const FIXTURES = fileURLToPath(new URL('./fixtures/', import.meta.url))
+const ROOT = resolve(process.cwd(), '..') + '/'
+const FIXTURES = resolve(process.cwd(), 'src/map/osm/fixtures') + '/'
 
 const noPresets = { match: () => null } as unknown as PresetMatcher
 

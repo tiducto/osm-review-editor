@@ -10,6 +10,7 @@ import eu.tiducto.osmreview.server.db.DraftMeta
 import eu.tiducto.osmreview.server.db.DraftRepo
 import eu.tiducto.osmreview.server.db.GeometryUpdate
 import eu.tiducto.osmreview.server.db.NewChange
+import eu.tiducto.osmreview.server.db.OPEN_CHANGE_STATES
 import eu.tiducto.osmreview.server.osm.OsmChangeXml
 import eu.tiducto.osmreview.shared.DraftFromOsmChangeRequest
 import eu.tiducto.osmreview.shared.ElementShape
@@ -525,7 +526,10 @@ class DraftService(
         if (draft.status !in ACTIVE) throw StateException("Draft ${draft.id} is ${draft.status.name.lowercase()}")
         val entries = OsmChangeXml.parse(req.osmChange)
         require(entries.isNotEmpty() || req.replace) { "The osmChange has no elements" }
-        val results = edits.apply(uuid, EditElement.fromOsmChange(entries, req.reasons, req.reason), req.replace)
+        val results = edits.apply(
+            uuid, EditElement.fromOsmChange(entries, req.reasons, req.reason), req.replace,
+            takeOver = takeOverInto(draft).takeIf { req.takeOver },
+        )
         emitUpdated(draft.id)
         return OsmChangeImportResult(detail(draft.id), results)
     }
@@ -535,13 +539,29 @@ class DraftService(
         require(entries.isNotEmpty()) { "The osmChange has no elements" }
         val draft = createDraft(req.title, req.description, author, null, DraftMeta(req.area, req.changesetComment, req.changesetSource))
         return try {
-            val results = edits.apply(UUID.fromString(draft.id), EditElement.fromOsmChange(entries, req.reasons, req.reason), replace = false)
+            val results = edits.apply(
+                UUID.fromString(draft.id), EditElement.fromOsmChange(entries, req.reasons, req.reason), replace = false,
+                takeOver = takeOverInto(draft).takeIf { req.takeOver },
+            )
             emitUpdated(draft.id)
             OsmChangeImportResult(detail(draft.id), results)
         } catch (e: Exception) {
             repo.deleteDraft(UUID.fromString(draft.id))
             throw e
         }
+    }
+
+    private fun takeOverInto(target: Draft): suspend (List<Change>) -> Unit = { changes ->
+        val why = "moved to draft \"${target.title}\" (${target.id})"
+        for (c in changes) {
+            val id = UUID.fromString(c.id)
+            val fresh = repo.change(id) ?: continue
+            if (fresh.status !in OPEN_CHANGE_STATES) continue
+            if (fresh.requiredBy.isNotEmpty()) rejectDependents(fresh, repo.changes(UUID.fromString(fresh.draftId)), cascade = true)
+            repo.updateChange(id) { status = ChangeStatus.REJECTED }
+            repo.addReview(id, ReviewDecision.REJECT, why, null)
+        }
+        changes.map { it.draftId }.distinct().forEach { emitUpdated(it) }
     }
 
     suspend fun exportOsmChange(draftId: String): String {

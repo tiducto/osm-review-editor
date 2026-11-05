@@ -19,10 +19,27 @@ import ConflictResolver from './ConflictResolver.vue'
 import DraftChangeset from './DraftChangeset.vue'
 import Icon from './Icon.vue'
 import Spinner from './Spinner.vue'
+import ConfirmDialog from './ConfirmDialog.vue'
+import { useEditorStore } from '@/stores/editor'
+import type { ChangeLink } from '@/generated/models'
 
 const drafts = useDraftsStore()
 const rules = useRulesStore()
 const app = useAppStore()
+const editor = useEditorStore()
+
+const editable = computed(() => draft.value?.status === 'open' || draft.value?.status === 'partially_merged')
+
+function linkIndex(l: ChangeLink): number {
+  return drafts.changes.findIndex((x) => x.id === l.changeId)
+}
+
+function goToLink(l: ChangeLink) {
+  const i = linkIndex(l)
+  if (i >= 0) drafts.goTo(i)
+}
+
+const actionLabel: Record<string, string> = { create: 'new', modify: 'modified', delete: 'deleted' }
 
 type Mode = 'view' | 'edit' | 'reject'
 const mode = ref<Mode>('view')
@@ -92,7 +109,7 @@ function cancel() {
 }
 
 function onKey(e: KeyboardEvent) {
-  if (app.settingsOpen || app.mergeDraftId) return
+  if (app.settingsOpen || app.mergeDraftId || drafts.cascadePrompt || editor.active) return
   if (mode.value === 'reject') {
     if (e.key === 'Escape') {
       e.preventDefault()
@@ -167,7 +184,16 @@ const shortcuts = [
       <div class="flex items-center gap-2">
         <span class="section-title">Review</span>
         <AuthorBadge :author="draft.author" />
-        <button class="btn btn-ghost btn-sm ml-auto text-fg-3" title="Leave review (Esc)" @click="drafts.stopReview()">
+        <button
+          v-if="editable"
+          class="btn btn-sm ml-auto"
+          title="Continue editing this draft's geometry in the map editor"
+          data-testid="edit-draft"
+          @click="editor.editDraft(draft.id)"
+        >
+          <Icon name="edit" :size="12" /> Edit draft
+        </button>
+        <button class="btn btn-ghost btn-sm text-fg-3" :class="!editable && 'ml-auto'" title="Leave review (Esc)" @click="drafts.stopReview()">
           Exit <span class="kbd">Esc</span>
         </button>
       </div>
@@ -238,6 +264,48 @@ const shortcuts = [
           </p>
         </div>
 
+        <div
+          v-if="c.geometryChanged || c.geometrySummary || c.dependsOn.length || c.requiredBy.length"
+          class="space-y-2 rounded-md border border-geom/30 bg-geom-soft p-2.5 text-[12px]"
+          data-testid="geometry-info"
+        >
+          <div v-if="c.geometryChanged || c.geometrySummary" class="flex items-center gap-2">
+            <span class="section-title">Geometry</span>
+            <span class="font-mono text-[11.5px] text-fg" data-testid="geometry-summary">{{ c.geometrySummary ?? (c.geometryChanged ? 'changed' : '') }}</span>
+            <span class="ml-auto text-[11px] text-fg-3"><span class="kbd">Space</span> {{ drafts.showBefore ? 'showing before' : 'showing after' }}</span>
+          </div>
+          <div v-if="c.dependsOn.length">
+            <div class="text-[11px] text-fg-3">Needs (uploaded together, approve these too)</div>
+            <div class="mt-0.5 flex flex-wrap gap-1">
+              <button
+                v-for="l in c.dependsOn"
+                :key="l.changeId"
+                class="chip bg-surface font-mono text-fg-2 hover:text-fg"
+                :disabled="linkIndex(l) < 0"
+                :title="`${actionLabel[l.action] ?? l.action}, ${l.status}`"
+                @click="goToLink(l)"
+              >
+                {{ refString(l.ref) }} <StatusPill :status="l.status" />
+              </button>
+            </div>
+          </div>
+          <div v-if="c.requiredBy.length">
+            <div class="text-[11px] text-fg-3">Required by (rejecting this rejects them)</div>
+            <div class="mt-0.5 flex flex-wrap gap-1">
+              <button
+                v-for="l in c.requiredBy"
+                :key="l.changeId"
+                class="chip bg-surface font-mono text-fg-2 hover:text-fg"
+                :disabled="linkIndex(l) < 0"
+                :title="`${actionLabel[l.action] ?? l.action}, ${l.status}`"
+                @click="goToLink(l)"
+              >
+                {{ refString(l.ref) }} <StatusPill :status="l.status" />
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div v-if="rejection" class="rounded-md border border-removed/30 bg-removed-soft p-2.5 text-[12px]">
           <div class="font-semibold text-removed">Rejected {{ relativeTime(rejection.createdAt) }}</div>
           <p class="mt-0.5 text-fg">{{ rejection.comment || 'No comment.' }}</p>
@@ -291,6 +359,20 @@ const shortcuts = [
       </div>
     </div>
     <div v-else class="grid flex-1 place-items-center text-fg-3">This draft has no changes.</div>
+
+    <ConfirmDialog
+      v-if="drafts.cascadePrompt"
+      :title="drafts.cascadePrompt.decision === 'approve' || drafts.cascadePrompt.decision === 'edit' ? 'Approve the dependencies too?' : 'Reject the dependent changes too?'"
+      :confirm-label="drafts.cascadePrompt.decision === 'approve' || drafts.cascadePrompt.decision === 'edit' ? 'Approve all' : 'Reject all'"
+      :danger="drafts.cascadePrompt.decision === 'reject' || drafts.cascadePrompt.decision === 'send_to_id'"
+      @confirm="drafts.cascadePrompt.resolve(true)"
+      @cancel="drafts.cascadePrompt.resolve(false)"
+    >
+      <p>{{ drafts.cascadePrompt.message }}</p>
+      <p v-if="drafts.cascadePrompt.links.length" class="mt-2 font-mono text-[11.5px]" data-testid="cascade-refs">
+        {{ drafts.cascadePrompt.links.map((l) => refString(l.ref)).join(' ') }}
+      </p>
+    </ConfirmDialog>
 
     <div v-if="c && mode === 'view'" class="shrink-0 border-t border-line bg-surface-2 px-3 py-2.5">
       <div class="grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-1.5">

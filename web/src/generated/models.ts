@@ -207,6 +207,8 @@ export type UiEvent = UiEventDraftUpdated | UiEventMergeProgress | UiEventMirror
 export interface ApiError {
   error: string
   detail: string | null
+  code: string | null
+  openChanges: OpenChangeElsewhere[] | null
 }
 
 export interface SearchHit {
@@ -512,6 +514,7 @@ export interface OsmChangeImportRequest {
   reasons?: Record<string, string>
   reason?: string | null
   replace?: boolean
+  takeOver?: boolean
 }
 
 export interface DraftFromOsmChangeRequest {
@@ -523,6 +526,7 @@ export interface DraftFromOsmChangeRequest {
   changesetSource?: string | null
   reasons?: Record<string, string>
   reason?: string | null
+  takeOver?: boolean
 }
 
 export interface WriteRuleFileRequest {
@@ -684,6 +688,14 @@ export interface MirrorStatus {
   dataTimestamp: string | null
   message: string | null
   sidecar: SidecarStatus | null
+}
+
+export interface OpenChangeElsewhere {
+  ref: OsmRef
+  changeId: string
+  status: ChangeStatus
+  draftId: string
+  draftTitle: string
 }
 
 export type SearchHitKind = 'area' | 'object' | 'query'

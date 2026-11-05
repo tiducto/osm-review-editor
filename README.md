@@ -17,8 +17,9 @@ and edit drafts, never upload.
 > Status: early development, single-user, local or home-lab. Drafts can hold full osmChange
 > edits (new, moved and deleted nodes, way node lists, relation members) imported from an editor
 > session, reviewed per object with their dependencies and uploaded in dependency-safe changesets
-> ([API](docs/api.md#geometry-drafts-osmchange)); the in-browser geometry editor is not built yet,
-> so geometry work in the UI is still handed to iD with a deep link.
+> ([API](docs/api.md#geometry-drafts-osmchange)). The map has an in-browser editor built on iD's
+> editing engine that saves into such drafts (see [Editing](#editing)); preset fields and validation
+> are not wired into it yet.
 
 ## Quick start (Docker)
 
@@ -160,9 +161,9 @@ admin boundaries), `waylength()` and `areasize()` (metres, m²), and the `⧉` (
 
 ### iD presets
 
-The server ships `presets.json`, `fields.json`, `preset_categories.json` and the `en` and `cs`
-translations of [id-tagging-schema](https://github.com/openstreetmap/id-tagging-schema) 7.3.0 (ISC),
-about 1.6 MB. `npm install` fetches the package (`devDependencies` of the root `package.json`, exact
+The server ships `presets.json`, `fields.json`, `preset_categories.json`, `preset_defaults.json`,
+`deprecated.json`, `discarded.json` and the `en` and `cs` translations of
+[id-tagging-schema](https://github.com/openstreetmap/id-tagging-schema) 7.3.0 (ISC), about 1.6 MB. `npm install` fetches the package (`devDependencies` of the root `package.json`, exact
 version), and the Gradle task `:server:copyIdTaggingSchema` copies the minified files and its
 `package.json` (the recorded version) into the server's resources, so run `npm install` before
 building the server. The web app gets the same files from the server at
@@ -324,7 +325,8 @@ Tests: `./gradlew :shared:allTests :rules:test :server:test` (after `npm install
 copies the iD tagging schema from `node_modules`). Rule tests against a real GOL run when
 `OSM_REVIEW_TEST_GOL` points at one (the MapCSS host tests also check that every GOQL prefilter the
 compiler emits is accepted by GeoDesk and selects a superset of the matches); `DraftFlowTest`,
-`McpTest`, `ScansMcpTest` and `RemoteControlTest` use Testcontainers and skip without Docker.
+`McpTest`, `ScansMcpTest` and `RemoteControlTest` use Testcontainers and skip without Docker. Web tests: `npm test -w web` (Vitest, jsdom; they load the iD
+editing core against an Opava-Kateřinky fixture).
 
 After changing a `@Serializable` model in `shared/`, run `./gradlew :shared:generateTsModels`; CI
 fails when `web/src/generated/models.ts` is stale.
@@ -362,7 +364,32 @@ The left panel has three tabs:
   trash, copy of built-in and remote files into the folder, and a live map preview of unsaved
   highlight edits. Everything reloads on `rules_changed`.
 
-Web unit tests: `npm test -w web` (Vitest).
+
+### Editing
+
+"Edit map" (zoom 16 or more in iD terms, our tile zoom 15) loads the lazy editor chunk: iD's editing
+core (`@openstreetmap/id` 2.42.3, pinned) runs behind one adapter, `web/src/editor/id/adapter.ts`,
+with a context shim instead of iD's UI; its presets and translations come from
+`/api/presets/id-schema/`. Live data for the view is fetched in z15 tiles through the read-only
+proxy [`/api/osm/map`](docs/api.md#live-osm) of the current API target and merged into iD's graph as
+you pan. The graph is drawn with the same iD style as GeoJSON sources above the tiles, and tile
+features with the same ids are hidden, so you always see the edited state.
+
+| Input | Action |
+| --- | --- |
+| Click, Shift+click | Select, add to selection; right-click opens iD's operations with their availability and reasons |
+| Drag a node or vertex, drag a midpoint | Move it (snaps to nodes and ways, Alt to not snap), add a vertex |
+| `1` / `2` / `3` | Draw a point, line or area; clicking an existing node or way connects to it; click the last node or Enter to finish |
+| `X` `D` `C` `V` `Q` `O` `S` `M` `R` `A` `E` | Split, disconnect, combine, reverse, square, circularize, straighten, move, rotate, continue, extract |
+| `Delete`, `⌘⌫` | Delete |
+| `⌘Z`, `⇧⌘Z`, `Esc`, `⌘S` | Undo, redo, cancel or deselect, save |
+
+Save turns iD's history into an osmChange and imports it into a new draft (or, after "Edit draft" in
+the review, back into that draft with `replace`), then opens the review. Elements with open changes in
+other drafts are moved over with `takeOver` after a confirm. The editor keeps the ids the server
+assigned and never reuses a negative id the draft already uses. "Edit draft" loads the draft's
+osmChange over the live data, so a stale modify keeps its old version and comes back as a conflict.
+The editor chunk adds about 650 kB gzip and is only fetched on entering edit mode.
 
 ### Layout
 

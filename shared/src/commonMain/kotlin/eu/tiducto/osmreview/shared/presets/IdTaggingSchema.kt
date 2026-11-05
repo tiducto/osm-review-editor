@@ -30,11 +30,14 @@ object IdTaggingSchema {
     const val PRESETS = "presets.json"
     const val FIELDS = "fields.json"
     const val CATEGORIES = "preset_categories.json"
+    const val DEFAULTS = "preset_defaults.json"
+    const val DEPRECATED = "deprecated.json"
+    const val DISCARDED = "discarded.json"
     val LOCALES = listOf("en", "cs")
 
     fun translationFile(locale: String) = "translations/$locale.json"
 
-    val files: List<String> get() = listOf(PRESETS, FIELDS, CATEGORIES) + LOCALES.map(::translationFile)
+    val files: List<String> get() = listOf(PRESETS, FIELDS, CATEGORIES, DEFAULTS, DEPRECATED, DISCARDED) + LOCALES.map(::translationFile)
 
     private val json = Json {
         ignoreUnknownKeys = true

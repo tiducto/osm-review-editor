@@ -3,14 +3,17 @@ package eu.tiducto.osmreview.server
 import eu.tiducto.osmreview.rules.MirrorUnavailableException
 import eu.tiducto.osmreview.rules.UnknownRuleException
 import eu.tiducto.osmreview.server.api.apiRoutes
+import eu.tiducto.osmreview.server.api.osmProxyRoutes
 import eu.tiducto.osmreview.server.core.NotAuthorizedException
 import eu.tiducto.osmreview.server.core.NotFoundException
+import eu.tiducto.osmreview.server.core.OpenChangeElsewhereException
 import eu.tiducto.osmreview.server.core.StateException
 import eu.tiducto.osmreview.server.mcp.mcpRoutes
 import eu.tiducto.osmreview.server.osm.OsmApiException
 import eu.tiducto.osmreview.server.remote.remoteControlRoutes
 import eu.tiducto.osmreview.server.tiles.tileRoutes
 import eu.tiducto.osmreview.shared.ApiError
+import eu.tiducto.osmreview.shared.ApiErrorCodes
 import eu.tiducto.osmreview.shared.UiEvent
 import eu.tiducto.osmreview.shared.WireJson
 import io.ktor.http.ContentType
@@ -88,6 +91,7 @@ fun Application.module(app: App) {
                 allowedHosts = allowedHosts + io.ktor.http.Url(app.config.publicUrl).host
             }
             apiRoutes(app)
+            osmProxyRoutes { app.account.api() }
             tileRoutes(app.tiles)
             mcpRoutes(app)
             webSocket("/api/events") {
@@ -115,6 +119,13 @@ fun Application.installErrorPages(remoteControlPort: Int) {
                 if (!bad) log.error("Remote control error on {}", call.request.path(), e)
                 val status = if (bad) HttpStatusCode.BadRequest else HttpStatusCode.InternalServerError
                 call.respondText(e.message ?: status.description, ContentType.Text.Plain, status)
+                return@exception
+            }
+            if (e is OpenChangeElsewhereException) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ApiError(HttpStatusCode.BadRequest.description, e.message, ApiErrorCodes.OPEN_CHANGE_ELSEWHERE, e.openChanges),
+                )
                 return@exception
             }
             val (status, msg) = when (e) {
