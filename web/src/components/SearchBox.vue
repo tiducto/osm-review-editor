@@ -105,7 +105,7 @@ defineExpose({ focus: () => input.value?.focus() })
 </script>
 
 <template>
-  <div class="relative w-full max-w-[440px] min-w-[180px] flex-1">
+  <div class="relative w-full max-w-[440px] min-w-[110px] flex-1 sm:min-w-[180px]">
     <div class="relative">
       <Icon name="search" :size="14" class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-fg-3" />
       <input
@@ -130,7 +130,7 @@ defineExpose({ focus: () => input.value?.focus() })
     <Transition name="pop">
       <div
         v-if="showPanel"
-        class="absolute top-full right-0 left-0 z-40 mt-1.5 overflow-hidden rounded-lg border border-line bg-surface shadow-pop"
+        class="absolute top-full right-0 left-0 z-40 mt-1.5 overflow-hidden rounded-lg border border-line bg-surface shadow-pop max-sm:fixed max-sm:inset-x-2 max-sm:top-12"
         @mousedown.prevent
       >
         <div v-if="error" class="flex items-center gap-2 px-3 py-2.5 text-[12.5px] text-error"><Icon name="alert" :size="14" />{{ error }}</div>

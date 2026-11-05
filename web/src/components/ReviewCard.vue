@@ -228,7 +228,7 @@ const shortcuts = [
           </div>
           <p v-if="c.reason" class="text-[12.5px] text-fg">{{ c.reason }}</p>
           <p v-else-if="!c.ruleId" class="text-[12px] text-fg-3">No reason given.</p>
-          <p v-if="drafts.context?.note" class="text-[12px] text-fg-2">{{ drafts.context.note }}</p>
+          <p v-if="drafts.context?.note && !c.reason?.includes(drafts.context.note)" class="text-[12px] text-fg-2">{{ drafts.context.note }}</p>
           <p v-if="drafts.context?.refs.length" class="flex items-center gap-1.5 text-[11.5px] text-fg-3">
             <span class="h-[3px] w-3 rounded-full bg-[#64748b] opacity-60" />
             {{ drafts.context.refs.length }} related object{{ drafts.context.refs.length === 1 ? '' : 's' }} highlighted:

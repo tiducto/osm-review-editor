@@ -23,7 +23,7 @@ const rules = useRulesStore()
 const drafts = useDraftsStore()
 
 const topBar = ref<InstanceType<typeof TopBar> | null>(null)
-const leftOpen = ref(true)
+const leftOpen = ref(window.innerWidth >= 768)
 const rightCollapsed = ref(false)
 
 const rightContent = computed<'review' | 'inspector' | null>(() =>
@@ -76,7 +76,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex h-full flex-col">
+  <div class="flex h-full flex-col overflow-hidden">
     <TopBar ref="topBar" />
 
     <div v-if="app.serverError" class="flex shrink-0 items-center gap-2 border-b border-error/30 bg-removed-soft px-4 py-1.5 text-[12.5px] text-removed">
@@ -91,12 +91,12 @@ onBeforeUnmount(() => {
       appear once it is ready.
     </div>
 
-    <div class="flex min-h-0 flex-1">
+    <div class="relative flex min-h-0 flex-1">
       <aside
-        class="shrink-0 overflow-hidden border-r border-line bg-surface transition-[width] duration-200"
+        class="shrink-0 overflow-hidden border-r border-line bg-surface transition-[width] duration-200 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-20 max-md:shadow-panel"
         :class="leftOpen ? 'w-[296px]' : 'w-0 border-r-0'"
       >
-        <div class="h-full w-[296px]"><RulesPanel /></div>
+        <div class="h-full w-[296px] max-w-[100vw]"><RulesPanel /></div>
       </aside>
 
       <main class="flex min-w-0 flex-1 flex-col">
@@ -104,6 +104,7 @@ onBeforeUnmount(() => {
           <MapView />
           <button
             class="absolute top-1/2 left-0 z-10 grid h-12 w-4 -translate-y-1/2 place-items-center rounded-r-md border border-l-0 border-line bg-surface text-fg-3 shadow-panel hover:text-fg"
+            :class="leftOpen && 'max-md:left-[296px] max-md:z-30'"
             :title="leftOpen ? 'Hide layers ([)' : 'Show layers ([)'"
             @click="leftOpen = !leftOpen"
           >
@@ -122,10 +123,10 @@ onBeforeUnmount(() => {
       </main>
 
       <aside
-        class="shrink-0 overflow-hidden border-l border-line bg-surface transition-[width] duration-200"
+        class="max-w-[100vw] shrink-0 overflow-hidden border-l border-line bg-surface transition-[width] duration-200 max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-20 max-md:shadow-panel"
         :class="rightOpen ? 'w-[392px]' : 'w-0 border-l-0'"
       >
-        <div class="h-full w-[392px]">
+        <div class="h-full w-[392px] max-w-[100vw]">
           <ReviewCard v-if="rightContent === 'review'" />
           <Inspector v-else-if="rightContent === 'inspector'" />
         </div>

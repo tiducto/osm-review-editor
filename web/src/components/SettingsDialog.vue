@@ -28,6 +28,7 @@ function absolute(u: string): string {
 const mcpUrl = computed(() => absolute(mcp.value?.url ?? app.status?.mcpUrl ?? '/mcp'))
 const claudeCmd = computed(() => mcp.value?.claudeCodeCommand ?? `claude mcp add --transport http osm-review ${mcpUrl.value}`)
 const maskedToken = computed(() => (mcp.value?.token ? (showToken.value ? mcp.value.token : '•'.repeat(Math.min(32, mcp.value.token.length))) : ''))
+const shownCmd = computed(() => (mcp.value?.token && !showToken.value ? claudeCmd.value.split(mcp.value.token).join(maskedToken.value) : claudeCmd.value))
 
 function pickTarget(t: OsmTarget) {
   if (t === app.target) return
@@ -174,7 +175,7 @@ const shortcuts = [
         <div class="space-y-1">
           <div class="text-[11.5px] text-fg-3">Claude Code command</div>
           <div class="flex items-start gap-2">
-            <code class="min-w-0 flex-1 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 font-mono text-[12px] break-all">{{ claudeCmd }}</code>
+            <code class="min-w-0 flex-1 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 font-mono text-[12px] break-all">{{ shownCmd }}</code>
             <button class="btn" @click="copy(claudeCmd)"><Icon :name="copied === claudeCmd ? 'check' : 'copy'" :size="13" /> Copy</button>
           </div>
         </div>
