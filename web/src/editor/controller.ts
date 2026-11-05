@@ -10,6 +10,7 @@ import type {
 } from 'maplibre-gl'
 import type { Feature, FeatureCollection } from 'geojson'
 import { DETAIL_MIN_ZOOM, LAYER, MAX_BAND_ZOOM, OSM_SRC, SHADOW, osmLayers } from '@/map/osm/style'
+import { t } from '@/i18n'
 import { ensureIcon } from '@/map/osm/icons'
 import { setFilterPart } from '@/map/filters'
 import { getDashState } from '@/stores/map'
@@ -669,7 +670,7 @@ export class EditController {
     this.suppressClick = true
     setTimeout(() => (this.suppressClick = false), 0)
     if (ids.length) this.select(ids)
-    else this.hooks.notice('No nodes inside the lasso')
+    else this.hooks.notice(t('edit.lassoEmpty'))
     return true
   }
 

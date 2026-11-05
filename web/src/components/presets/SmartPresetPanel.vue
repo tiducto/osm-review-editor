@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { reactive, watch } from 'vue'
 import { useEditPresetsStore } from '@/stores/presetEdit'
-import { usePresetsStore } from '@/stores/presets'
+import { useI18n } from '@/i18n'
 import Icon from '../Icon.vue'
 
 const store = useEditPresetsStore()
-const presets = usePresetsStore()
-const t = presets.t
+const { t, tn } = useI18n()
 const params = reactive<Record<string, string>>({})
 
 watch(
@@ -31,7 +30,7 @@ function label(k: string) {
         <div class="text-[10.5px] font-semibold tracking-wide text-fg-3 uppercase">{{ t('smart.title') }}</div>
         <div class="truncate font-semibold">{{ store.smartRun.preset.name }}</div>
       </div>
-      <span class="text-[11px] text-fg-3">{{ t('smart.steps', { n: store.smartRun.preset.steps.length }) }}</span>
+      <span class="text-[11px] text-fg-3">{{ tn('smart.steps', store.smartRun.preset.steps.length) }}</span>
     </div>
     <p v-if="store.smartRun.preset.description" class="text-[12px] text-fg-2">{{ store.smartRun.preset.description }}</p>
     <div v-if="Object.keys(store.smartRun.preset.params).length" class="grid grid-cols-2 gap-2">
@@ -41,8 +40,8 @@ function label(k: string) {
           <option v-for="o in p.options" :key="o" :value="o">{{ o }}</option>
         </select>
         <select v-else-if="p.type === 'check'" v-model="params[k]" class="input" :data-param="k">
-          <option value="yes">yes</option>
-          <option value="no">no</option>
+          <option value="yes">{{ t('field.yes') }}</option>
+          <option value="no">{{ t('field.no') }}</option>
         </select>
         <input v-else v-model="params[k]" class="input" :inputmode="p.type === 'number' ? 'decimal' : 'text'" :data-param="k" />
       </label>

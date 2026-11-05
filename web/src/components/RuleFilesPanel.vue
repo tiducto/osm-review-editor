@@ -6,8 +6,10 @@ import { TEMPLATE_KINDS, pathFor } from '@/lib/ruleTemplates'
 import Icon from './Icon.vue'
 import Spinner from './Spinner.vue'
 import Modal from './Modal.vue'
+import { useI18n } from '@/i18n'
 
 const store = useRuleFilesStore()
+const { t } = useI18n()
 const collapsed = ref(new Set<RuleKind>())
 const creating = ref<RuleKind | null>(null)
 const newName = ref('')
@@ -46,15 +48,15 @@ async function confirmCreate() {
   <div class="flex h-full flex-col" data-testid="rule-files">
     <div class="space-y-2 border-b border-line px-3 py-3">
       <div class="flex items-center gap-2">
-        <span class="section-title">Rules folder</span>
+        <span class="section-title">{{ t('rules.folder') }}</span>
         <Spinner v-if="store.loading" :size="11" class="text-fg-3" />
-        <button class="btn btn-ghost btn-icon btn-sm ml-auto w-6" title="Reload" @click="store.load()"><Icon name="refresh" :size="12" /></button>
+        <button class="btn btn-ghost btn-icon btn-sm ml-auto w-6" :title="t('common.reload')" @click="store.load()"><Icon name="refresh" :size="12" /></button>
       </div>
       <p class="truncate font-mono text-[11px] text-fg-3" :title="store.rulesDir">{{ store.rulesDir || '…' }}</p>
-      <input v-model="store.query" class="input" placeholder="Find a file…" />
+      <input v-model="store.query" class="input" :placeholder="t('rules.findFile')" />
       <div class="flex flex-wrap gap-1">
-        <button v-for="t in TEMPLATE_KINDS" :key="t.kind" class="btn btn-sm" :title="t.hint" :data-testid="`new-${t.kind}`" @click="startCreate(t.kind)">
-          <Icon name="plus" :size="11" /> {{ t.label }}
+        <button v-for="tk in TEMPLATE_KINDS" :key="tk.kind" class="btn btn-sm" :title="tk.hint" :data-testid="`new-${tk.kind}`" @click="startCreate(tk.kind)">
+          <Icon name="plus" :size="11" /> {{ tk.label }}
         </button>
       </div>
     </div>
@@ -75,27 +77,27 @@ async function confirmCreate() {
               @click="store.openFile(f.path)"
             >
               <span class="min-w-0 flex-1 truncate font-mono text-[12px]" :title="f.path">{{ name(f) }}</span>
-              <span v-if="f.origin?.builtIn" class="chip shrink-0 bg-surface-3 text-[10px] text-fg-3" title="Shipped with the app; copy it to edit">built-in</span>
-              <span v-else-if="f.origin" class="chip shrink-0 bg-surface-3 text-[10px] text-fg-3" :title="f.origin.url">remote</span>
+              <span v-if="f.origin?.builtIn" class="chip shrink-0 bg-surface-3 text-[10px] text-fg-3" :title="t('rules.builtInTitle')">{{ t('rules.builtIn') }}</span>
+              <span v-else-if="f.origin" class="chip shrink-0 bg-surface-3 text-[10px] text-fg-3" :title="f.origin.url">{{ t('rules.remote') }}</span>
               <span v-if="problems(f).e" class="chip shrink-0 bg-removed-soft text-[10px] text-removed">{{ problems(f).e }}</span>
               <span v-else-if="problems(f).w" class="chip shrink-0 bg-changed-soft text-[10px] text-changed">{{ problems(f).w }}</span>
             </button>
           </li>
-          <li v-if="!store.grouped.get(k)?.length" class="py-1 pl-7 text-[11.5px] text-fg-3">None</li>
+          <li v-if="!store.grouped.get(k)?.length" class="py-1 pl-7 text-[11.5px] text-fg-3">{{ t('common.none') }}</li>
         </ul>
       </section>
     </div>
 
-    <Modal v-if="creating" :title="`New ${TEMPLATE_KINDS.find((t) => t.kind === creating)?.label.toLowerCase()}`" width="420px" @close="creating = null">
+    <Modal v-if="creating" :title="TEMPLATE_KINDS.find((tk) => tk.kind === creating)?.newTitle ?? ''" width="420px" @close="creating = null">
       <form class="space-y-2 px-5 py-4" @submit.prevent="confirmCreate">
-        <label class="block text-[12px] text-fg-2">Name</label>
-        <input v-model="newName" class="input" autofocus placeholder="e.g. Cycleways without surface" data-testid="new-rule-name" />
+        <label class="block text-[12px] text-fg-2">{{ t('rules.name') }}</label>
+        <input v-model="newName" class="input" autofocus :placeholder="t('rules.namePlaceholder')" data-testid="new-rule-name" />
         <p class="font-mono text-[11px] text-fg-3">{{ pathFor(creating, newName) ?? '…' }}</p>
-        <p class="text-[12px] text-fg-3">{{ TEMPLATE_KINDS.find((t) => t.kind === creating)?.hint }}</p>
+        <p class="text-[12px] text-fg-3">{{ TEMPLATE_KINDS.find((tk) => tk.kind === creating)?.hint }}</p>
       </form>
       <template #footer>
-        <button class="btn ml-auto" @click="creating = null">Cancel</button>
-        <button class="btn btn-primary" :disabled="!newName.trim()" data-testid="create-rule" @click="confirmCreate">Create</button>
+        <button class="btn ml-auto" @click="creating = null">{{ t('common.cancel') }}</button>
+        <button class="btn btn-primary" :disabled="!newName.trim()" data-testid="create-rule" @click="confirmCreate">{{ t('common.create') }}</button>
       </template>
     </Modal>
   </div>

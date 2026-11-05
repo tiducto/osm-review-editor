@@ -6,6 +6,7 @@ import { useHighlightsStore } from './highlights'
 import { useScansStore } from './scans'
 import { usePanelStore, type PanelTab } from './panel'
 import { currentEditSession, useEditorStore } from './editor'
+import { t, tn } from '@/i18n'
 
 interface ViewSnapshot {
   center: [number, number] | null
@@ -29,10 +30,10 @@ function editId(ref: OsmRef): string {
 export function describePushView(e: UiEventPushView): string {
   const parts: string[] = []
   if (e.areaName) parts.push(e.areaName)
-  else if (e.bbox || e.center) parts.push('the view')
-  if (e.highlights.length) parts.push(`${e.highlights.length} highlight${e.highlights.length === 1 ? '' : 's'}`)
-  if (e.scanId) parts.push('a scan report')
-  if (e.draftId) parts.push('a draft')
+  else if (e.bbox || e.center) parts.push(t('push.theView'))
+  if (e.highlights.length) parts.push(tn('push.highlights', e.highlights.length))
+  if (e.scanId) parts.push(t('push.scanReport'))
+  if (e.draftId) parts.push(t('push.draft'))
   if (e.select.length) parts.push(e.select.map((r) => editId(r)).join(' '))
   return parts.join(', ')
 }
@@ -98,7 +99,7 @@ export function usePushView() {
       await scans.openScan(e.scanId)
     }
     if (e.draftId) {
-      if (editor.active && editor.editCount > 0) app.toast('Claude opened a draft, but you have unsaved edits; save or exit the editor to review it', 'error', 9000)
+      if (editor.active && editor.editCount > 0) app.toast(t('push.unsavedEdits'), 'error', 9000)
       else {
         if (editor.active) editor.exit(true)
         await drafts.open(e.draftId, { review: true })
@@ -117,8 +118,9 @@ export function usePushView() {
       }
     }
     const what = describePushView(e)
-    const text = `Claude changed the view${what ? `: ${what}` : ''}${e.message ? ` — ${e.message}` : ''}`
-    app.toast(text, 'info', 12000, { action: { label: 'Undo', run: () => void restore(before) }, testId: 'push-view-toast' })
+    const head = what ? t('push.changedWhat', { what }) : t('push.changed')
+    const text = e.message ? `${head} — ${e.message}` : head
+    app.toast(text, 'info', 12000, { action: { label: t('common.undo'), run: () => void restore(before) }, testId: 'push-view-toast' })
     window.focus()
   }
 

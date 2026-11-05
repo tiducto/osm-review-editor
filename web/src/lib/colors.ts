@@ -1,4 +1,5 @@
 import type { Severity } from '@/generated/models'
+import { t } from '@/i18n'
 
 export const rulePalette = [
   '#3b82f6', '#f59e0b', '#a855f7', '#14b8a6', '#ec4899', '#84cc16', '#f97316', '#06b6d4', '#8b5cf6', '#eab308',
@@ -27,10 +28,18 @@ export const changeKindColor: Record<ChangeKind, string> = {
 }
 
 export const changeKindLabel: Record<ChangeKind, string> = {
-  created: 'Created',
-  deleted: 'Deleted',
-  geometry: 'Geometry',
-  tags: 'Tags',
+  get created() {
+    return t('kind.created')
+  },
+  get deleted() {
+    return t('kind.deleted')
+  },
+  get geometry() {
+    return t('kind.geometry')
+  },
+  get tags() {
+    return t('kind.tags')
+  },
 }
 
 export const accent = '#2563eb'

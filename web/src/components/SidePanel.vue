@@ -13,18 +13,20 @@ import PresetsLibrary from './presets/PresetsLibrary.vue'
 import HighlightMapLayers from '@/map/HighlightMapLayers.vue'
 import ScanMapLayers from '@/map/ScanMapLayers.vue'
 import Icon from './Icon.vue'
+import { useI18n, type MessageKey } from '@/i18n'
 
+const { t } = useI18n()
 const panel = usePanelStore()
 const hl = useHighlightsStore()
 const ruleFiles = useRuleFilesStore()
 const scans = useScansStore()
 const mapStore = useMapStore()
 
-const tabs: { id: PanelTab; label: string; icon: 'layers' | 'rule' | 'edit' | 'sparkle' }[] = [
-  { id: 'map', label: 'Map', icon: 'layers' },
-  { id: 'validate', label: 'Validate', icon: 'rule' },
-  { id: 'rules', label: 'Rules', icon: 'edit' },
-  { id: 'presets', label: 'Presets', icon: 'sparkle' },
+const tabs: { id: PanelTab; label: MessageKey; icon: 'layers' | 'rule' | 'edit' | 'sparkle' }[] = [
+  { id: 'map', label: 'panel.map', icon: 'layers' },
+  { id: 'validate', label: 'panel.validate', icon: 'rule' },
+  { id: 'rules', label: 'panel.rules', icon: 'edit' },
+  { id: 'presets', label: 'panel.presets', icon: 'sparkle' },
 ]
 
 function edit(path: string) {
@@ -45,8 +47,8 @@ watch(
 
 watch(
   () => panel.tab,
-  (t) => {
-    scans.active = t === 'validate'
+  (v) => {
+    scans.active = v === 'validate'
   },
   { immediate: true },
 )
@@ -63,18 +65,18 @@ onMounted(() => {
     <ScanMapLayers />
     <nav class="flex h-10 shrink-0 items-stretch gap-0.5 border-b border-line px-1.5" role="tablist">
       <button
-        v-for="t in tabs"
-        :key="t.id"
+        v-for="tab in tabs"
+        :key="tab.id"
         role="tab"
         class="flex items-center gap-1 border-b-2 px-1.5 text-[12.5px] font-medium transition-colors"
-        :class="panel.tab === t.id ? 'border-accent text-fg' : 'border-transparent text-fg-3 hover:text-fg-2'"
-        :aria-selected="panel.tab === t.id"
-        :data-testid="`tab-${t.id}`"
-        @click="panel.tab = t.id"
+        :class="panel.tab === tab.id ? 'border-accent text-fg' : 'border-transparent text-fg-3 hover:text-fg-2'"
+        :aria-selected="panel.tab === tab.id"
+        :data-testid="`tab-${tab.id}`"
+        @click="panel.tab = tab.id"
       >
-        <Icon :name="t.icon" :size="13" /> {{ t.label }}
-        <span v-if="t.id === 'map' && hl.active.length" class="rounded-full bg-accent px-1.5 text-[10px] text-white">{{ hl.active.length }}</span>
-        <span v-if="t.id === 'validate' && scans.report" class="rounded-full bg-surface-3 px-1.5 text-[10px] text-fg-2">{{ scans.report.scan.issueCount }}</span>
+        <Icon :name="tab.icon" :size="13" /> {{ t(tab.label) }}
+        <span v-if="tab.id === 'map' && hl.active.length" class="rounded-full bg-accent px-1.5 text-[10px] text-white">{{ hl.active.length }}</span>
+        <span v-if="tab.id === 'validate' && scans.report" class="rounded-full bg-surface-3 px-1.5 text-[10px] text-fg-2">{{ scans.report.scan.issueCount }}</span>
       </button>
     </nav>
     <div class="min-h-0 flex-1">

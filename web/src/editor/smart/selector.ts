@@ -1,4 +1,5 @@
 import { mapCssParse, mapCssStyles } from 'osm-review-shared'
+import { t } from '@/i18n'
 
 const sheets = new Map<string, unknown>()
 
@@ -56,7 +57,7 @@ export function mapCssFeature(graph: any, entity: any): any {
 
 export function selectorMatches(selector: string, graph: any, entity: any): boolean {
   const sheet = sheetFor(selector)
-  if (sheet == null) throw new Error(`Invalid selector: ${selector}`)
+  if (sheet == null) throw new Error(t('smart.err.badSelector', { sel: selector }))
   const styled = mapCssStyles(sheet, mapCssFeature(graph, entity), null) as { rules: number[] }
   return styled.rules.includes(0)
 }

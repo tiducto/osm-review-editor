@@ -5,9 +5,11 @@ const stack: symbol[] = []
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import Icon from './Icon.vue'
+import { useI18n } from '@/i18n'
 
 withDefaults(defineProps<{ title: string; width?: string }>(), { width: '560px' })
 const emit = defineEmits<{ close: [] }>()
+const { t } = useI18n()
 const box = ref<HTMLElement | null>(null)
 
 const id = Symbol('modal')
@@ -43,7 +45,7 @@ onBeforeUnmount(() => {
         <header class="flex items-center gap-3 border-b border-line px-5 py-3.5">
           <h2 class="text-[15px] font-semibold">{{ title }}</h2>
           <slot name="header" />
-          <button class="btn btn-ghost btn-icon ml-auto" title="Close (Esc)" @click="emit('close')"><Icon name="x" /></button>
+          <button class="btn btn-ghost btn-icon ml-auto" :title="t('app.closeEsc')" @click="emit('close')"><Icon name="x" /></button>
         </header>
         <div class="scroll-thin min-h-0 flex-1 overflow-y-auto">
           <slot />

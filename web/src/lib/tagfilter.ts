@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 
 type Cond =
   | { op: 'eq'; key: string; values: string[] }
@@ -21,7 +22,7 @@ export function parseTagFilter(input: string): TagFilter {
     else if ((m = /^([^=!~]+)=(.+)$/.exec(raw))) conds.push({ op: 'eq', key: m[1], values: m[2].split('|') })
     else if ((m = /^([^=!~]+)~(.+)$/.exec(raw))) conds.push({ op: 'like', key: m[1], text: m[2].toLowerCase() })
     else if ((m = /^([^=!~]+)$/.exec(raw))) conds.push({ op: 'has', key: m[1] })
-    else return { conds: [], error: `Cannot read “${raw}”` }
+    else return { conds: [], error: t('app.tagFilterError', { raw }) }
   }
   return { conds, error: null }
 }

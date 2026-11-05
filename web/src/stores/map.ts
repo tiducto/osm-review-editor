@@ -7,6 +7,7 @@ import { api } from '@/api/client'
 import { useAppStore } from './app'
 import { refString, sameRef } from '@/lib/osm'
 import { asGeometry, geometryBBox } from '@/lib/geo'
+import { t } from '@/i18n'
 
 const IMAGERY_KEY = 'ore.imagery'
 
@@ -53,7 +54,7 @@ export const useMapStore = defineStore('map', () => {
   const areaLoading = ref(false)
   const polygon = shallowRef<Polygon | null>(null)
   const drawing = ref(false)
-  const scopeName = computed(() => area.value?.name ?? (polygon.value ? 'Drawn polygon' : null))
+  const scopeName = computed(() => area.value?.name ?? (polygon.value ? t('area.drawnPolygon') : null))
 
   const extraImagery = ref<ImagerySource[]>([])
   const imageryId = ref<string | null>(readImagery())
@@ -139,7 +140,7 @@ export const useMapStore = defineStore('map', () => {
       const f = await api.object(ref)
       if (sameRef(selected.value, ref)) selectedFeature.value = f
     } catch (e) {
-      if (sameRef(selected.value, ref)) app.fail(e, `Loading ${refString(ref)}`)
+      if (sameRef(selected.value, ref)) app.fail(e, t('app.loadingObject', { ref: refString(ref) }))
     } finally {
       selectedLoading.value = false
     }
@@ -171,7 +172,7 @@ export const useMapStore = defineStore('map', () => {
       area.value = a
       if (fly) fitBBox(a.bbox, 16)
     } catch (e) {
-      app.fail(e, `Area ${name}`)
+      app.fail(e, t('area.load', { name }))
     } finally {
       areaLoading.value = false
     }

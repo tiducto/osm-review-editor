@@ -5,13 +5,24 @@ import { rulesApi } from '@/api/rules'
 import { ApiError, errorMessage } from '@/api/client'
 import { useAppStore } from './app'
 import { templateFor, pathFor } from '@/lib/ruleTemplates'
+import { t } from '@/i18n'
 
-export const KIND_LABEL: Record<RuleKind, string> = {
-  highlight: 'Highlights',
-  check: 'Checks',
-  preset: 'Presets',
-  smart_preset: 'Smart presets',
-  sources: 'Sources',
+export const KIND_LABEL: Readonly<Record<RuleKind, string>> = {
+  get highlight() {
+    return t('rules.kind.highlight')
+  },
+  get check() {
+    return t('rules.kind.check')
+  },
+  get preset() {
+    return t('rules.kind.preset')
+  },
+  get smart_preset() {
+    return t('rules.kind.smart_preset')
+  },
+  get sources() {
+    return t('rules.kind.sources')
+  },
 }
 
 export const KIND_ORDER: RuleKind[] = ['highlight', 'check', 'preset', 'smart_preset', 'sources']
@@ -71,7 +82,7 @@ export const useRuleFilesStore = defineStore('ruleFiles', () => {
       rulesDir.value = r.rulesDir
       loaded.value = true
     } catch (e) {
-      app.fail(e, 'Rules folder')
+      app.fail(e, t('rules.folder'))
     } finally {
       loading.value = false
     }
@@ -82,7 +93,7 @@ export const useRuleFilesStore = defineStore('ruleFiles', () => {
   }
 
   async function openFile(path: string) {
-    if (dirty.value && open.value?.path !== path && !confirm(`Discard unsaved changes to ${open.value?.path}?`)) return
+    if (dirty.value && open.value?.path !== path && !confirm(t('rules.discard', { path: open.value?.path ?? '' }))) return
     try {
       const r = await rulesApi.read(path)
       open.value = {
@@ -100,12 +111,12 @@ export const useRuleFilesStore = defineStore('ruleFiles', () => {
       changedOnDisk.value = false
       forceOffer.value = false
     } catch (e) {
-      app.fail(e, `Open ${path}`)
+      app.fail(e, t('rules.openError', { path }))
     }
   }
 
   function close() {
-    if (dirty.value && !confirm(`Discard unsaved changes to ${open.value?.path}?`)) return false
+    if (dirty.value && !confirm(t('rules.discard', { path: open.value?.path ?? '' }))) return false
     open.value = null
     diagnostics.value = []
     conflict.value = null
@@ -140,20 +151,20 @@ export const useRuleFilesStore = defineStore('ruleFiles', () => {
       diagnostics.value = r.diagnostics
       if (!r.saved || !r.file) {
         forceOffer.value = true
-        app.toast('Not saved: the file has errors', 'error')
+        app.toast(t('rules.notSavedErrors'), 'error')
         return false
       }
       open.value = { ...f, saved: f.content, hash: r.file.hash, info: r.file, isNew: false }
       conflict.value = null
       changedOnDisk.value = false
       forceOffer.value = false
-      app.toast(`Saved ${f.path}`, 'success')
+      app.toast(t('rules.saved', { path: f.path }), 'success')
       void load()
       return true
     } catch (e) {
       if (e instanceof ApiError && e.status === 422) {
         forceOffer.value = true
-        app.toast('Not saved: the file has errors', 'error')
+        app.toast(t('rules.notSavedErrors'), 'error')
         return false
       }
       if (e instanceof ApiError && e.status === 409 && !f.isNew) {
@@ -165,7 +176,7 @@ export const useRuleFilesStore = defineStore('ruleFiles', () => {
         }
         return false
       }
-      app.fail(e, 'Save')
+      app.fail(e, t('common.save'))
       return false
     } finally {
       saving.value = false
@@ -193,11 +204,11 @@ export const useRuleFilesStore = defineStore('ruleFiles', () => {
   async function create(kind: RuleKind, name: string, content?: string) {
     const path = pathFor(kind, name)
     if (!path) {
-      app.toast('Use letters, digits, dots, dashes or underscores', 'error')
+      app.toast(t('rules.badName'), 'error')
       return
     }
     if (info(path)?.origin === null) {
-      app.toast(`${path} already exists`, 'error')
+      app.toast(t('rules.exists', { path }), 'error')
       return
     }
     try {
@@ -205,10 +216,10 @@ export const useRuleFilesStore = defineStore('ruleFiles', () => {
       const r = await rulesApi.create(path, body, true)
       await load()
       await openFile(path)
-      if (r.diagnostics.some((d) => d.severity === 'error')) app.toast('Created with errors; fix them in the editor', 'info')
-      else app.toast(`Created ${path}`, 'success')
+      if (r.diagnostics.some((d) => d.severity === 'error')) app.toast(t('rules.createdWithErrors'), 'info')
+      else app.toast(t('rules.created', { path }), 'success')
     } catch (e) {
-      app.fail(e, 'Create')
+      app.fail(e, t('common.create'))
     }
   }
 
@@ -218,9 +229,9 @@ export const useRuleFilesStore = defineStore('ruleFiles', () => {
       await load()
       const to = r.file?.path ?? path
       await openFile(to)
-      app.toast(`Copied to ${to}`, 'success')
+      app.toast(t('rules.copied', { path: to }), 'success')
     } catch (e) {
-      app.fail(e, 'Copy')
+      app.fail(e, t('common.copy'))
     }
   }
 
@@ -232,9 +243,9 @@ export const useRuleFilesStore = defineStore('ruleFiles', () => {
         diagnostics.value = []
       }
       await load()
-      app.toast(`Moved to ${r.trashedTo}`, 'success')
+      app.toast(t('rules.moved', { path: r.trashedTo }), 'success')
     } catch (e) {
-      app.fail(e, 'Delete')
+      app.fail(e, t('common.delete'))
     }
   }
 

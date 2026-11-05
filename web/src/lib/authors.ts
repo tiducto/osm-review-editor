@@ -1,3 +1,5 @@
+import { t } from '@/i18n'
+
 export type AuthorKind = 'user' | 'claude' | 'rule' | 'remote'
 
 export interface AuthorInfo {
@@ -12,9 +14,9 @@ export function parseAuthor(author: string): AuthorInfo {
     case 'claude':
       return { kind: 'claude', label: 'Claude', ruleId: null }
     case 'remote':
-      return { kind: 'remote', label: 'Remote', ruleId: null }
+      return { kind: 'remote', label: t('app.author.remote'), ruleId: null }
     case 'user':
-      return { kind: 'user', label: 'Me', ruleId: null }
+      return { kind: 'user', label: t('app.author.me'), ruleId: null }
     default:
       return { kind: 'user', label: author, ruleId: null }
   }

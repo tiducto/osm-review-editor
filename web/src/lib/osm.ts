@@ -1,4 +1,5 @@
 import type { OsmRef, OsmType } from '@/generated/models'
+import { t, type MessageKey } from '@/i18n'
 
 const prefix: Record<OsmType, string> = { node: 'n', way: 'w', relation: 'r' }
 const fromPrefix: Record<string, OsmType> = { n: 'node', w: 'way', r: 'relation' }
@@ -20,10 +21,10 @@ export function sameRef(a: OsmRef | null | undefined, b: OsmRef | null | undefin
   return !!a && !!b && a.type === b.type && a.id === b.id
 }
 
-const typeLabel: Record<OsmType, string> = { node: 'Node', way: 'Way', relation: 'Relation' }
+const typeLabel: Record<OsmType, MessageKey> = { node: 'app.osm.node', way: 'app.osm.way', relation: 'app.osm.relation' }
 
 export function refLabel(ref: OsmRef): string {
-  return `${typeLabel[ref.type]} ${ref.id}`
+  return `${t(typeLabel[ref.type])} ${ref.id}`
 }
 
 export function featureTitle(ref: OsmRef, tags: Record<string, string>): string {
@@ -46,6 +47,6 @@ export function mainTagLabel(tags: Record<string, string>): string | null {
 }
 
 export function humanize(s: string): string {
-  const t = s.replace(/[_:]/g, ' ')
-  return t.charAt(0).toUpperCase() + t.slice(1)
+  const out = s.replace(/[_:]/g, ' ')
+  return out.charAt(0).toUpperCase() + out.slice(1)
 }

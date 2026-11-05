@@ -5,6 +5,7 @@ import { usePresetsStore } from '@/stores/presets'
 import { fold } from '@/presets/catalog'
 import type { CategoryDef, Geometry, PresetDef } from '@/presets/types'
 import PresetIcon from './PresetIcon.vue'
+import { useI18n } from '@/i18n'
 import Icon from '../Icon.vue'
 
 const props = withDefaults(defineProps<{ geometries: Geometry[]; currentId?: string | null; smart?: SmartPreset[]; closable?: boolean }>(), {
@@ -15,7 +16,7 @@ const props = withDefaults(defineProps<{ geometries: Geometry[]; currentId?: str
 const emit = defineEmits<{ choose: [id: string]; smart: [preset: SmartPreset]; close: [] }>()
 
 const presets = usePresetsStore()
-const t = presets.t
+const { t } = useI18n()
 const query = ref('')
 const category = ref<CategoryDef | null>(null)
 const input = ref<HTMLInputElement | null>(null)
@@ -135,7 +136,7 @@ function subtitle(p: PresetDef): string {
         @input="onInput"
         @keydown="onKey"
       />
-      <button v-if="closable" class="btn btn-ghost btn-icon btn-sm w-6" :title="t('preset.back')" @click="emit('close')"><Icon name="x" :size="14" /></button>
+      <button v-if="closable" class="btn btn-ghost btn-icon btn-sm w-6" :title="t('common.close')" :aria-label="t('common.close')" @click="emit('close')"><Icon name="x" :size="14" /></button>
     </div>
     <div class="scroll-thin min-h-0 flex-1 overflow-y-auto pb-2">
       <div v-if="!presets.catalog" class="px-4 py-6 text-center text-fg-3">{{ t('inspector.loading') }}</div>

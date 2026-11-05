@@ -2,6 +2,7 @@ import { mapCssChecks, mapCssParse } from 'osm-review-shared'
 import type { IdAdapter, IdIssue } from '../id/adapter'
 import type { IdEntity, IdNode, IdWay, LngLatTuple } from '../types'
 import { GraphMapCssHost } from './mapcssHost'
+import { t } from '@/i18n'
 
 export type IssueSeverity = 'error' | 'warning' | 'suggestion' | 'info'
 
@@ -59,12 +60,12 @@ export function parseCheckSheet(path: string, hash: string, source: string): Che
 
 export function describeTagEdit(edit: TagEditJs): string {
   const parts: string[] = []
-  if (edit.replaceAll) parts.push(`replace tags with ${Object.entries(edit.replaceAll).map(([k, v]) => `${k}=${v}`).join(', ')}`)
+  if (edit.replaceAll) parts.push(t('validation.replaceTags', { tags: Object.entries(edit.replaceAll).map(([k, v]) => `${k}=${v}`).join(', ') }))
   const removed = edit.remove ?? []
   const set = Object.entries(edit.set ?? {})
-  if (removed.length) parts.push(`remove ${removed.join(', ')}`)
-  if (set.length) parts.push(`set ${set.map(([k, v]) => `${k}=${v}`).join(', ')}`)
-  return parts.join('; ') || 'no change'
+  if (removed.length) parts.push(t('validation.removeTags', { keys: removed.join(', ') }))
+  if (set.length) parts.push(t('validation.setTags', { tags: set.map(([k, v]) => `${k}=${v}`).join(', ') }))
+  return parts.join('; ') || t('validation.noChange')
 }
 
 export function isEmptyTagEdit(edit: TagEditJs | null | undefined): boolean {
@@ -115,9 +116,9 @@ export function runMapCssChecks(adapter: IdAdapter, sheets: CheckSheet[], ids: s
         seen.add(issueId)
         const fixes: EditIssueFix[] = []
         const tagEdit = isEmptyTagEdit(r.fix) ? null : r.fix
-        if (tagEdit) fixes.push({ id: 'tags', title: `Fix: ${describeTagEdit(tagEdit)}`, disabled: null })
-        if (r.deleteObject) fixes.push({ id: 'delete', title: 'Delete this feature', disabled: null })
-        if (r.severity !== 'error') fixes.push({ id: 'ignore', title: 'Ignore this issue', disabled: null })
+        if (tagEdit) fixes.push({ id: 'tags', title: t('validation.fix', { edit: describeTagEdit(tagEdit) }), disabled: null })
+        if (r.deleteObject) fixes.push({ id: 'delete', title: t('validation.deleteFeature'), disabled: null })
+        if (r.severity !== 'error') fixes.push({ id: 'ignore', title: t('validation.ignore'), disabled: null })
         out.push({
           id: issueId,
           source: 'mapcss',
@@ -175,7 +176,7 @@ export function applyIssueFix(adapter: IdAdapter, issue: EditIssue, fixId: strin
     return true
   }
   const target = issue.entityIds[0]
-  if (fixId === 'tags' && issue.tagEdit) return adapter.applyTagEdit(target, issue.tagEdit, `Fixed: ${issue.message}`)
-  if (fixId === 'delete' && issue.deleteObject) return adapter.deleteEntities([target], `Deleted: ${issue.message}`)
+  if (fixId === 'tags' && issue.tagEdit) return adapter.applyTagEdit(target, issue.tagEdit, t('edit.ann.fixed', { message: issue.message }))
+  if (fixId === 'delete' && issue.deleteObject) return adapter.deleteEntities([target], t('edit.ann.deleted', { message: issue.message }))
   return false
 }

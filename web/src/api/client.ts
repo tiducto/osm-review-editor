@@ -35,6 +35,7 @@ import type {
 } from '@/generated/models'
 import { bboxParam } from '@/lib/geo'
 import { refString } from '@/lib/osm'
+import { t } from '@/i18n'
 
 export class ApiError extends Error {
   constructor(
@@ -72,7 +73,7 @@ async function send(method: string, path: string, body: unknown, signal: AbortSi
     })
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') throw e
-    throw new ApiError(0, 'network', 'The server is not reachable')
+    throw new ApiError(0, 'network', t('api.unreachable'))
   }
   const text = await res.text()
   if (!res.ok) {

@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { AccountStatus, AppStatus, Area, ImagerySource, MirrorStatus, OsmTarget } from '@/generated/models'
 import { api, errorMessage } from '@/api/client'
 import type { ConnectionState } from '@/api/events'
+import { t } from '@/i18n'
 
 export type ToastKind = 'info' | 'success' | 'error'
 
@@ -39,7 +40,7 @@ export const useAppStore = defineStore('app', () => {
     return id
   }
   function dismiss(id: number) {
-    toasts.value = toasts.value.filter((t) => t.id !== id)
+    toasts.value = toasts.value.filter((x) => x.id !== id)
   }
   function fail(e: unknown, what?: string) {
     const msg = errorMessage(e)
@@ -63,7 +64,7 @@ export const useAppStore = defineStore('app', () => {
     try {
       account.value = await api.account()
     } catch (e) {
-      fail(e, 'Account')
+      fail(e, t('app.account'))
     }
   }
 
@@ -74,22 +75,22 @@ export const useAppStore = defineStore('app', () => {
     if (ar.status === 'fulfilled') areas.value = ar.value
   }
 
-  async function setTarget(t: OsmTarget, confirm = false) {
+  async function setTarget(target: OsmTarget, confirm = false) {
     try {
-      account.value = await api.setTarget({ target: t, confirm })
-      toast(`API target switched to ${t === 'prod' ? 'production' : 'development'}`, 'success')
+      account.value = await api.setTarget({ target, confirm })
+      toast(target === 'prod' ? t('app.targetProd') : t('app.targetDev'), 'success')
       await loadStatus()
     } catch (e) {
-      fail(e, 'Switching target')
+      fail(e, t('app.switchingTarget'))
     }
   }
 
   async function logout() {
     try {
       account.value = await api.logout()
-      toast('OSM account disconnected')
+      toast(t('app.disconnected'))
     } catch (e) {
-      fail(e, 'Disconnect')
+      fail(e, t('app.disconnect'))
     }
   }
 

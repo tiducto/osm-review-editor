@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref, shallowRef } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import type { DraftDetail, OpenChangeElsewhere, OsmChangeImportResult, ProposalResult } from '@/generated/models'
 import { api, ApiError, errorMessage } from '@/api/client'
 import type { EditSession } from '@/editor/session'
@@ -8,6 +8,7 @@ import type { EntityGeometry, EntitySnapshot, OperationInfo, Tags } from '@/edit
 import { asGeometry, geometryBBox } from '@/lib/geo'
 import { isTyping } from '@/lib/keyboard'
 import { refString } from '@/lib/osm'
+import { formatNumber, locale, t, tn } from '@/i18n'
 import { useAppStore } from './app'
 import { useMapStore } from './map'
 import { useDraftsStore } from './drafts'
@@ -119,12 +120,23 @@ export const useEditorStore = defineStore('editor', () => {
     issues.schedule()
   }
 
+  watch(locale, (l) => {
+    const s = session
+    if (!s) return
+    void import('@/editor/session')
+      .then((m) => m.setIdLocale(l))
+      .then((changed) => {
+        if (changed && session === s) sync()
+      })
+      .catch(() => {})
+  })
+
   async function enter(): Promise<boolean> {
     if (active.value || starting.value) return active.value
     const map = mapStore.instance()
     if (!map) return false
     if (map.getZoom() < EDIT_MIN_ZOOM) {
-      app.toast('Zoom in further to edit (zoom 16 or more)')
+      app.toast(t('edit.zoomIn'))
       return false
     }
     starting.value = true
@@ -166,7 +178,7 @@ export const useEditorStore = defineStore('editor', () => {
       sync()
       return true
     } catch (e) {
-      app.fail(e, 'Starting the editor')
+      app.fail(e, t('edit.startFailed'))
       return false
     } finally {
       starting.value = false
@@ -294,7 +306,7 @@ export const useEditorStore = defineStore('editor', () => {
       e.preventDefault()
       const info = operations.value.find((o) => o.id === op)
       if (!info) return
-      if (info.disabled) app.toast(info.tooltip || `${info.title} is not available`)
+      if (info.disabled) app.toast(info.tooltip || t('edit.opUnavailable', { op: info.title }))
       else runOperation(op)
     }
   }
@@ -302,7 +314,7 @@ export const useEditorStore = defineStore('editor', () => {
   async function requestSave() {
     if (!session || saving.value || issues.summary) return
     if (!editCount.value && !draftId.value) {
-      app.toast('Nothing to save yet')
+      app.toast(t('edit.nothingToSave'))
       return
     }
     if (mode.value === 'draw') session.controller.finishDrawing()
@@ -335,7 +347,7 @@ export const useEditorStore = defineStore('editor', () => {
     const osmChange = a.osmChange()
     if (draftId.value) return api.importOsmChange(draftId.value, { osmChange, replace: replaceSafe.value, takeOver: take })
     return api.draftFromOsmChange({
-      title: req?.title || 'Edit session',
+      title: req?.title || t('edit.defaultDraftTitle'),
       osmChange,
       changesetComment: req?.changesetComment || null,
       area: mapStore.area?.name ?? null,
@@ -366,16 +378,14 @@ export const useEditorStore = defineStore('editor', () => {
       saveDialog.value = false
       const id = result.draft.draft.id
       const failed = result.results.filter((r) => r.outcome === 'error')
-      app.toast(
-        `Saved ${result.results.length - failed.length} element${result.results.length === 1 ? '' : 's'} to "${result.draft.draft.title}"${failed.length ? `; ${failed.length} failed` : ''}`,
-        failed.length ? 'error' : 'success',
-      )
+      const saved = tn('edit.saved', result.results.length - failed.length, { title: result.draft.draft.title })
+      app.toast(failed.length ? t('edit.savedWithFailures', { saved, failed: formatNumber(failed.length) }) : saved, failed.length ? 'error' : 'success')
       teardown()
       await drafts.loadDrafts()
       await drafts.open(id, { review: true })
       return true
     } catch (e) {
-      app.toast(`Saving failed: ${errorMessage(e)}`, 'error', 10000)
+      app.toast(t('edit.saveFailed', { error: errorMessage(e) }), 'error', 10000)
       return false
     } finally {
       saving.value = false
@@ -403,7 +413,7 @@ export const useEditorStore = defineStore('editor', () => {
 
   async function editDraft(id: string) {
     if (active.value && editCount.value > 0 && draftId.value !== id) {
-      app.toast('Save or exit the current edit session first', 'error')
+      app.toast(t('edit.finishCurrent'), 'error')
       return
     }
     try {
@@ -426,23 +436,23 @@ export const useEditorStore = defineStore('editor', () => {
           ],
           120,
         )
-        if (want > 120) app.toast('The draft spans a large area; only part of it is loaded', 'error')
+        if (want > 120) app.toast(t('edit.largeDraft'), 'error')
         await s.loader.idle()
         if (session !== s) return
       }
-      const report = session.adapter.applyOsmChange(xml, `Loaded draft "${detail.draft.title}"`)
+      const report = session.adapter.applyOsmChange(xml, t('edit.ann.loadedDraftTitle', { title: detail.draft.title }))
       draftId.value = id
       draftTitle.value = detail.draft.title
       replaceSafe.value = report.missing.length === 0
       session.controller.refreshHidden()
       session.controller.select([])
       sync()
-      const parts = [`${report.created + report.modified + report.deleted} changes loaded`]
-      if (report.stale.length) parts.push(`${report.stale.length} based on an older version`)
-      if (report.missing.length) parts.push(`${report.missing.length} elements could not be loaded, so saving will not remove anything from the draft`)
-      app.toast(`Editing "${detail.draft.title}": ${parts.join('; ')}`, report.missing.length ? 'error' : 'success', 8000)
+      const parts = [tn('edit.loadedChanges', report.created + report.modified + report.deleted)]
+      if (report.stale.length) parts.push(tn('edit.loadedStale', report.stale.length))
+      if (report.missing.length) parts.push(tn('edit.loadedMissing', report.missing.length))
+      app.toast(t('edit.editingDraft', { title: detail.draft.title, details: parts.join('; ') }), report.missing.length ? 'error' : 'success', 8000)
     } catch (e) {
-      app.fail(e, 'Editing draft')
+      app.fail(e, t('edit.editDraftFailed'))
     }
   }
 

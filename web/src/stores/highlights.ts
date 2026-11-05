@@ -10,6 +10,7 @@ import { scopeOf, tilesFor } from '@/lib/scope'
 import { padBBox } from '@/lib/geo'
 import { parseTagFilter } from '@/lib/tagfilter'
 import type { IdSets } from '@/map/highlightStyle'
+import { t } from '@/i18n'
 
 export const FILTER_PATH = 'filter:quick'
 export const EVAL_ZOOM = 13
@@ -38,7 +39,7 @@ export function compileLocal(path: string, source: string, title: string): { fil
   const parsed = mapCssParse(source, path)
   const diags = (parsed.diagnostics ?? []) as HighlightFile['diagnostics']
   const firstError = diags.find((d) => d.severity === 'error')
-  if (!parsed.ok || firstError) return { file: null, error: firstError?.message ?? 'Cannot parse' }
+  if (!parsed.ok || firstError) return { file: null, error: firstError?.message ?? t('highlight.cannotParse') }
   const meta = (parsed.meta ?? {}) as Record<string, JsonValue>
   const legend = (parsed.legend ?? []) as HighlightFile['legend']
   const rules: HighlightRule[] = (mapCssRules(parsed.stylesheet) as RuleInfo[])
@@ -80,7 +81,7 @@ function escapeRegex(v: string): string {
 export function filterToMapCss(text: string, color = '#e11d48'): { selector: string; source: string } | { error: string } {
   const f = parseTagFilter(text)
   if (f.error) return { error: f.error }
-  if (!f.conds.length) return { error: 'Type a condition like highway=footway !surface' }
+  if (!f.conds.length) return { error: t('highlight.typeCondition') }
   const conds = f.conds
     .map((c) => {
       const k = quote(c.key)
@@ -335,7 +336,7 @@ export const useHighlightsStore = defineStore('highlights', () => {
         stats.set(f.path, { key, data: cur?.data ?? null, loading: true, error: null })
         try {
           const data = f.path === FILTER_PATH || f.path === preview.value?.path ? null : await rulesApi.stats({ path: f.path, ...s.body }, ctrl.signal)
-          if (statsCtrls.get(f.path) === ctrl) stats.set(f.path, { key, data, loading: false, error: data ? null : 'Save the file to see coverage' })
+          if (statsCtrls.get(f.path) === ctrl) stats.set(f.path, { key, data, loading: false, error: data ? null : t('highlight.saveForCoverage') })
         } catch (e) {
           if (isAbort(e)) return
           if (statsCtrls.get(f.path) === ctrl) stats.set(f.path, { key, data: null, loading: false, error: errorMessage(e) })
@@ -420,10 +421,10 @@ export const useHighlightsStore = defineStore('highlights', () => {
       quickText.value = ''
       await load()
       toggle(path, true)
-      app.toast(`Created ${path}`, 'success')
+      app.toast(t('highlight.created', { path }), 'success')
       return path
     } catch (e) {
-      app.fail(e, 'New highlight')
+      app.fail(e, t('highlight.newHighlight'))
       return null
     }
   }

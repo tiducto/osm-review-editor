@@ -7,19 +7,21 @@ import { changeKind } from '@/lib/changes'
 import { changeKindColor, changeKindLabel } from '@/lib/colors'
 import { featureTitle, refString } from '@/lib/osm'
 import StatusPill from './StatusPill.vue'
+import { useI18n, type MessageKey } from '@/i18n'
 
+const { t } = useI18n()
 const drafts = useDraftsStore()
 const rules = useRulesStore()
 const filter = ref<ChangeStatus | ''>('')
 const body = ref<HTMLElement | null>(null)
 
-const statuses: { id: ChangeStatus | ''; label: string }[] = [
-  { id: '', label: 'All' },
-  { id: 'pending', label: 'Pending' },
-  { id: 'approved', label: 'Approved' },
-  { id: 'rejected', label: 'Rejected' },
-  { id: 'conflict', label: 'Conflicts' },
-  { id: 'uploaded', label: 'Uploaded' },
+const statuses: { id: ChangeStatus | ''; label: MessageKey }[] = [
+  { id: '', label: 'common.all' },
+  { id: 'pending', label: 'queue.status.pending' },
+  { id: 'approved', label: 'queue.status.approved' },
+  { id: 'rejected', label: 'queue.status.rejected' },
+  { id: 'conflict', label: 'queue.status.conflict' },
+  { id: 'uploaded', label: 'queue.status.uploaded' },
 ]
 
 const rows = computed(() =>
@@ -58,7 +60,7 @@ watch(
 
 <template>
   <div class="flex h-full flex-col">
-    <div v-if="!drafts.current" class="grid flex-1 place-items-center text-fg-3">Open a draft to see its changes.</div>
+    <div v-if="!drafts.current" class="grid flex-1 place-items-center text-fg-3">{{ t('queue.empty') }}</div>
     <template v-else>
       <div class="flex shrink-0 items-center gap-2 px-3 py-1.5">
         <div class="flex rounded-md bg-surface-3 p-0.5">
@@ -69,12 +71,12 @@ watch(
             :class="filter === s.id ? 'bg-surface text-fg shadow-sm' : 'text-fg-3 hover:text-fg-2'"
             @click="filter = s.id"
           >
-            {{ s.label }} <span class="font-mono text-[10.5px] opacity-70">{{ count(s.id) }}</span>
+            {{ t(s.label) }} <span class="font-mono text-[10.5px] opacity-70">{{ count(s.id) }}</span>
           </button>
         </div>
-        <button v-if="!drafts.reviewing" class="btn btn-sm ml-auto" @click="drafts.startReview()">Start review</button>
-        <button v-else class="btn btn-ghost btn-sm ml-auto" :disabled="drafts.busy" title="Refetch live versions, detect conflicts" @click="drafts.refreshLive()">
-          Refresh live
+        <button v-if="!drafts.reviewing" class="btn btn-sm ml-auto" @click="drafts.startReview()">{{ t('queue.startReview') }}</button>
+        <button v-else class="btn btn-ghost btn-sm ml-auto" :disabled="drafts.busy" :title="t('queue.refreshLiveTitle')" @click="drafts.refreshLive()">
+          {{ t('queue.refreshLive') }}
         </button>
       </div>
       <div ref="body" class="scroll-thin min-h-0 flex-1 overflow-auto">
@@ -90,11 +92,11 @@ watch(
           <thead class="sticky top-0 z-[1] bg-surface text-left text-[11px] text-fg-3">
             <tr class="border-b border-line">
               <th class="px-3 py-1 font-medium">#</th>
-              <th class="px-2 py-1 font-medium">Object</th>
-              <th class="px-2 py-1 font-medium">Rule</th>
-              <th class="px-2 py-1 font-medium">Change</th>
-              <th class="px-2 py-1 font-medium">Kind</th>
-              <th class="px-2 py-1 font-medium">Status</th>
+              <th class="px-2 py-1 font-medium">{{ t('queue.col.object') }}</th>
+              <th class="px-2 py-1 font-medium">{{ t('queue.col.rule') }}</th>
+              <th class="px-2 py-1 font-medium">{{ t('queue.col.change') }}</th>
+              <th class="px-2 py-1 font-medium">{{ t('queue.col.kind') }}</th>
+              <th class="px-2 py-1 font-medium">{{ t('queue.col.status') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -121,13 +123,13 @@ watch(
               </td>
               <td class="truncate px-2 py-1 font-mono text-[11.5px]">
                 <span
-                  v-for="(t, k) in tokens(c)"
+                  v-for="(tok, k) in tokens(c)"
                   :key="k"
                   class="mr-2"
-                  :class="{ 'text-added': t.sign === '+', 'text-changed': t.sign === '~', 'text-removed': t.sign === '−' }"
-                  >{{ t.sign }}{{ t.text }}</span
+                  :class="{ 'text-added': tok.sign === '+', 'text-changed': tok.sign === '~', 'text-removed': tok.sign === '−' }"
+                  >{{ tok.sign }}{{ tok.text }}</span
                 >
-                <span v-if="!tokens(c).length" class="text-fg-3">geometry only</span>
+                <span v-if="!tokens(c).length" class="text-fg-3">{{ t('queue.geometryOnly') }}</span>
               </td>
               <td class="px-2 py-1">
                 <span class="flex items-center gap-1.5 text-[11.5px] text-fg-2">
@@ -138,7 +140,7 @@ watch(
             </tr>
           </tbody>
         </table>
-        <div v-if="!rows.length" class="px-3 py-6 text-center text-fg-3">No changes match.</div>
+        <div v-if="!rows.length" class="px-3 py-6 text-center text-fg-3">{{ t('queue.noMatch') }}</div>
       </div>
     </template>
   </div>

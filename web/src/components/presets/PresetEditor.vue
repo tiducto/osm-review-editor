@@ -6,6 +6,7 @@ import type { FieldDef, FieldTags, Geometry, PresetDef, TagPatch, Tags } from '@
 import TagEditor from '../TagEditor.vue'
 import Icon from '../Icon.vue'
 import PresetIcon from './PresetIcon.vue'
+import { useI18n } from '@/i18n'
 import PresetPicker from './PresetPicker.vue'
 import PresetFieldList from './PresetFieldList.vue'
 
@@ -25,7 +26,7 @@ const props = withDefaults(defineProps<{ entities: EditableEntity[]; smart?: Sma
 const emit = defineEmits<{ patch: [patch: TagPatch]; tags: [tags: Tags]; preset: [id: string]; smart: [preset: SmartPreset]; 'update:picking': [v: boolean] }>()
 
 const presets = usePresetsStore()
-const t = presets.t
+const { t, tn } = useI18n()
 void presets.ensure().catch(() => {})
 
 const pickerOpen = ref(props.picking)
@@ -95,7 +96,7 @@ const presetName = computed(() => {
 const title = computed(() => {
   const s = single.value
   if (s) return s.title ?? s.tags.name ?? ''
-  return t('preset.multi', { n: props.entities.length })
+  return tn('preset.multi', props.entities.length)
 })
 
 function choose(id: string) {
@@ -140,18 +141,6 @@ function runSmart(p: SmartPreset) {
           <slot name="meta" />
         </div>
         <div class="flex shrink-0 flex-col items-end gap-1">
-          <div class="flex overflow-hidden rounded-md border border-line text-[10.5px]" :title="t('inspector.locale')">
-            <button
-              v-for="l in ['cs', 'en'] as const"
-              :key="l"
-              class="px-1.5 py-0.5 uppercase"
-              :class="presets.locale === l ? 'bg-accent text-white' : 'text-fg-3 hover:bg-surface-3'"
-              :data-testid="`preset-locale-${l}`"
-              @click="presets.locale = l"
-            >
-              {{ l }}
-            </button>
-          </div>
           <button v-if="!readonly" class="btn btn-sm" data-testid="change-preset" @click="pickerOpen = true">{{ t('preset.change') }}</button>
         </div>
       </div>

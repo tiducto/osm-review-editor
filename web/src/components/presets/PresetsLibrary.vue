@@ -16,6 +16,7 @@ import PresetIcon from './PresetIcon.vue'
 import BulkApplyDialog from './BulkApplyDialog.vue'
 import Icon from '../Icon.vue'
 import Spinner from '../Spinner.vue'
+import { useI18n } from '@/i18n'
 
 const presets = usePresetsStore()
 const presetEdit = useEditPresetsStore()
@@ -24,7 +25,7 @@ const mapStore = useMapStore()
 const ruleFiles = useRuleFilesStore()
 const panel = usePanelStore()
 const app = useAppStore()
-const t = presets.t
+const { t, tn } = useI18n()
 
 const query = ref('')
 const openId = ref<string | null>(null)
@@ -32,7 +33,7 @@ const openCat = ref<string | null>(null)
 const bulkFor = ref<string | null | undefined>(undefined)
 const working = ref(false)
 
-onMounted(() => void presets.ensure().catch((e) => app.fail(e, 'Presets')))
+onMounted(() => void presets.ensure().catch((e) => app.fail(e, t('library.title'))))
 
 const userPresets = computed<PresetDef[]>(() => {
   const cat = presets.catalog
@@ -66,6 +67,10 @@ const selectedFeature = computed<{ tags: Tags; geometry: Geometry } | null>(() =
   const geometry: Geometry = f.ref.type === 'node' ? 'point' : g === 'Polygon' || g === 'MultiPolygon' ? 'area' : f.ref.type === 'relation' ? 'relation' : 'line'
   return { tags: f.tags, geometry }
 })
+
+function drawLabel(k: 'point' | 'line' | 'area'): string {
+  return t(k === 'point' ? 'draw.point' : k === 'line' ? 'draw.line' : 'draw.area')
+}
 
 function members(c: CategoryDef): PresetDef[] {
   const cat = presets.catalog
@@ -135,7 +140,7 @@ async function fromFeature() {
   for (const [k, v] of Object.entries(f.tags)) if (!SKIP_KEY.test(k)) addTags[k] = v
   const tags = Object.keys(addTags).length ? addTags : matched.tags
   const base = slug(fold(`${matched.name}-${Object.values(addTags).slice(1, 3).join('-')}`)) || 'preset'
-  const name = `${matched.name} (${presets.locale === 'cs' ? 'vlastní' : 'custom'})`
+  const name = `${matched.name} (${t('library.custom')})`
   const preset = {
     id: `custom/${base}`,
     name,
@@ -157,18 +162,6 @@ async function fromFeature() {
       <div class="flex items-center gap-2">
         <span class="section-title">{{ t('library.title') }}</span>
         <Spinner v-if="presets.loading || working" :size="11" class="text-fg-3" />
-        <div class="ml-auto flex overflow-hidden rounded-md border border-line text-[10.5px]" :title="t('inspector.locale')">
-          <button
-            v-for="l in ['cs', 'en'] as const"
-            :key="l"
-            class="px-1.5 py-0.5 uppercase"
-            :class="presets.locale === l ? 'bg-accent text-white' : 'text-fg-3 hover:bg-surface-3'"
-            :data-testid="`library-locale-${l}`"
-            @click="presets.locale = l"
-          >
-            {{ l }}
-          </button>
-        </div>
       </div>
       <input v-model="query" class="input" :placeholder="t('library.search')" data-testid="library-search" />
       <div class="flex flex-wrap gap-1">
@@ -197,7 +190,7 @@ async function fromFeature() {
           <button class="btn btn-sm" :disabled="!fits(p)" :title="fits(p) ? '' : t('library.noSelection')" data-testid="library-apply" @click="presetEdit.changePreset(selectionIds, p.id)">
             {{ t('library.applySelection') }}
           </button>
-          <button v-for="k in presetEdit.canDraw(p)" :key="k" class="btn btn-sm" :data-draw="k" @click="presetEdit.drawWith(p.id, k)">{{ t('library.draw') }}: {{ t(`draw.${k}`) }}</button>
+          <button v-for="k in presetEdit.canDraw(p)" :key="k" class="btn btn-sm" :data-draw="k" @click="presetEdit.drawWith(p.id, k)">{{ t('library.draw') }}: {{ drawLabel(k) }}</button>
           <button class="btn btn-sm" @click="bulkFor = p.id">{{ t('library.bulk') }}</button>
         </div>
       </div>
@@ -209,7 +202,7 @@ async function fromFeature() {
           <PresetIcon :icon="null" :size="26" smart />
           <span class="min-w-0 flex-1">
             <span class="block truncate text-[12.5px] font-medium">{{ s.name }}</span>
-            <span class="block truncate font-mono text-[10.5px] text-fg-3">{{ s.match }} · {{ t('smart.steps', { n: s.steps.length }) }}</span>
+            <span class="block truncate font-mono text-[10.5px] text-fg-3">{{ s.match }} · {{ tn('smart.steps', s.steps.length) }}</span>
           </span>
         </div>
         <p v-if="s.description" class="mt-0.5 text-[11.5px] text-fg-2">{{ s.description }}</p>
@@ -239,7 +232,7 @@ async function fromFeature() {
           <div v-if="openId === p.id" class="flex flex-wrap gap-1 px-3 pb-2">
             <button class="btn btn-sm" data-testid="library-import" @click="importOverlay(p)">{{ t('library.import') }}</button>
             <button class="btn btn-sm" :disabled="!fits(p)" @click="presetEdit.changePreset(selectionIds, p.id)">{{ t('library.applySelection') }}</button>
-            <button v-for="k in presetEdit.canDraw(p)" :key="k" class="btn btn-sm" :data-draw="k" @click="presetEdit.drawWith(p.id, k)">{{ t('library.draw') }}: {{ t(`draw.${k}`) }}</button>
+            <button v-for="k in presetEdit.canDraw(p)" :key="k" class="btn btn-sm" :data-draw="k" @click="presetEdit.drawWith(p.id, k)">{{ t('library.draw') }}: {{ drawLabel(k) }}</button>
             <button class="btn btn-sm" @click="bulkFor = p.id">{{ t('library.bulk') }}</button>
           </div>
         </div>
@@ -261,7 +254,7 @@ async function fromFeature() {
               <div v-if="openId === p.id" class="flex flex-wrap gap-1 px-3 pb-2">
                 <button class="btn btn-sm" @click="importOverlay(p)">{{ t('library.import') }}</button>
                 <button class="btn btn-sm" :disabled="!fits(p)" @click="presetEdit.changePreset(selectionIds, p.id)">{{ t('library.applySelection') }}</button>
-                <button v-for="k in presetEdit.canDraw(p)" :key="k" class="btn btn-sm" @click="presetEdit.drawWith(p.id, k)">{{ t('library.draw') }}: {{ t(`draw.${k}`) }}</button>
+                <button v-for="k in presetEdit.canDraw(p)" :key="k" class="btn btn-sm" @click="presetEdit.drawWith(p.id, k)">{{ t('library.draw') }}: {{ drawLabel(k) }}</button>
                 <button class="btn btn-sm" @click="bulkFor = p.id">{{ t('library.bulk') }}</button>
               </div>
             </div>

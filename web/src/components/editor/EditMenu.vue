@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useEditorStore } from '@/stores/editor'
+import { useI18n } from '@/i18n'
 
 const editor = useEditorStore()
+const { t } = useI18n()
 const box = ref<HTMLElement | null>(null)
 
 const style = computed(() => {
@@ -36,7 +38,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDoc, true))
     data-testid="edit-menu"
     @contextmenu.prevent
   >
-    <div v-if="!editor.operations.length" class="px-3 py-1.5 text-fg-3">No operations for this selection</div>
+    <div v-if="!editor.operations.length" class="px-3 py-1.5 text-fg-3">{{ t('menu.empty') }}</div>
     <button
       v-for="op in editor.operations"
       :key="op.id"

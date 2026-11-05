@@ -8,6 +8,7 @@ import { useMapStore } from './map'
 import { useDraftsStore } from './drafts'
 import { useRuleFilesStore } from './ruleFiles'
 import { scopeOf } from '@/lib/scope'
+import { formatNumber, t, tn } from '@/i18n'
 
 export type DiffView = 'all' | 'new' | 'resolved'
 export type IssueState = 'new' | 'unchanged' | 'resolved'
@@ -99,7 +100,7 @@ export const useScansStore = defineStore('scans', () => {
       const scan = await rulesApi.runScan({ ...s.body, files: [...selectedFiles], builtIn: [...selectedBuiltIn] }, runCtrl.signal)
       await loadHistory()
       await openScan(scan.id)
-      app.toast(`Scan finished: ${scan.issueCount.toLocaleString()} issues in ${((scan.tookMs ?? 0) / 1000).toFixed(1)} s`, 'success')
+      app.toast(tn('scan.finished', scan.issueCount, { seconds: formatNumber((scan.tookMs ?? 0) / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) }), 'success')
     } catch (e) {
       if (!isAbort(e)) runError.value = errorMessage(e)
     } finally {
@@ -126,7 +127,7 @@ export const useScansStore = defineStore('scans', () => {
         if (g.type === 'Polygon' && r.scan.areaName) void mapStore.setArea(r.scan.areaName, false)
       }
     } catch (e) {
-      app.fail(e, 'Scan report')
+      app.fail(e, t('scan.reportError'))
     } finally {
       loadingReport.value = false
     }
@@ -194,13 +195,13 @@ export const useScansStore = defineStore('scans', () => {
     if (!r || !picked.size) return
     creatingDraft.value = true
     try {
-      const res = await rulesApi.draftFromScan(r.scan.id, { issueIds: [...picked], title: `Scan fixes · ${r.scan.areaName ?? 'map area'}` })
+      const res = await rulesApi.draftFromScan(r.scan.id, { issueIds: [...picked], title: t('scan.fixesTitle', { area: r.scan.areaName ?? t('scan.mapArea') }) })
       picked.clear()
-      app.toast(`Draft with ${res.draft.changes.length} change${res.draft.changes.length === 1 ? '' : 's'}${res.skipped ? `, ${res.skipped} without a fix skipped` : ''}`, 'success')
+      app.toast(`${tn('scan.draftCreated', res.draft.changes.length)}${res.skipped ? tn('scan.skipped', res.skipped) : ''}`, 'success')
       void drafts.loadDrafts()
       await drafts.open(res.draft.draft.id, { review: true })
     } catch (e) {
-      app.fail(e, 'Draft from issues')
+      app.fail(e, t('scan.draftError'))
     } finally {
       creatingDraft.value = false
     }
@@ -209,7 +210,7 @@ export const useScansStore = defineStore('scans', () => {
   async function onScanFinished(e: { scanId: string; scope: string; issueCount: number }) {
     lastEvent.value = e
     await loadHistory()
-    if (!running.value) app.toast(`Scan finished: ${e.issueCount.toLocaleString()} issues (${e.scope.replace(/#.*$/, '')})`, 'info', 6000)
+    if (!running.value) app.toast(tn('scan.finishedScope', e.issueCount, { scope: e.scope.replace(/#.*$/, '') }), 'info', 6000)
   }
 
   return {

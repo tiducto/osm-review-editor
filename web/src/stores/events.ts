@@ -9,6 +9,7 @@ import { useRuleFilesStore } from './ruleFiles'
 import { useScansStore } from './scans'
 import { usePushView } from './pushView'
 import { usePresetsStore } from './presets'
+import { t, tn } from '@/i18n'
 
 export function connectEvents(): () => void {
   const app = useAppStore()
@@ -24,7 +25,7 @@ export function connectEvents(): () => void {
   function remote(cmd: UiEventRemoteCommand) {
     if (cmd.imagery) {
       mapStore.addImagery(cmd.imagery)
-      app.toast(`Imagery added: ${cmd.imagery.name}`)
+      app.toast(t('app.imageryAdded', { name: cmd.imagery.name }))
     }
     if (cmd.message) app.toast(cmd.message, 'info', 9000)
     const ids = cmd.draftIds.length ? cmd.draftIds : cmd.draftId ? [cmd.draftId] : []
@@ -34,7 +35,7 @@ export function connectEvents(): () => void {
       return
     }
     if (ids.length > 1) {
-      app.toast(`Remote control created ${ids.length} drafts`, 'success')
+      app.toast(tn('app.remoteDrafts', ids.length), 'success')
       drafts.statusFilter = 'open'
       drafts.drawerTab = 'drafts'
       drafts.drawerOpen = true
@@ -64,7 +65,7 @@ export function connectEvents(): () => void {
         app.setMirror(e.status)
         void rules.refresh()
         mapStore.refreshTiles()
-        app.toast('Local mirror updated')
+        app.toast(t('app.mirrorUpdated'))
         void highlights.load()
         break
       case 'rules_changed':

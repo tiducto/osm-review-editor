@@ -15,6 +15,7 @@ import Modal from '../Modal.vue'
 import Spinner from '../Spinner.vue'
 import PresetPicker from './PresetPicker.vue'
 import PresetIcon from './PresetIcon.vue'
+import { useI18n } from '@/i18n'
 
 const props = defineProps<{ presetId: string | null }>()
 const emit = defineEmits<{ close: [] }>()
@@ -25,7 +26,7 @@ const scans = useScansStore()
 const mapStore = useMapStore()
 const drafts = useDraftsStore()
 const app = useAppStore()
-const t = presets.t
+const { t, tn } = useI18n()
 
 const presetId = ref<string | null>(props.presetId)
 const picking = ref(!props.presetId)
@@ -62,7 +63,7 @@ async function collect(): Promise<OsmRef[]> {
 }
 
 function sourceLabel() {
-  return source.value === 'issues' ? `${scans.picked.size} scan issues` : hlPath.value
+  return source.value === 'issues' ? tn('bulk.sourceIssues', scans.picked.size) : hlPath.value
 }
 
 async function count() {
@@ -99,7 +100,7 @@ async function create() {
     })
     const r = await presetsApi.bulk<PresetBulkApplyRequest, PresetBulkApplyResult>(req)
     if (!r.draft) throw new Error(t('bulk.noFeatures'))
-    app.toast(t('bulk.created', { title: r.draft.draft.title, n: r.draft.changes.length }), 'success')
+    app.toast(tn('bulk.created', r.draft.changes.length, { title: r.draft.draft.title }), 'success')
     emit('close')
     void drafts.loadDrafts()
     await drafts.open(r.draft.draft.id, { review: true })

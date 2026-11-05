@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { TagDiff } from '@/generated/models'
+import { useI18n } from '@/i18n'
 import Icon from './Icon.vue'
+
+const { t, tn } = useI18n()
 
 const props = defineProps<{ diff: TagDiff; base: Record<string, string> }>()
 const showUnchanged = ref(false)
@@ -26,7 +29,7 @@ const sign = { added: '+', removed: '−', changed: '~' }
 
 <template>
   <div class="overflow-hidden rounded-md border border-line font-mono text-[12px]">
-    <div v-if="!lines.length" class="px-2.5 py-2 font-sans text-fg-3">No tag changes</div>
+    <div v-if="!lines.length" class="px-2.5 py-2 font-sans text-fg-3">{{ t('diff.none') }}</div>
     <div
       v-for="l in lines"
       :key="l.key"
@@ -54,7 +57,7 @@ const sign = { added: '+', removed: '−', changed: '~' }
       @click="showUnchanged = !showUnchanged"
     >
       <Icon :name="showUnchanged ? 'chevron-down' : 'chevron-right'" :size="12" />
-      {{ diff.unchanged.length }} unchanged tag{{ diff.unchanged.length === 1 ? '' : 's' }}
+      {{ tn('diff.unchanged', diff.unchanged.length) }}
     </button>
     <template v-if="showUnchanged">
       <div

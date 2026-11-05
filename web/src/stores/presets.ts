@@ -4,22 +4,12 @@ import type { ResolvedPreset, SmartPreset } from '@/generated/models'
 import { presetsApi } from '@/api/presets'
 import { ApiError } from '@/api/client'
 import { PresetCatalog, type RawSchema, type UserPresetData } from '@/presets/catalog'
-import { tr } from '@/presets/i18n'
-import '@/presets/appStrings'
+import { locale as appLocale, setLocale, translate, type MessageKey } from '@/i18n'
 import type { Geometry, Locale } from '@/presets/types'
 import { useAppStore } from './app'
 
-const LOCALE_KEY = 'ore.presetLocale'
 const RECENT_KEY = 'ore.recentPresets'
 const MAX_RECENT = 12
-
-function readLocale(): Locale {
-  try {
-    const v = localStorage.getItem(LOCALE_KEY)
-    if (v === 'cs' || v === 'en') return v
-  } catch {}
-  return (navigator.language ?? '').toLowerCase().startsWith('cs') ? 'cs' : 'en'
-}
 
 function readRecent(): string[] {
   try {
@@ -61,7 +51,10 @@ export function toUserData(list: Partial<Record<Locale, ResolvedPreset[]>>, loca
 
 export const usePresetsStore = defineStore('presets', () => {
   const app = useAppStore()
-  const locale = ref<Locale>(readLocale())
+  const locale = computed<Locale>({
+    get: () => appLocale.value,
+    set: (l) => setLocale(l),
+  })
   const raw = shallowRef<RawSchema | null>(null)
   const user = shallowRef<Partial<Record<Locale, ResolvedPreset[]>>>({})
   const smart = shallowRef<SmartPreset[]>([])
@@ -76,11 +69,8 @@ export const usePresetsStore = defineStore('presets', () => {
     return new PresetCatalog(r, toUserData(user.value, locale.value), locale.value)
   })
 
-  watch(locale, (l) => {
-    try {
-      localStorage.setItem(LOCALE_KEY, l)
-    } catch {}
-    void loadUser()
+  watch(locale, () => {
+    if (raw.value) void loadUser()
   })
 
   watch(
@@ -110,7 +100,7 @@ export const usePresetsStore = defineStore('presets', () => {
       const [en, cs] = await Promise.all([presetsApi.user('en'), presetsApi.user('cs')])
       user.value = { en, cs }
     } catch (e) {
-      if (!(e instanceof ApiError && e.status === 404)) app.fail(e, 'Loading your presets')
+      if (!(e instanceof ApiError && e.status === 404)) app.fail(e, translate(locale.value, 'library.loadUserFailed'))
     }
   }
 
@@ -118,7 +108,7 @@ export const usePresetsStore = defineStore('presets', () => {
     try {
       smart.value = await presetsApi.smart()
     } catch (e) {
-      app.fail(e, 'Loading smart presets')
+      app.fail(e, translate(locale.value, 'library.loadSmartFailed'))
     }
   }
 
@@ -154,7 +144,7 @@ export const usePresetsStore = defineStore('presets', () => {
     recent.value = [id, ...recent.value.filter((x) => x !== id)].slice(0, MAX_RECENT)
   }
 
-  const t = (key: string, vars?: Record<string, string | number>) => tr(locale.value, key, vars)
+  const t = (key: MessageKey | (string & {}), vars?: Record<string, string | number>) => translate(locale.value, key, vars)
 
   return { locale, raw, user, smart, recent, loading, error, catalog, ensure, loadUser, onRulesChanged, reloadUser, useRecent, t }
 })

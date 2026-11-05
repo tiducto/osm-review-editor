@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import { useI18n } from '@/i18n'
 import Icon from './Icon.vue'
+
+const { t } = useI18n()
 
 type Tags = Record<string, string>
 interface Row {
@@ -46,12 +49,12 @@ watch(
 )
 
 function commit() {
-  const t = build(rows.value)
-  if (!same(t, model.value)) model.value = t
+  const next = build(rows.value)
+  if (!same(next, model.value)) model.value = next
 }
 
-function toText(t: Tags): string {
-  return Object.entries(t)
+function toText(tags: Tags): string {
+  return Object.entries(tags)
     .map(([k, v]) => `${k}=${v}`)
     .join('\n')
 }
@@ -130,16 +133,16 @@ function onValueKey(e: KeyboardEvent, i: number) {
 <template>
   <div>
     <div class="mb-1.5 flex items-center gap-2">
-      <slot name="title"><span class="section-title">Tags</span></slot>
+      <slot name="title"><span class="section-title">{{ t('tags.title') }}</span></slot>
       <span class="text-[11px] text-fg-3">{{ Object.keys(model).length }}</span>
       <div class="ml-auto flex items-center gap-0.5">
         <button
           v-if="!readonly"
           class="btn btn-ghost btn-sm text-fg-3"
-          :title="textMode ? 'Edit as a table' : 'Edit as text (key=value per line)'"
+          :title="textMode ? t('tags.editAsTable') : t('tags.editAsText')"
           @click="toggleText"
         >
-          {{ textMode ? 'Table' : 'Text' }}
+          {{ textMode ? t('tags.table') : t('tags.text') }}
         </button>
       </div>
     </div>
@@ -189,7 +192,7 @@ function onValueKey(e: KeyboardEvent, i: number) {
         <button
           v-if="!readonly"
           class="grid place-items-center text-fg-3 opacity-0 group-hover:opacity-100 hover:text-removed focus:opacity-100"
-          title="Remove tag"
+          :title="t('tags.remove')"
           tabindex="-1"
           @click="removeRow(r.id)"
         >
@@ -203,13 +206,13 @@ function onValueKey(e: KeyboardEvent, i: number) {
       >
         <span class="truncate border-r border-line px-2 py-1 line-through">{{ k }}</span>
         <span class="truncate px-2 py-1 line-through">{{ base?.[k] }}</span>
-        <button class="grid place-items-center text-fg-3 hover:text-fg" title="Restore" @click="restore(k)"><Icon name="undo" :size="12" /></button>
+        <button class="grid place-items-center text-fg-3 hover:text-fg" :title="t('tags.restore')" @click="restore(k)"><Icon name="undo" :size="12" /></button>
       </div>
-      <div v-if="!rows.length && !removed.length" class="px-2 py-2 font-sans text-fg-3">No tags</div>
+      <div v-if="!rows.length && !removed.length" class="px-2 py-2 font-sans text-fg-3">{{ t('tags.empty') }}</div>
     </div>
 
     <button v-if="!readonly && !textMode" class="btn btn-ghost btn-sm mt-1 text-fg-3" @click="addRow()">
-      <Icon name="plus" :size="12" /> Add tag
+      <Icon name="plus" :size="12" /> {{ t('tags.add') }}
     </button>
   </div>
 </template>

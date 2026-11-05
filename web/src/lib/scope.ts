@@ -1,5 +1,6 @@
 import type { BBox, JsonValue } from '@/generated/models'
 import type { ScopeBody } from '@/api/rules'
+import { formatNumber, t } from '@/i18n'
 
 export interface Scope {
   kind: 'area' | 'polygon' | 'view'
@@ -20,10 +21,10 @@ export function roundBBox(b: BBox, digits = 4): BBox {
 
 export function scopeOf(area: { name: string } | null, polygon: JsonValue | null, view: BBox | null): Scope | null {
   if (area) return { kind: 'area', label: area.name, key: `area:${area.name}`, body: { area: area.name } }
-  if (polygon) return { kind: 'polygon', label: 'Drawn polygon', key: `polygon:${JSON.stringify(polygon).length}:${hash(JSON.stringify(polygon))}`, body: { polygon } }
+  if (polygon) return { kind: 'polygon', label: t('area.drawnPolygon'), key: `polygon:${JSON.stringify(polygon).length}:${hash(JSON.stringify(polygon))}`, body: { polygon } }
   if (view) {
     const b = roundBBox(view)
-    return { kind: 'view', label: 'Map view', key: `bbox:${b.west},${b.south},${b.east},${b.north}`, body: { bbox: b } }
+    return { kind: 'view', label: t('area.mapView'), key: `bbox:${b.west},${b.south},${b.east},${b.north}`, body: { bbox: b } }
   }
   return null
 }
@@ -59,12 +60,12 @@ export function tilesFor(b: BBox, z: number, max: number): string[] | null {
 }
 
 export function formatKm(v: number): string {
-  if (v >= 100) return `${Math.round(v).toLocaleString()} km`
-  if (v >= 1) return `${v.toFixed(1)} km`
-  return `${Math.round(v * 1000)} m`
+  if (v >= 100) return `${formatNumber(Math.round(v))} km`
+  if (v >= 1) return `${formatNumber(v, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`
+  return `${formatNumber(Math.round(v * 1000))} m`
 }
 
 export function formatArea(v: number): string {
-  if (v >= 1) return `${v.toFixed(2)} km²`
-  return `${Math.round(v * 1e6).toLocaleString()} m²`
+  if (v >= 1) return `${formatNumber(v, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km²`
+  return `${formatNumber(Math.round(v * 1e6))} m²`
 }
