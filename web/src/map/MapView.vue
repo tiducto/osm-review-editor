@@ -1,24 +1,27 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as maplibregl from 'maplibre-gl'
-import type { MapGeoJSONFeature, MapMouseEvent, GeoJSONSource } from 'maplibre-gl'
+import type { MapGeoJSONFeature, MapMouseEvent, GeoJSONSource, VectorTileSource } from 'maplibre-gl'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
-import { useAppStore } from '@/stores/app'
-import { FEATURE_MIN_ZOOM, useMapStore } from '@/stores/map'
+import type { OsmRef, OsmType } from '@/generated/models'
+import { useMapStore } from '@/stores/map'
 import { useRulesStore } from '@/stores/rules'
 import { useDraftsStore } from '@/stores/drafts'
-import { basemapUrl } from './style'
 import { INTERACTIVE, ISSUE_LAYERS, SRC, installLayers, setData, setImagery, setVisible } from './layers'
-import { areaToGeoJSON, beforeToGeoJSON, changesToGeoJSON, empty, featuresToGeoJSON, issuesToGeoJSON } from './data'
+import { areaToGeoJSON, beforeToGeoJSON, changesToGeoJSON, empty, featuresToGeoJSON, issuesToGeoJSON, selectionToGeoJSON } from './data'
 import { asGeometry } from '@/lib/geo'
 import { PolygonDraw, drawJustEnded, type DrawState } from './draw'
-import { parseRef, refString, featureTitle } from '@/lib/osm'
+import { refString, featureTitle } from '@/lib/osm'
 import { changeKindColor, changeKindLabel, type ChangeKind } from '@/lib/colors'
 import { changeKind } from '@/lib/changes'
+import { AUTO_HIDE, baseStyle, DASHED_LAYERS, DETAIL_MIN_ZOOM, dashExpr, HOVER_LAYERS, INTERACTIVE_OSM, lowZoomThreshold, OSM_SRC, parseDash } from './osm/style'
+import { clearTileCache, gateTiles, registerTileProtocol, tileUrl } from './osm/protocol'
+import { addOneway, addPatterns, addShield } from './osm/icons'
+import { PATTERN_IMAGES } from './osm/patterns'
+import { knownDashes, OUT, tagsOf, type Props } from './osm/transform'
 import Icon from '@/components/Icon.vue'
 import Spinner from '@/components/Spinner.vue'
 
-const app = useAppStore()
 const mapStore = useMapStore()
 const rules = useRulesStore()
 const drafts = useDraftsStore()
@@ -32,6 +35,7 @@ const drawState = ref<DrawState>({ count: 0, canFinish: false })
 maplibregl.setWorkerUrl(workerUrl)
 
 const VIEW_KEY = 'ore.view'
+const TYPE_CODE: Record<OsmType, number> = { node: 0, way: 1, relation: 2 }
 
 function initialView(): { center: [number, number]; zoom: number } {
   try {
@@ -41,20 +45,48 @@ function initialView(): { center: [number, number]; zoom: number } {
   return { center: [14.42, 50.08], zoom: 12 }
 }
 
-function syncFeatures() {
-  if (!map || !styleReady) return
-  setData(map, SRC.osm, featuresToGeoJSON(mapStore.features))
-  syncHighlight()
+const dashes = new Map(knownDashes().map((k) => [k, parseDash(k)]))
+let lowZoom = 16
+let dashTimer: ReturnType<typeof setTimeout> | null = null
+
+function onDashes(keys: string[]) {
+  let added = false
+  for (const k of keys) {
+    if (dashes.has(k)) continue
+    dashes.set(k, parseDash(k))
+    added = true
+  }
+  if (!added || dashTimer) return
+  dashTimer = setTimeout(() => {
+    dashTimer = null
+    if (!map || !styleReady) return
+    for (const [id, p] of DASHED_LAYERS) {
+      if (map.getLayer(id)) map.setPaintProperty(id, 'line-dasharray', dashExpr(dashes, p, lowZoom))
+    }
+  }, 50)
 }
+
+function featureId(r: OsmRef): number {
+  return r.id * 4 + TYPE_CODE[r.type]
+}
+
+let highlightedIds: number[] = []
 function syncHighlight() {
   if (!map || !styleReady) return
-  const keys = new Set(mapStore.highlighted.map(refString))
-  setData(map, SRC.highlight, keys.size ? featuresToGeoJSON(mapStore.features.filter((f) => keys.has(refString(f.ref)))) : empty)
+  for (const id of highlightedIds) for (const sourceLayer of HOVER_LAYERS) map.setFeatureState({ source: OSM_SRC, sourceLayer, id }, { hl: false })
+  highlightedIds = mapStore.highlighted.map(featureId)
+  for (const id of highlightedIds) for (const sourceLayer of HOVER_LAYERS) map.setFeatureState({ source: OSM_SRC, sourceLayer, id }, { hl: true })
 }
+
+function isVertexInTiles(r: OsmRef): boolean {
+  if (!map || r.type !== 'node') return false
+  return map.querySourceFeatures(OSM_SRC, { sourceLayer: OUT.vertex, filter: ['==', ['get', '@id'], r.id] }).length > 0
+}
+
 function syncSelection() {
   if (!map || !styleReady) return
   const f = mapStore.selectedFeature
-  setData(map, SRC.selection, f && !drafts.reviewing ? featuresToGeoJSON([f]) : empty)
+  setData(map, SRC.selection, f && !drafts.reviewing ? selectionToGeoJSON(f, isVertexInTiles(f.ref)) : empty)
 }
 function syncIssues() {
   if (!map || !styleReady) return
@@ -92,7 +124,7 @@ function syncImagery() {
 }
 function syncAll() {
   syncArea()
-  syncFeatures()
+  syncHighlight()
   syncSelection()
   syncIssues()
   syncChanges()
@@ -100,9 +132,52 @@ function syncAll() {
   syncImagery()
 }
 
+type HideGroup = keyof typeof AUTO_HIDE
+const hidden: Record<HideGroup, boolean> = { buildings: false, points: false, addresses: false }
+const baseFilters = new Map<string, maplibregl.FilterSpecification | undefined>()
+const HIDE_LIMITS: Record<HideGroup, number> = { buildings: 250, points: 200, addresses: 100 }
+
+function applyHidden(group: HideGroup, hide: boolean) {
+  if (!map || hidden[group] === hide) return
+  hidden[group] = hide
+  for (const part of AUTO_HIDE[group]) {
+    for (const id of part.layers) {
+      if (!map.getLayer(id)) continue
+      if (!baseFilters.has(id)) baseFilters.set(id, map.getFilter(id) as maplibregl.FilterSpecification | undefined)
+      const base = baseFilters.get(id)
+      const filter = hide ? (base ? ['all', base, part.hide] : part.hide) : base
+      map.setFilter(id, (filter ?? null) as maplibregl.FilterSpecification | null)
+    }
+  }
+}
+
+function autoHide() {
+  if (!map || !styleReady) return
+  if (map.getZoom() < DETAIL_MIN_ZOOM) {
+    for (const g of Object.keys(hidden) as HideGroup[]) applyHidden(g, false)
+    return
+  }
+  const b = map.getBounds()
+  const canvas = map.getCanvas()
+  const cull = (canvas.clientWidth * canvas.clientHeight) / 1e6
+  const inView = (c: number[]) => b.contains([c[0], c[1]])
+  const count = (sourceLayer: string, filter: maplibregl.FilterSpecification, first: (g: GeoJSON.Geometry) => number[] | null) => {
+    const ids = new Set<string | number>()
+    for (const f of map!.querySourceFeatures(OSM_SRC, { sourceLayer, filter })) {
+      const c = first(f.geometry)
+      if (f.id != null && c && inView(c)) ids.add(f.id)
+    }
+    return ids.size
+  }
+  const firstOf = (g: GeoJSON.Geometry): number[] | null =>
+    g.type === 'Point' ? g.coordinates : g.type === 'Polygon' ? g.coordinates[0][0] : g.type === 'MultiPolygon' ? g.coordinates[0][0][0] : null
+  applyHidden('buildings', count(OUT.area, ['==', ['get', '@bld'], true], firstOf) > HIDE_LIMITS.buildings * cull)
+  applyHidden('points', count(OUT.point, ['==', ['get', '@addr'], false], firstOf) > HIDE_LIMITS.points * cull)
+  applyHidden('addresses', count(OUT.point, ['==', ['get', '@addr'], true], firstOf) > HIDE_LIMITS.addresses * cull)
+}
+
 const issuesFC = computed(() => issuesToGeoJSON(rules.shownIssues))
 
-watch(() => mapStore.features, syncFeatures)
 watch(() => mapStore.highlighted, syncHighlight, { deep: true })
 watch(() => [mapStore.selectedFeature, drafts.reviewing], syncSelection)
 watch(issuesFC, syncIssues)
@@ -111,25 +186,24 @@ watch(() => [mapStore.area, mapStore.polygon, drafts.reviewing, drafts.current?.
 watch(
   () => mapStore.drawing,
   (on) => {
-    hover.value = null
+    clearHover()
     if (on) draw?.start()
     else draw?.stop()
   },
 )
 watch(
   () => drafts.reviewing,
-  () => (hover.value = null),
+  () => clearHover(),
 )
 watch(() => [drafts.current, drafts.index, drafts.reviewing, drafts.showBefore], syncChanges)
 watch(() => [drafts.context, drafts.reviewing], syncContext)
 watch(() => mapStore.activeImagery, syncImagery)
-
 watch(
-  () => app.isDark,
-  (dark) => {
-    if (!map) return
-    styleReady = false
-    map.setStyle(basemapUrl(dark))
+  () => mapStore.tilesVersion,
+  (v) => {
+    clearTileCache()
+    const src = map?.getSource(OSM_SRC) as VectorTileSource | undefined
+    src?.setTiles([tileUrl(v)])
   },
 )
 
@@ -148,17 +222,22 @@ function reportView() {
 function onMoveEnd() {
   reportView()
   if (moveTimer) clearTimeout(moveTimer)
-  moveTimer = setTimeout(() => {
-    void mapStore.loadFeatures()
-    rules.onViewChanged()
-  }, 300)
+  moveTimer = setTimeout(() => rules.onViewChanged(), 300)
 }
 
 function interactiveLayers(): string[] {
   const ids = drafts.reviewing
-    ? [...INTERACTIVE.changes, ...INTERACTIVE.context, ...INTERACTIVE.osm]
-    : [...INTERACTIVE.issues, ...INTERACTIVE.clusters, ...INTERACTIVE.osm]
+    ? [...INTERACTIVE.changes, ...INTERACTIVE.context, ...INTERACTIVE_OSM]
+    : [...INTERACTIVE.issues, ...INTERACTIVE.clusters, ...INTERACTIVE_OSM]
   return ids.filter((id) => map?.getLayer(id))
+}
+
+function osmRef(f: MapGeoJSONFeature): OsmRef | null {
+  if (f.source !== OSM_SRC) return null
+  const p = f.properties as Props
+  const id = Number(p['@id'])
+  const type = p['@type'] as OsmType | undefined
+  return id && type ? { type, id } : null
 }
 
 function topFeature(e: MapMouseEvent): MapGeoJSONFeature | null {
@@ -168,8 +247,8 @@ function topFeature(e: MapMouseEvent): MapGeoJSONFeature | null {
     [e.point.x - pad, e.point.y - pad],
     [e.point.x + pad, e.point.y + pad],
   ]
-  const hits = map.queryRenderedFeatures(box, { layers: interactiveLayers() })
-  const rank = (f: MapGeoJSONFeature) => (f.layer.type === 'circle' ? 0 : f.layer.type === 'line' ? 1 : 2)
+  const hits = map.queryRenderedFeatures(box, { layers: interactiveLayers() }).filter((f) => f.source !== OSM_SRC || osmRef(f))
+  const rank = (f: MapGeoJSONFeature) => (f.source !== OSM_SRC ? -1 : f.layer.type === 'circle' || f.layer.type === 'symbol' ? 0 : f.layer.type === 'line' ? 1 : 2)
   return hits.sort((a, b) => rank(a) - rank(b))[0] ?? null
 }
 
@@ -194,18 +273,41 @@ async function onClick(e: MapMouseEvent) {
     return
   }
   if (drafts.reviewing) return
-  const ref = parseRef(String(props.key ?? ''))
-  if (ref) void mapStore.select(ref)
+  const r = f.source === OSM_SRC ? osmRef(f) : null
+  if (r) {
+    void mapStore.select(r)
+    return
+  }
+  if (layer === 'ore-issues-point') {
+    const key = String(props.key ?? '')
+    const m = /^([nwr])(\d+)$/.exec(key)
+    if (m) void mapStore.select({ type: m[1] === 'n' ? 'node' : m[1] === 'w' ? 'way' : 'relation', id: Number(m[2]) })
+  }
 }
 
 const hover = ref<{ x: number; y: number; text: string; sub?: string; color?: string } | null>(null)
+let hoverState: { sourceLayer: string; id: number } | null = null
+
+function setHoverState(next: { sourceLayer: string; id: number } | null) {
+  if (!map) return
+  if (hoverState && (!next || next.id !== hoverState.id || next.sourceLayer !== hoverState.sourceLayer)) {
+    map.setFeatureState({ source: OSM_SRC, ...hoverState }, { hover: false })
+  }
+  hoverState = next
+  if (next) map.setFeatureState({ source: OSM_SRC, ...next }, { hover: true })
+}
+
+function clearHover() {
+  hover.value = null
+  setHoverState(null)
+}
 
 function onMouseMove(e: MapMouseEvent) {
   if (!map || mapStore.drawing) return
   const f = topFeature(e)
   map.getCanvas().style.cursor = f ? 'pointer' : ''
   if (!f) {
-    hover.value = null
+    clearHover()
     return
   }
   const props = f.properties as Record<string, unknown>
@@ -213,30 +315,34 @@ function onMouseMove(e: MapMouseEvent) {
   let text = ''
   let sub: string | undefined
   let color: string | undefined
-  if (layer === 'ore-issues-cluster') {
-    text = `${props.point_count} issues`
-    sub = 'Click to zoom in'
-  } else if (layer === 'ore-issues-point') {
-    const rule = rules.ruleById.get(String(props.ruleId))
-    text = rule?.title ?? String(props.ruleId)
-    sub = String(props.key)
-    color = String(props.color)
-  } else if (layer.startsWith('ore-changes')) {
-    const c = drafts.changes[props.i as number]
-    if (c) {
-      const kind = changeKind(c) as ChangeKind
-      text = featureTitle(c.ref, c.newTags)
-      sub = `${changeKindLabel[kind]} · ${refString(c.ref)}`
-      color = changeKindColor[kind]
-    }
-  } else if (layer.startsWith('ore-context')) {
-    text = 'Context'
-    sub = String(props.key)
+  if (f.source === OSM_SRC) {
+    const r = osmRef(f)!
+    const sourceLayer = f.sourceLayer === OUT.band ? OUT.area : (f.sourceLayer ?? OUT.area)
+    setHoverState(typeof f.id === 'number' ? { sourceLayer, id: f.id } : null)
+    text = featureTitle(r, tagsOf(f.properties as Props))
+    sub = refString(r)
   } else {
-    const ref = parseRef(String(props.key ?? ''))
-    const feat = ref ? mapStore.features.find((x) => x.ref.type === ref.type && x.ref.id === ref.id) : undefined
-    text = feat ? featureTitle(feat.ref, feat.tags) : String(props.key)
-    sub = String(props.key)
+    setHoverState(null)
+    if (layer === 'ore-issues-cluster') {
+      text = `${props.point_count} issues`
+      sub = 'Click to zoom in'
+    } else if (layer === 'ore-issues-point') {
+      const rule = rules.ruleById.get(String(props.ruleId))
+      text = rule?.title ?? String(props.ruleId)
+      sub = String(props.key)
+      color = String(props.color)
+    } else if (layer.startsWith('ore-changes')) {
+      const c = drafts.changes[props.i as number]
+      if (c) {
+        const kind = changeKind(c) as ChangeKind
+        text = featureTitle(c.ref, c.newTags)
+        sub = `${changeKindLabel[kind]} · ${refString(c.ref)}`
+        color = changeKindColor[kind]
+      }
+    } else if (layer.startsWith('ore-context')) {
+      text = 'Context'
+      sub = String(props.key)
+    }
   }
   hover.value = { x: e.point.x, y: e.point.y, text, sub, color }
 }
@@ -259,31 +365,41 @@ let resizeObserver: ResizeObserver | null = null
 onMounted(() => {
   if (!el.value) return
   const v = initialView()
+  lowZoom = lowZoomThreshold(v.center[1])
   map = new maplibregl.Map({
     container: el.value,
-    style: basemapUrl(app.isDark),
+    style: baseStyle(tileUrl(mapStore.tilesVersion), v.center[1], dashes),
     center: v.center,
     zoom: v.zoom,
+    maxZoom: 22,
     attributionControl: { compact: true },
     maxPitch: 0,
     dragRotate: false,
     pitchWithRotate: false,
     fadeDuration: 100,
   })
+  registerTileProtocol(map, onDashes)
   map.touchZoomRotate.disableRotation()
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left')
   map.on('style.load', () => {
     if (!map) return
-    installLayers(map, app.isDark)
+    addShield(map)
+    addOneway(map)
+    gateTiles(addPatterns(map, PATTERN_IMAGES))
+    installLayers(map)
     styleReady = true
     syncAll()
     draw?.redraw()
   })
   map.on('moveend', onMoveEnd)
+  map.on('idle', autoHide)
   map.on('click', (e) => void onClick(e))
   map.on('mousemove', onMouseMove)
-  map.on('mouseout', () => (hover.value = null))
+  map.on('mouseout', clearHover)
+  map.on('sourcedata', (e) => {
+    if (e.sourceId === OSM_SRC && e.isSourceLoaded && mapStore.selectedFeature?.ref.type === 'node') syncSelection()
+  })
   map.once('load', () => {
     reportView()
     onMoveEnd()
@@ -312,8 +428,6 @@ onBeforeUnmount(() => {
 const zoomHint = computed(() => {
   if (drafts.reviewing) return null
   if (rules.needsZoom) return 'Pick an area or zoom in to load issues'
-  if (mapStore.zoom < FEATURE_MIN_ZOOM) return null
-  if (mapStore.featuresTruncated) return 'Too many objects here; showing the first 5,000'
   return null
 })
 const rulesLoading = computed(() => rules.loading.size > 0)
@@ -367,10 +481,10 @@ const currentHasGeometryChange = computed(() => {
       </Transition>
       <Transition name="fade">
         <div
-          v-if="(mapStore.featuresLoading || rulesLoading) && !drafts.reviewing"
+          v-if="rulesLoading && !drafts.reviewing"
           class="flex items-center gap-2 rounded-full border border-line bg-surface/95 px-3 py-1 text-[12px] text-fg-2 shadow-panel backdrop-blur"
         >
-          <Spinner :size="12" /> {{ rulesLoading ? 'Running rules…' : 'Loading objects…' }}
+          <Spinner :size="12" /> Running rules…
         </div>
       </Transition>
     </div>

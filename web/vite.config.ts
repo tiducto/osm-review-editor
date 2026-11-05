@@ -3,7 +3,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 
-const backend = 'http://localhost:3000'
+const backend = process.env.ORE_BACKEND ?? 'http://localhost:3000'
 
 export default defineConfig({
   plugins: [vue(), tailwindcss()],

@@ -1,4 +1,4 @@
-import type { Feature, FeatureCollection, Geometry, Point } from 'geojson'
+import type { Feature, FeatureCollection, Geometry, Point, Position } from 'geojson'
 import type { Area, Change, MapFeature, OsmRef } from '@/generated/models'
 import type { ShownIssue } from '@/stores/rules'
 import { asGeometry } from '@/lib/geo'
@@ -35,6 +35,33 @@ export function featuresToGeoJSON(list: MapFeature[]): FeatureCollection {
   for (const f of list) {
     const g = asGeometry(f.geometry)
     if (g) out.push(feature(g, { key: refString(f.ref), name: f.tags.name ?? null }))
+  }
+  return { type: 'FeatureCollection', features: out }
+}
+
+function wayNodes(g: Geometry): Position[] {
+  switch (g.type) {
+    case 'LineString':
+      return g.coordinates
+    case 'MultiLineString':
+      return g.coordinates.flat()
+    case 'Polygon':
+      return g.coordinates.flatMap((r) => r.slice(0, -1))
+    case 'MultiPolygon':
+      return g.coordinates.flatMap((p) => p.flatMap((r) => r.slice(0, -1)))
+    default:
+      return []
+  }
+}
+
+export function selectionToGeoJSON(f: MapFeature | null, vertex: boolean): FeatureCollection {
+  if (!f) return empty
+  const g = asGeometry(f.geometry)
+  if (!g) return empty
+  const out: Feature[] = [feature(g, { key: refString(f.ref), vertex })]
+  if (f.ref.type === 'way') {
+    const nodes = wayNodes(g)
+    if (nodes.length) out.push({ type: 'Feature', geometry: { type: 'MultiPoint', coordinates: nodes }, properties: { g: 'nodes' } })
   }
   return { type: 'FeatureCollection', features: out }
 }
@@ -80,10 +107,6 @@ export function beforeToGeoJSON(c: Change | null, showBefore: boolean): FeatureC
   if (!showBefore && !c.newGeom) return empty
   const color = changeKindColor[changeKind(c)]
   return { type: 'FeatureCollection', features: [feature(base, { mode: showBefore ? 'solid' : 'ghost', color })] }
-}
-
-export function refsToGeoJSON(list: MapFeature[]): FeatureCollection {
-  return featuresToGeoJSON(list)
 }
 
 export function areaToGeoJSON(a: Area | null): FeatureCollection {

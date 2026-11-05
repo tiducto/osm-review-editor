@@ -13,12 +13,17 @@
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@mapbox/vector-tile": "^3.0.0",
+    "@maplibre/vt-pbf": "^4.3.3",
     "maplibre-gl": "^6.16.0",
     "osm-review-shared": "*",
+    "pbf": "^5.1.2",
     "pinia": "^4.1.0",
     "vue": "^3.5.45"
   },
   "devDependencies": {
+    "@openstreetmap/id": "^2.42.3",
+    "@openstreetmap/id-tagging-schema": "^7.3.0",
     "@tailwindcss/vite": "^4.3.4",
     "@types/geojson": "^7946.0.16",
     "@types/node": "^26.6.6",

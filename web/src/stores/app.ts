@@ -1,27 +1,15 @@
 import { defineStore } from 'pinia'
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import type { AccountStatus, AppStatus, Area, ImagerySource, MirrorStatus, OsmTarget } from '@/generated/models'
 import { api, errorMessage } from '@/api/client'
 import type { ConnectionState } from '@/api/events'
 
-export type ThemePref = 'system' | 'light' | 'dark'
 export type ToastKind = 'info' | 'success' | 'error'
 
 export interface Toast {
   id: number
   kind: ToastKind
   text: string
-}
-
-const THEME_KEY = 'ore.theme'
-
-function readTheme(): ThemePref {
-  try {
-    const t = localStorage.getItem(THEME_KEY)
-    return t === 'light' || t === 'dark' ? t : 'system'
-  } catch {
-    return 'system'
-  }
 }
 
 export const useAppStore = defineStore('app', () => {
@@ -34,27 +22,6 @@ export const useAppStore = defineStore('app', () => {
 
   const settingsOpen = ref(false)
   const mergeDraftId = ref<string | null>(null)
-
-  const themePref = ref<ThemePref>(readTheme())
-  const media = matchMedia('(prefers-color-scheme: dark)')
-  const systemDark = ref(media.matches)
-  media.addEventListener('change', (e) => (systemDark.value = e.matches))
-  const isDark = computed(() => (themePref.value === 'system' ? systemDark.value : themePref.value === 'dark'))
-  watch(
-    isDark,
-    (d) => document.documentElement.classList.toggle('dark', d),
-    { immediate: true },
-  )
-  function setTheme(t: ThemePref) {
-    themePref.value = t
-    try {
-      if (t === 'system') localStorage.removeItem(THEME_KEY)
-      else localStorage.setItem(THEME_KEY, t)
-    } catch {}
-  }
-  function cycleTheme() {
-    setTheme(isDark.value ? 'light' : 'dark')
-  }
 
   const toasts = ref<Toast[]>([])
   let toastSeq = 0
@@ -124,7 +91,6 @@ export const useAppStore = defineStore('app', () => {
 
   return {
     status, account, imagery, areas, serverError, connection, settingsOpen, mergeDraftId,
-    themePref, isDark, setTheme, cycleTheme,
     toasts, toast, dismiss, fail,
     target, mirror,
     init, loadStatus, loadAccount, setTarget, logout, setMirror,

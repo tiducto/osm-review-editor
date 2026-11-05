@@ -92,9 +92,6 @@ defineExpose({ focusSearch: () => search.value?.focus() })
         :class="{ 'bg-added': app.connection === 'open', 'animate-pulse bg-warning': app.connection === 'connecting', 'bg-error': app.connection === 'closed' }"
         :title="connectionTitle"
       />
-      <button class="btn btn-ghost btn-icon max-sm:hidden" :title="app.isDark ? 'Light theme' : 'Dark theme'" @click="app.cycleTheme()">
-        <Icon :name="app.isDark ? 'sun' : 'moon'" />
-      </button>
       <button class="btn btn-ghost btn-icon" title="Settings" @click="app.settingsOpen = true"><Icon name="settings" /></button>
     </div>
   </header>

@@ -52,6 +52,48 @@ Each run is recorded in `app.rule_runs` with its scope key and scope geometry (s
 | GET | `/api/objects/{ref}?live=true` | `MapFeature` from the live OSM API (with version) |
 | GET | `/api/objects/{ref}/links` | `EditorLinks` (iD, osm.org, history) for the current API target |
 
+### Vector tiles
+
+`GET /api/tiles/{z}/{x}/{y}.mvt` serves Mapbox Vector Tiles (spec v2, 512 px tiles) cut from the mirror
+for the map. Tiles below z9 are empty; above z16 clients overzoom z16. Responses are gzip-encoded when
+the client accepts it and carry an `ETag` of the tile schema, mirror generation and tile
+(`"t3-g4-16-36025-22243"`) with `Cache-Control: no-cache`, so a mirror swap invalidates them;
+`If-None-Match` answers 304. Built tiles are kept in memory per mirror generation (192 MB LRU), and a
+`Server-Timing` header reports the build time. A z16 tile in central Opava builds in about 25 ms (z15
+about 75 ms) on Apple Silicon.
+
+Content per zoom (iD's zoom is one higher, since iD uses 256 px tiles):
+
+| Zoom | Content | Tags |
+| --- | --- | --- |
+| 15+ | Every object: lines, areas, tagged nodes, way nodes as vertices | All |
+| 14 | Highways, railways, waterways, barriers, power lines, aerialways, all areas incl. buildings, POI nodes | Curated |
+| 13 | Highways, railways, waterways, all areas incl. buildings, places | Curated |
+| 12 | Roads down to residential, track and service, rail, rivers and streams, landuse/natural/leisure/amenity areas, places | Curated |
+| 11 | Roads down to tertiary, rail, rivers, landuse/natural/leisure/amenity areas, places | Curated |
+| 9-10 | Motorway to primary, rail, rivers, water and forest, cities and towns | Curated |
+
+Curated tags are those the style needs (`highway`, `landuse`, `name`, `surface`, `bridge`, ...).
+`geodesk:` pseudo-tags are never included. Boundary, route and site relations are left out; other
+area relations are assembled once per generation and cached. Geometry is clipped to the tile plus a
+buffer (16 px at z15+, 8 px below); below z15 it is simplified (Douglas-Peucker, 0.5 units at extent
+4096) and areas under a few pixels are dropped. z15+ tiles use extent 8192.
+
+Layers (feature ids are `osmId * 4 + type`, with type 0 node, 1 way, 2 relation; every feature has
+`@id` and `@type`):
+
+| Layer | Geometry | Extra properties |
+| --- | --- | --- |
+| `area` | Polygon | `@fz`: the highest zoom at which the area is filled whole (its `2·area/perimeter` is at most iD's 30 px partial-fill band) |
+| `band` | Polygon | `@bz`: display zoom; the area minus its 30 px inset at that zoom, for iD's partial fill above `@fz` (z15 tiles carry bands for 15-20) |
+| `label` | Point | Label point (centroid, or the centre of the largest inscribed circle when the centroid falls outside); `@area` and `@width` in z0 pixels |
+| `line` | LineString | Untagged ways that belong to a relation are left out |
+| `point` | Point | Tagged nodes that are not way nodes |
+| `vertex` | Point (z15+) | Tagged way nodes, plus untagged way nodes that end a way or join two ways at least one of which is a tagged line (iD's rule); `@junction` (2+ parent ways), `@end` (end of a single way), `@bonly` (only buildings use it) |
+
+Junctions come from way membership: every way that intersects the tile buffer is walked node by
+node, so a node's parent count is exact for nodes inside the tile.
+
 ## Rules
 
 | Method | Path | Returns |

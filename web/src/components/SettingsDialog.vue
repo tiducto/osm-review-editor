@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import type { McpInfo, OsmTarget } from '@/generated/models'
 import { api } from '@/api/client'
-import { useAppStore, type ThemePref } from '@/stores/app'
+import { useAppStore } from '@/stores/app'
 import { useMapStore } from '@/stores/map'
 import { dateTime, relativeTime } from '@/lib/format'
 import Modal from './Modal.vue'
@@ -52,11 +52,6 @@ async function copy(text: string) {
   }
 }
 
-const themes: { id: ThemePref; label: string }[] = [
-  { id: 'system', label: 'System' },
-  { id: 'light', label: 'Light' },
-  { id: 'dark', label: 'Dark' },
-]
 
 const shortcuts = [
   ['/', 'Focus search'],
@@ -234,20 +229,6 @@ const shortcuts = [
         </p>
       </section>
 
-      <section class="space-y-2 px-5 py-4">
-        <h3 class="section-title">Appearance</h3>
-        <div class="flex w-fit rounded-md bg-surface-3 p-0.5">
-          <button
-            v-for="t in themes"
-            :key="t.id"
-            class="rounded px-3 py-1 text-[12px] font-medium"
-            :class="app.themePref === t.id ? 'bg-surface text-fg shadow-sm' : 'text-fg-3 hover:text-fg-2'"
-            @click="app.setTheme(t.id)"
-          >
-            {{ t.label }}
-          </button>
-        </div>
-      </section>
 
       <section class="space-y-2 px-5 py-4">
         <h3 class="section-title">Keyboard</h3>
