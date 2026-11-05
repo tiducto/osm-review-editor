@@ -11,6 +11,7 @@ import eu.tiducto.osmreview.server.db.Db
 import eu.tiducto.osmreview.server.db.DraftRepo
 import eu.tiducto.osmreview.server.db.SettingsRepo
 import eu.tiducto.osmreview.server.presets.IdPresetData
+import eu.tiducto.osmreview.server.presets.PresetBulkService
 import eu.tiducto.osmreview.server.presets.PresetService
 import eu.tiducto.osmreview.rules.mapcss.MapCssEngine
 import eu.tiducto.osmreview.server.db.ScanRepo
@@ -82,6 +83,7 @@ class App(val config: Config, val http: HttpClient = defaultHttpClient()) : Auto
     val scans = ScanService(scanRepo, ruleFiles, mapCss, rules, mirror, drafts, account, events::emit)
     val ruleSources = RemoteRuleSources(ruleFiles, config.dataDir.resolve("rule-cache"), http, config.userAgent)
     val presets = PresetService(idPresets, ruleFiles)
+    val presetBulk = PresetBulkService(presets, drafts, mirror, queries)
 
     val mcpToken: String = config.mcpToken ?: settings.get(MCP_TOKEN_KEY) ?: ByteArray(24)
         .also(SecureRandom()::nextBytes)

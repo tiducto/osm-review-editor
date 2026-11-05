@@ -227,6 +227,9 @@ class RuleFilesApiTest {
         val imported = send("POST", "/api/presets/import", enc(ImportPresetRequest.serializer(), ImportPresetRequest("amenity/bench", "custom/bench")))
         assertEquals(HttpStatusCode.Created, imported.status)
         assertEquals("presets/custom-bench.json", imported.body(WriteRuleFileResult.serializer()).file!!.path)
+        val user = send("GET", "/api/presets/user?locale=cs").body(ListSerializer(ResolvedPreset.serializer()))
+        assertEquals(listOf("custom/bench"), user.map { it.id })
+        assertEquals("cs", user.single().locale)
 
         val applied = send("POST", "/api/presets/apply", enc(PresetApplyRequest.serializer(), PresetApplyRequest("custom/bench", mapOf("leisure" to "picnic_table"))))
         assertEquals(mapOf("amenity" to "bench", "leisure" to "picnic_table"), applied.body(PresetApplyResult.serializer()).tags)

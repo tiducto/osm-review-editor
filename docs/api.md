@@ -335,7 +335,7 @@ Anything else is a 400: other extensions, `..`, absolute paths, hidden segments 
 that resolve through a symlink to outside the folder. Remote files are listed as
 `remote/<name>.<ext>` and are read-only (409 on write or delete).
 
-Built-in files (the highlights and checks from `user-rules.example`, shipped with the server) are
+Built-in files (the highlights, checks and smart presets from `user-rules.example`, shipped with the server) are
 listed under their normal paths with `readOnly: true` and `origin.builtIn: true`, unless a local file
 has the same path: the local file overrides the built-in one. Writing to a built-in path creates
 that override; deleting the override brings the built-in back (`rules_changed` reports the path as
@@ -486,9 +486,11 @@ Preset ids contain `/` and go into the path unencoded.
 | GET | `/api/presets/{id}?locale=` | | `ResolvedPreset`; 404 for unknown ids |
 | POST | `/api/presets/match` | `PresetMatchRequest` `{tags, geometry, locale?}` | `PresetMatch` `{preset, score}` |
 | POST | `/api/presets/apply` | `PresetApplyRequest` `{presetId, tags, geometry?, fromPresetId?}` | `PresetApplyResult` `{presetId, edit: TagEdit, tags}` |
+| POST | `/api/presets/apply/bulk` | `PresetBulkApplyRequest` `{presetId, refs, dryRun?, title?, draftId?, reason?, area?, locale?}` | `PresetBulkApplyResult` `{presetId, presetName, total, changed, unchanged, skipped, preview, truncated, draft, results}`; 400 above 5000 refs, 404 for an unknown preset, 503 without a GOL |
 | POST | `/api/presets/import` | `ImportPresetRequest` `{presetId, id?, path?}` | 201 `WriteRuleFileResult`: a new overlay file `{id, extends, apply}`; `id` defaults to `custom/<presetId>`, `path` to `presets/<id with dashes>.json`; 409 when the id or file exists |
 | POST | `/api/presets/detach` | `DetachPresetRequest` `{id?, path?}` | `WriteRuleFileResult`: the overlay rewritten as a full preset without `extends` |
 | GET | `/api/presets/smart` | | `SmartPreset[]` from `presets/smart/` without errors |
+| GET | `/api/presets/user?locale=` | | `ResolvedPreset[]`: every preset from the rules folder (local, remote and built-in files) that resolves, in the locale, sorted by name |
 | GET | `/api/presets/id-schema` | | `IdSchemaInfo` `{version, locales, files, baseUrl}` |
 | GET | `/api/presets/id-schema/{file}` | | The raw iD file: `presets.json`, `fields.json`, `preset_categories.json`, `preset_defaults.json`, `deprecated.json`, `discarded.json`, `translations/en.json`, `translations/cs.json`, `package.json`; `ETag` is the version, cached for a day |
 
@@ -516,6 +518,20 @@ Applying: `merge` removes `fromPresetId`'s `removeTags` (and `area`) when given,
 keeping every other tag; a `*` value keeps the object's value or becomes `yes`. `replace` makes
 `addTags` the whole tag set (`TagEdit.replaceAll`). `create` does the same but only for objects with
 no tags (400 otherwise). A geometry the preset does not support is a 400.
+
+Bulk apply looks the refs up in the GOL mirror in one ID-set scan and applies the preset to each
+object like `/api/presets/apply`, with the geometry taken from the mirror (a node is a `vertex` when
+it is on a way, else a `point`; a way is an `area` when GeoDesk treats it as one, else a `line`; a
+multipolygon is an `area`, other relations `relation`) and `fromPresetId` set to the object's
+current best match. Refs missing from the mirror, objects whose geometry the preset does not support
+and tagged objects for a `create` preset go to `skipped` (`{ref, message}`); objects whose tags would
+not change count as `unchanged`. `preview` holds the first 200 changed objects as `{ref, name,
+fromPresetId, before, after, summary}` (`summary` is the `TagDiff` summary, `truncated` when there
+are more). `dryRun` defaults to `true`. With `dryRun: false` and at least one change, the changes go
+into a new draft (author `user`, `title` default `Preset <name> · <n> objects`, `area` stored with the
+draft) or into the open draft `draftId`, one proposal per object with `reason` (default `Preset
+"<name>"`) and confidence `needs_review`; `draft` is its `DraftDetail` and `results` the
+`ProposalResult[]`. Nothing is uploaded.
 
 Smart presets (`presets/smart/*.json`) are `{id, name, geometry, match, params, steps, description?}`.
 Validation checks the keys and types, parameter definitions (`combo` needs `options` and a default

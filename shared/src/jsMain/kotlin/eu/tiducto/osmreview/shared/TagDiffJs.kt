@@ -23,6 +23,12 @@ fun applyTagEdit(base: dynamic, set: dynamic, remove: Array<String>): dynamic =
 fun tagDiffSummary(base: dynamic, proposed: dynamic): String =
     TagDiff.between(stringMapOf(base), stringMapOf(proposed)).summary()
 
+@JsExport
+fun roadWidthMetres(tags: dynamic): Double? = HalfWidth.width(stringMapOf(tags))
+
+@JsExport
+fun halfWidthMetres(tags: dynamic): Double? = HalfWidth.metres(stringMapOf(tags))
+
 private fun stringMapOf(obj: dynamic): Map<String, String> {
     if (obj == null) return emptyMap()
     val keys: Array<String> = js("Object.keys")(obj)

@@ -82,7 +82,7 @@ val builtInRulesSource = rootProject.layout.projectDirectory.dir("user-rules.exa
 val builtInRulesResources = layout.buildDirectory.dir("generated/builtin-rules")
 val copyBuiltInRules by tasks.registering(Sync::class) {
     group = "build"
-    description = "Copies the example highlights and checks into the server resources as the read-only built-in rules, with an index."
+    description = "Copies the example highlights, checks and smart presets into the server resources as the read-only built-in rules, with an index."
     from(builtInRulesSource.dir("highlights")) {
         include("*.mapcss")
         exclude("*.validator.mapcss")
@@ -91,6 +91,10 @@ val copyBuiltInRules by tasks.registering(Sync::class) {
     from(builtInRulesSource.dir("checks")) {
         include("*.validator.mapcss")
         into("builtin-rules/checks")
+    }
+    from(builtInRulesSource.dir("presets/smart")) {
+        include("*.json")
+        into("builtin-rules/presets/smart")
     }
     into(builtInRulesResources)
     val out = builtInRulesResources

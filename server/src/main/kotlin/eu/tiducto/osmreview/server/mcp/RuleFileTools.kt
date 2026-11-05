@@ -32,7 +32,7 @@ internal fun registerRuleFileTools(server: Server, app: App) {
     server.tool(
         "list_rule_files",
         "Files in the user's rules folder (${RuleKind.allowedPatterns}), read-only files from remote sources (remote/...) and " +
-            "read-only built-in highlights and checks (origin.builtIn; a user file with the same path overrides them), " +
+            "read-only built-in highlights, checks and smart presets (origin.builtIn; a user file with the same path overrides them), " +
             "with kind, hash and diagnostics.",
         schema { enum("kind", "Only files of this kind", KINDS) },
         readOnly = true,
