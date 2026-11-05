@@ -1,0 +1,12 @@
+node[highway=crossing][!crossing] {
+  throwWarning: tr("Crossing without crossing=*");
+  group: tr("Crossings");
+}
+
+node[highway=crossing][crossing=zebra] {
+  throwWarning: tr("{0} is deprecated", "{1.tag}");
+  group: tr("Crossings");
+  fixRemove: "crossing";
+  fixAdd: "crossing=uncontrolled";
+  fixAdd: "crossing:markings=zebra";
+}

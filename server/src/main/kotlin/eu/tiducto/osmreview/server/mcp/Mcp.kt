@@ -114,6 +114,10 @@ private val INSTRUCTIONS = """
     specific reason. Read get_draft to see the human's decisions and rejection comments, then revise
     with update_change. Areas are admin boundary names (e.g. "Opava", "Kateřinky", "Brno-střed"), a bbox
     [west, south, east, north], or a GeoJSON polygon.
+    The user's rules folder holds MapCSS highlights and checks, iD-style presets and smart presets as plain files
+    (list_rule_files, read_rule_file, validate_rule_file, write_rule_file, delete_rule_file). Validate before writing;
+    a write with errors is refused unless force=true. Presets: search_presets, get_preset, match_preset, and
+    import_preset / detach_preset to customise an iD preset as an overlay file.
 """.trimIndent()
 
 private fun buildServer(app: App): Server {
@@ -357,6 +361,7 @@ private fun buildServer(app: App): Server {
         val a = app.area(name) ?: throw IllegalArgumentException("Unknown area '$name'")
         ReadResourceResult(listOf(TextResourceContents(WireJson.encodeToString(eu.tiducto.osmreview.shared.Area.serializer(), a), request.uri, "application/json")))
     }
+    registerRuleFileTools(server, app)
     return server
 }
 
@@ -434,7 +439,7 @@ private fun JsonObject.toTagEdit() = TagEdit(
     replaceAll = (this["set_tags"] as? JsonObject)?.mapValues { it.value.jsonPrimitive.content },
 )
 
-private fun Server.tool(
+internal fun Server.tool(
     name: String,
     description: String,
     inputSchema: ToolSchema = schema { },
@@ -453,14 +458,14 @@ private fun Server.tool(
     }
 }
 
-private fun schema(required: List<String> = emptyList(), props: JsonObjectBuilder.() -> Unit) =
+internal fun schema(required: List<String> = emptyList(), props: JsonObjectBuilder.() -> Unit) =
     ToolSchema(properties = buildJsonObject(props), required = required)
 
-private fun JsonObjectBuilder.str(name: String, d: String) = putJsonObject(name) { put("type", "string"); put("description", d) }
-private fun JsonObjectBuilder.int(name: String, d: String) = putJsonObject(name) { put("type", "integer"); put("description", d) }
-private fun JsonObjectBuilder.long(name: String, d: String) = putJsonObject(name) { put("type", "integer"); put("description", d) }
-private fun JsonObjectBuilder.bool(name: String, d: String) = putJsonObject(name) { put("type", "boolean"); put("description", d) }
-private fun JsonObjectBuilder.enum(name: String, d: String, values: List<String>) = putJsonObject(name) {
+internal fun JsonObjectBuilder.str(name: String, d: String) = putJsonObject(name) { put("type", "string"); put("description", d) }
+internal fun JsonObjectBuilder.int(name: String, d: String) = putJsonObject(name) { put("type", "integer"); put("description", d) }
+internal fun JsonObjectBuilder.long(name: String, d: String) = putJsonObject(name) { put("type", "integer"); put("description", d) }
+internal fun JsonObjectBuilder.bool(name: String, d: String) = putJsonObject(name) { put("type", "boolean"); put("description", d) }
+internal fun JsonObjectBuilder.enum(name: String, d: String, values: List<String>) = putJsonObject(name) {
     put("type", "string")
     put("description", d)
     putJsonArray("enum") { values.forEach { add(JsonPrimitive(it)) } }
@@ -473,12 +478,12 @@ private fun JsonObjectBuilder.area() = putJsonObject("area") {
     )
 }
 
-private fun JsonObject.str(k: String) = (this[k] as? JsonPrimitive)?.contentOrNull
-private fun JsonObject.int(k: String) = (this[k] as? JsonPrimitive)?.intOrNull
-private fun JsonObject.long(k: String) = (this[k] as? JsonPrimitive)?.longOrNull
-private fun JsonObject.bool(k: String) = (this[k] as? JsonPrimitive)?.booleanOrNull
+internal fun JsonObject.str(k: String) = (this[k] as? JsonPrimitive)?.contentOrNull
+internal fun JsonObject.int(k: String) = (this[k] as? JsonPrimitive)?.intOrNull
+internal fun JsonObject.long(k: String) = (this[k] as? JsonPrimitive)?.longOrNull
+internal fun JsonObject.bool(k: String) = (this[k] as? JsonPrimitive)?.booleanOrNull
 
-private fun <T> ok(value: T, serializer: KSerializer<T>) = okJson(WireJson.encodeToJsonElement(serializer, value))
-private fun okJson(json: JsonElement) = CallToolResult(content = listOf(TextContent(json.toString())))
-private fun err(text: String) = CallToolResult(content = listOf(TextContent(text)), isError = true)
-private fun tagsJson(tags: Map<String, String>): JsonElement = JsonObject(tags.mapValues { JsonPrimitive(it.value) })
+internal fun <T> ok(value: T, serializer: KSerializer<T>) = okJson(WireJson.encodeToJsonElement(serializer, value))
+internal fun okJson(json: JsonElement) = CallToolResult(content = listOf(TextContent(json.toString())))
+internal fun err(text: String) = CallToolResult(content = listOf(TextContent(text)), isError = true)
+internal fun tagsJson(tags: Map<String, String>): JsonElement = JsonObject(tags.mapValues { JsonPrimitive(it.value) })

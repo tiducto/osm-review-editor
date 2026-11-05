@@ -29,6 +29,7 @@ services:
     volumes:
       - goldata:/data
       - ./config:/config:ro
+      - ./user-rules:/rules
     ports:
       - 127.0.0.1:3000:3000
       - 127.0.0.1:8111:8111
@@ -36,6 +37,7 @@ services:
     environment:
       DB_URL: jdbc:postgresql://db:5432/osmreview
       DB_USER: osmreview
+      RULES_DIR: /rules
     restart: unless-stopped
 
 volumes:

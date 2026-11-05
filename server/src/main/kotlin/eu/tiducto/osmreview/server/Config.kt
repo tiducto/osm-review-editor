@@ -32,6 +32,7 @@ data class Config(
     val defaultAreasFile: Path?,
     val contact: String,
     val bingKey: String? = null,
+    val rulesDir: Path = Path.of("user-rules"),
 ) {
     fun target(t: OsmTarget) = if (t == OsmTarget.PROD) prod else dev
 
@@ -72,6 +73,7 @@ data class Config(
                 defaultAreasFile = get("DEFAULT_AREAS")?.let(Path::of),
                 contact = get("CONTACT") ?: "https://github.com/tiducto/osm-review-editor",
                 bingKey = get("BING_KEY"),
+                rulesDir = Path.of(get("RULES_DIR") ?: "user-rules"),
             )
         }
     }

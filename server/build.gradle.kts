@@ -52,6 +52,33 @@ dependencies {
     testImplementation(libs.testcontainers.postgresql)
 }
 
+val idTaggingSchema = rootProject.layout.projectDirectory.dir("node_modules/@openstreetmap/id-tagging-schema")
+val idTaggingSchemaResources = layout.buildDirectory.dir("generated/id-tagging-schema")
+val copyIdTaggingSchema by tasks.registering(Sync::class) {
+    group = "build"
+    description = "Copies the iD tagging schema (presets, fields, categories, en and cs translations) from node_modules into the server resources."
+    val packageJson = idTaggingSchema.file("package.json").asFile
+    doFirst {
+        check(packageJson.exists()) { "${packageJson.parentFile} is missing; run npm install first" }
+    }
+    from(packageJson) { into("id-tagging-schema/dist") }
+    from(idTaggingSchema.dir("dist")) {
+        include(
+            "presets.min.json",
+            "fields.min.json",
+            "preset_categories.min.json",
+            "translations/en.min.json",
+            "translations/cs.min.json",
+        )
+        rename("(.*)\\.min\\.json", "$1.json")
+        into("id-tagging-schema/dist")
+    }
+    into(idTaggingSchemaResources)
+}
+sourceSets.main {
+    resources.srcDir(files(idTaggingSchemaResources).builtBy(copyIdTaggingSchema))
+}
+
 val webDist = rootProject.layout.projectDirectory.dir("web/dist")
 tasks.processResources {
     from(webDist) { into("static") }

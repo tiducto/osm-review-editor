@@ -23,6 +23,11 @@ jobs:
           node-version: 26
           cache: npm
 
+      - name: Shared JS build and npm install (the server copies the iD tagging schema from node_modules)
+        run: |
+          ./gradlew :shared:jsBrowserProductionLibraryDistribution
+          npm ci
+
       - name: Test (shared JVM + JS, rules, server incl. Postgres via Testcontainers)
         run: ./gradlew :shared:allTests :rules:test :server:test
 
@@ -32,10 +37,7 @@ jobs:
           git diff --exit-code web/src/generated/models.ts
 
       - name: Web build (type-check + bundle)
-        run: |
-          ./gradlew :shared:jsBrowserProductionLibraryDistribution
-          npm ci
-          npm run build -w web
+        run: npm run build -w web
 
       - name: Server distribution with the bundled UI
         run: ./gradlew :server:installDist

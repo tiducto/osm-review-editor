@@ -78,6 +78,7 @@ class McpTest {
             put("MCP_TOKEN", TOKEN)
             put("OVERPASS_URL", "https://overpass.test/api/interpreter")
             put("DATA_DIR", Files.createTempDirectory("gol").toString())
+            put("RULES_DIR", Files.createTempDirectory("rules").toString())
             gol?.let { put("GOL_FILE", it.toString()) }
             val presets = Files.createTempFile("areas", ".geojson")
             Files.writeString(
@@ -195,7 +196,11 @@ class McpTest {
         val tools = body(rpc("tools/list", JsonObject(emptyMap()), session))["result"]!!.jsonObject["tools"]!!.jsonArray
             .map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
         assertEquals(
-            setOf("list_rules", "run_rule", "query_osm", "get_object", "create_draft", "propose_changes", "update_change", "list_drafts", "get_draft"),
+            setOf(
+                "list_rules", "run_rule", "query_osm", "get_object", "create_draft", "propose_changes", "update_change", "list_drafts", "get_draft",
+                "list_rule_files", "read_rule_file", "validate_rule_file", "write_rule_file", "delete_rule_file",
+                "search_presets", "get_preset", "match_preset", "import_preset", "detach_preset",
+            ),
             tools,
         )
 

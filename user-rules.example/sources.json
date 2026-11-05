@@ -1,0 +1,9 @@
+[
+  {
+    "name": "josm-unnecessary",
+    "url": "https://josm.openstreetmap.de/export/HEAD/josm/trunk/resources/data/validator/unnecessary.mapcss",
+    "kind": "check",
+    "refreshHours": 168,
+    "licence": "GPL-2.0-or-later (JOSM); fetched read-only, not redistributed"
+  }
+]

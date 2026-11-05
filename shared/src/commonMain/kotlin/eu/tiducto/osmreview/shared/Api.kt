@@ -213,6 +213,10 @@ sealed interface UiEvent {
     @Serializable
     @SerialName("mirror_swapped")
     data class MirrorSwapped(val status: MirrorStatus) : UiEvent
+
+    @Serializable
+    @SerialName("rules_changed")
+    data class RulesChanged(val changed: List<String> = emptyList(), val removed: List<String> = emptyList()) : UiEvent
 }
 
 @Serializable

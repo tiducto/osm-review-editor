@@ -1,0 +1,20 @@
+{
+  "id": "smart/footway-crossing",
+  "name": "Footway → crossing",
+  "geometry": ["line"],
+  "match": "way[highway=footway][!footway]",
+  "params": {
+    "crossing": {
+      "type": "combo",
+      "options": ["uncontrolled", "traffic_signals", "unmarked"],
+      "default": "uncontrolled"
+    }
+  },
+  "steps": [
+    { "op": "findCrossing", "with": "way[highway][highway!~/^(footway|path|steps|cycleway|pedestrian)$/]", "as": "road", "require": "one" },
+    { "op": "ensureSharedNode", "ways": ["self", "road"], "as": "x" },
+    { "op": "splitAround", "way": "self", "node": "x", "at": "nearestNodeOr", "distance": "half_width(road)", "as": "piece" },
+    { "op": "tag", "target": "piece", "set": { "footway": "crossing", "crossing": "{crossing}" } },
+    { "op": "tag", "target": "x", "set": { "highway": "crossing", "crossing": "{crossing}" } }
+  ]
+}

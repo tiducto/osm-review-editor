@@ -206,6 +206,9 @@ fun Route.apiRoutes(app: App) {
                 ),
             )
         }
+        ruleFileRoutes(app.ruleFiles, app.ruleSources)
+        presetRoutes(app.presets)
+
         put("/settings/target") {
             val req = call.receive<SetTargetRequest>()
             require(req.target != OsmTarget.PROD || req.confirm) { "Switching to the production API needs confirm: true" }
