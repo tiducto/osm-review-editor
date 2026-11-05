@@ -50,6 +50,7 @@ object Meta {
     const val WIDTH = "@width"
     const val JUNCTION = "@junction"
     const val END = "@end"
+    const val BUILDING_ONLY = "@bonly"
 }
 
 class TileBuilder {
@@ -60,7 +61,7 @@ class TileBuilder {
         val bounds = TileBounds(z, x, y, extent)
         val buffer = TileContent.bufferPx(z) * extent / TileContent.TILE_PX
         val clip = ClipBox.around(extent, buffer)
-        val tolerance = if (z >= TileContent.MAX_ZOOM) 0.0 else 0.5
+        val tolerance = if (z >= TileContent.DETAIL_ZOOM) 0.0 else 0.5
         val minArea = TileContent.minAreaPx(z) * (extent / TileContent.TILE_PX) * (extent / TileContent.TILE_PX)
         val tile = MvtTile()
         val all = ArrayList<SourceFeature>()
@@ -71,8 +72,8 @@ class TileBuilder {
             all += f
             if (f.type == SourceType.WAY) {
                 when (val g = f.geometry) {
-                    is SourceGeometry.Line -> wayNodes.addWay(g.xy, closedIsArea = false)
-                    is SourceGeometry.Area -> g.polygons.firstOrNull()?.firstOrNull()?.let { wayNodes.addWay(it, closedIsArea = true) }
+                    is SourceGeometry.Line -> wayNodes.addWay(g.xy, closedIsArea = false, building = isBuilding(f.tags), taggedLine = f.tags.isNotEmpty())
+                    is SourceGeometry.Area -> g.polygons.firstOrNull()?.firstOrNull()?.let { wayNodes.addWay(it, closedIsArea = true, building = isBuilding(f.tags)) }
                     else -> {}
                 }
             }
@@ -95,6 +96,7 @@ class TileBuilder {
                         emitted += key
                         props[Meta.JUNCTION] = parents > 1
                         props[Meta.END] = wayNodes.isEnd(key)
+                        props[Meta.BUILDING_ONLY] = wayNodes.buildingOnly(key)
                         point(tile.layer(Layers.VERTEX, extent), geom, fid, tx, ty, props)
                     } else {
                         point(tile.layer(Layers.POINT, extent), geom, fid, tx, ty, props)
@@ -118,10 +120,11 @@ class TileBuilder {
             val layer = tile.layer(Layers.VERTEX, extent)
             wayNodes.forEachVertex { key, parents, end ->
                 if (key in emitted) return@forEachVertex
+                val props = linkedMapOf<String, Any>(Meta.JUNCTION to (parents > 1), Meta.END to end, Meta.BUILDING_ONLY to wayNodes.buildingOnly(key))
                 val tx = bounds.tx(WayNodeIndex.x(key).toDouble())
                 val ty = bounds.ty(WayNodeIndex.y(key).toDouble())
                 if (!bounds.contains(tx, ty)) return@forEachVertex
-                point(layer, geom, null, tx, ty, linkedMapOf(Meta.JUNCTION to (parents > 1), Meta.END to end))
+                point(layer, geom, null, tx, ty, props)
             }
         }
         return tile
@@ -211,7 +214,7 @@ class TileBuilder {
             }
         }
 
-        val maxBand = if (z >= TileContent.MAX_ZOOM) TileContent.MAX_BAND_ZOOM else z
+        val maxBand = if (z >= TileContent.DETAIL_ZOOM) TileContent.MAX_BAND_ZOOM else z
         val from = max(z, fullZoom + 1)
         if (from > maxBand) return
         val bandLayer = tile.layer(Layers.BAND, extent)
@@ -231,6 +234,9 @@ class TileBuilder {
             bandLayer.add(fid, GeomType.POLYGON, geom.data, geom.size, bandProps)
         }
     }
+
+    private fun isBuilding(tags: Map<String, String>): Boolean =
+        tags["building"].let { it != null && it != "no" } || tags["building:part"].let { it != null && it != "no" }
 
     private fun wantsLabel(tags: Map<String, String>): Boolean =
         "name" in tags || tags.keys.any { it in TileContent.LABEL_KEYS }
@@ -384,8 +390,10 @@ class TileBuilder {
 class WayNodeIndex {
     private val counts = LongIntMap()
     private val ends = LongIntMap()
+    private val other = LongIntMap()
+    private val lines = LongIntMap()
 
-    fun addWay(xy: DoubleArray, closedIsArea: Boolean) {
+    fun addWay(xy: DoubleArray, closedIsArea: Boolean, building: Boolean = false, taggedLine: Boolean = false) {
         val n = xy.size / 2
         if (n == 0) return
         val closed = n > 1 && xy[0] == xy[2 * n - 2] && xy[1] == xy[2 * n - 1]
@@ -396,6 +404,8 @@ class WayNodeIndex {
             if (k == prev) continue
             prev = k
             counts.increment(k)
+            if (!building) other.increment(k)
+            if (taggedLine) lines.increment(k)
         }
         if (!closed && !closedIsArea) {
             ends.increment(key(xy[0], xy[1]))
@@ -405,12 +415,14 @@ class WayNodeIndex {
 
     fun parents(key: Long): Int = counts.get(key)
 
+    fun buildingOnly(key: Long): Boolean = counts.get(key) > 0 && other.get(key) == 0
+
     fun isEnd(key: Long): Boolean = ends.get(key) > 0 && counts.get(key) <= 1
 
     fun forEachVertex(block: (Long, Int, Boolean) -> Unit) {
         counts.forEach { k, c ->
             val end = ends.get(k) > 0
-            if (c > 1 || end) block(k, c, end && c <= 1)
+            if ((c > 1 && lines.get(k) > 0) || end) block(k, c, end && c <= 1)
         }
     }
 

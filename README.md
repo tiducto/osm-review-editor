@@ -215,6 +215,17 @@ Testcontainers and skip without Docker.
 After changing a `@Serializable` model in `shared/`, run `./gradlew :shared:generateTsModels`; CI
 fails when `web/src/generated/models.ts` is stale.
 
+### Map
+
+The map draws the mirror like iD: the server cuts vector tiles from the GOL
+([`/api/tiles`](docs/api.md#vector-tiles)), a web worker classifies every feature (iD's way and area
+colours, casings, dashes, patterns, preset icons from id-tagging-schema) and re-encodes the tile for
+MapLibre. Large areas get iD's 30 px partial fill as an inset band computed on the server per display
+zoom; buildings, points and address points are hidden when too dense, with iD's thresholds. Imagery,
+when chosen, replaces the light grey background under the data. Above the data and below the
+overlays (scope, issues, drafts) the style keeps an empty `ore-highlight-slot` layer: future highlight
+layers are inserted before it.
+
 ### Layout
 
 ```
@@ -237,6 +248,7 @@ docs/     API reference
 | OSM API | Ktor client, xmlutil (osmChange), OAuth 2.0 + PKCE |
 | MCP | Kotlin MCP SDK 0.16, Streamable HTTP |
 | Frontend | Vue 3.5, Vite 8, TypeScript, MapLibre GL 6, Pinia, Tailwind 4 |
+| Map | Vector tiles cut from the GOL by the server (own MVT encoder), styled like iD in a web worker (iD sprites, patterns and presets), light only |
 
 ## Milestones
 

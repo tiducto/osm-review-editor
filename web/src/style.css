@@ -1,8 +1,6 @@
 @import 'tailwindcss';
 @import 'maplibre-gl/dist/maplibre-gl.css' layer(components);
 
-@custom-variant dark (&:where(.dark, .dark *));
-
 :root {
   --bg: #f4f5f7;
   --surface: #ffffff;
@@ -38,39 +36,6 @@
   --shadow-lg: 0 10px 40px rgb(15 23 42 / 0.18);
 }
 
-.dark {
-  --bg: #0b0f17;
-  --surface: #121722;
-  --surface-2: #171d2a;
-  --surface-3: #1e2534;
-  --line: #242c3b;
-  --line-strong: #323c4f;
-  --fg: #e6e9ef;
-  --fg-2: #a3adbd;
-  --fg-3: #6b7587;
-  --accent: #4f8cff;
-  --accent-soft: #4f8cff24;
-
-  --added: #4ade80;
-  --added-soft: #22c55e24;
-  --removed: #f87171;
-  --removed-soft: #ef444426;
-  --changed: #fbbf24;
-  --changed-soft: #f59e0b24;
-  --geom: #c084fc;
-  --geom-soft: #a855f726;
-
-  --info: #38bdf8;
-  --warning: #fbbf24;
-  --error: #f87171;
-  --prod: #fb923c;
-  --prod-soft: #f9731629;
-  --claude: #e08a68;
-  --claude-soft: #d9775729;
-
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 16px rgb(0 0 0 / 0.3);
-  --shadow-lg: 0 10px 40px rgb(0 0 0 / 0.55);
-}
 
 @theme inline {
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -189,9 +154,6 @@
 .maplibregl-ctrl-group button + button {
   border-top-color: var(--line) !important;
 }
-.dark .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
-  filter: invert(0.85);
-}
 .maplibregl-ctrl-attrib {
   background: color-mix(in srgb, var(--surface) 80%, transparent) !important;
   color: var(--fg-2);
@@ -199,9 +161,6 @@
 }
 .maplibregl-ctrl-attrib a {
   color: var(--fg-2) !important;
-}
-.dark .maplibregl-ctrl-attrib-button {
-  filter: invert(0.85);
 }
 .maplibregl-ctrl-scale {
   background: color-mix(in srgb, var(--surface) 75%, transparent) !important;

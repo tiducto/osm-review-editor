@@ -3,12 +3,10 @@ import { computed, ref, shallowRef } from 'vue'
 import type { Map as MlMap } from 'maplibre-gl'
 import type { Polygon } from 'geojson'
 import type { Area, BBox, ImagerySource, LngLat, MapFeature, OsmRef } from '@/generated/models'
-import { api, isAbort } from '@/api/client'
+import { api } from '@/api/client'
 import { useAppStore } from './app'
 import { refString, sameRef } from '@/lib/osm'
 import { asGeometry, geometryBBox } from '@/lib/geo'
-
-export const FEATURE_MIN_ZOOM = 16
 
 const IMAGERY_KEY = 'ore.imagery'
 
@@ -28,10 +26,7 @@ export const useMapStore = defineStore('map', () => {
   const bbox = ref<BBox | null>(null)
   const zoom = ref(0)
 
-  const features = shallowRef<MapFeature[]>([])
-  const featuresTruncated = ref(false)
-  const featuresLoading = ref(false)
-  let featuresAbort: AbortController | null = null
+  const tilesVersion = ref(app.mirror?.openedAt ?? String(Date.now()))
 
   const selected = ref<OsmRef | null>(null)
   const selectedFeature = shallowRef<MapFeature | null>(null)
@@ -112,27 +107,8 @@ export const useMapStore = defineStore('map', () => {
     zoom.value = z
   }
 
-  async function loadFeatures() {
-    featuresAbort?.abort()
-    const b = bbox.value
-    if (!b || zoom.value < FEATURE_MIN_ZOOM) {
-      if (features.value.length) features.value = []
-      featuresTruncated.value = false
-      featuresLoading.value = false
-      return
-    }
-    const ctrl = new AbortController()
-    featuresAbort = ctrl
-    featuresLoading.value = true
-    try {
-      const fc = await api.features(b, 5000, ctrl.signal)
-      features.value = fc.features
-      featuresTruncated.value = fc.truncated
-    } catch (e) {
-      if (!isAbort(e)) console.warn('features', e)
-    } finally {
-      if (featuresAbort === ctrl) featuresLoading.value = false
-    }
+  function refreshTiles() {
+    tilesVersion.value = app.mirror?.openedAt ?? String(Date.now())
   }
 
   async function select(ref: OsmRef | null, opts: { fly?: boolean } = {}) {
@@ -141,20 +117,15 @@ export const useMapStore = defineStore('map', () => {
       selectedFeature.value = null
       return
     }
-    const local = features.value.find((f) => sameRef(f.ref, ref))
-    selectedFeature.value = local ?? null
-    if (!local) {
-      selectedLoading.value = true
-      try {
-        const f = await api.object(ref)
-        if (sameRef(selected.value, ref)) {
-          selectedFeature.value = f
-        }
-      } catch (e) {
-        if (sameRef(selected.value, ref)) app.fail(e, `Loading ${refString(ref)}`)
-      } finally {
-        selectedLoading.value = false
-      }
+    if (!sameRef(selectedFeature.value?.ref ?? null, ref)) selectedFeature.value = null
+    selectedLoading.value = true
+    try {
+      const f = await api.object(ref)
+      if (sameRef(selected.value, ref)) selectedFeature.value = f
+    } catch (e) {
+      if (sameRef(selected.value, ref)) app.fail(e, `Loading ${refString(ref)}`)
+    } finally {
+      selectedLoading.value = false
     }
     if (opts.fly && selectedFeature.value) {
       const b = geometryBBox(asGeometry(selectedFeature.value.geometry))
@@ -191,11 +162,11 @@ export const useMapStore = defineStore('map', () => {
   }
 
   return {
-    ready, bbox, zoom, features, featuresTruncated, featuresLoading,
+    ready, bbox, zoom, tilesVersion, refreshTiles,
     selected, selectedFeature, selectedLoading, highlighted,
     area, areaLoading, polygon, drawing, scopeName, setPolygon,
     imageryId, allImagery, activeImagery, setImagery, addImagery,
-    attach, detach, instance, setBottomInset, fitBBox, flyTo, updateView, loadFeatures,
+    attach, detach, instance, setBottomInset, fitBBox, flyTo, updateView,
     select, patchSelectedTags, setArea,
   }
 })

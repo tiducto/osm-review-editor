@@ -57,23 +57,38 @@ class TileBuilderTest {
     }
 
     @Test
-    fun `no vertices below zoom 16 and way nodes are not shown as points`() {
+    fun `nodes shared only by areas are not junction vertices, like iD`() {
+        val left = SourceFeature(SourceType.WAY, 1, mapOf("building" to "yes"), SourceGeometry.Area(listOf(listOf(xy(0.2 to 0.2, 0.5 to 0.2, 0.5 to 0.5, 0.2 to 0.5, 0.2 to 0.2)))))
+        val right = SourceFeature(SourceType.WAY, 2, mapOf("building" to "yes"), SourceGeometry.Area(listOf(listOf(xy(0.5 to 0.2, 0.8 to 0.2, 0.8 to 0.5, 0.5 to 0.5, 0.5 to 0.2)))))
+        val entrance = SourceFeature(SourceType.NODE, 3, mapOf("entrance" to "yes"), SourceGeometry.Point(mx(0.5), my(0.5)))
+        val vertices = build(f = arrayOf(left, right, entrance)).getValue(Layers.VERTEX).features
+        val tagged = vertices.single()
+        assertEquals(3L * 4, tagged.id)
+        assertEquals(true, tagged.props[Meta.BUILDING_ONLY])
+        val path = SourceFeature(SourceType.WAY, 4, mapOf("highway" to "footway"), SourceGeometry.Line(xy(0.5 to 0.2, 0.5 to 0.05)))
+        val withPath = build(f = arrayOf(left, right, path)).getValue(Layers.VERTEX).features
+        val junction = withPath.single { it.props[Meta.JUNCTION] == true }
+        assertEquals(false, junction.props[Meta.BUILDING_ONLY])
+    }
+
+    @Test
+    fun `no vertices below zoom 15 and way nodes are not shown as points`() {
         val a = SourceFeature(SourceType.WAY, 1, mapOf("highway" to "primary"), SourceGeometry.Line(xy(0.1 to 0.5, 0.9 to 0.5)))
         val stop = SourceFeature(SourceType.NODE, 5, mapOf("highway" to "bus_stop"), SourceGeometry.Point(mx(0.1), my(0.5)))
-        val tile = build(15, a, stop)
+        val tile = build(14, a, stop)
         assertNull(tile[Layers.VERTEX])
         assertNull(tile[Layers.POINT])
         assertNotNull(tile[Layers.LINE])
     }
 
     @Test
-    fun `curated tags below zoom 16`() {
+    fun `curated tags below zoom 15`() {
         val a = SourceFeature(SourceType.WAY, 1, mapOf("highway" to "primary", "maxspeed" to "50", "name" to "X"), SourceGeometry.Line(xy(0.1 to 0.5, 0.9 to 0.5)))
-        val props = build(14, a).getValue(Layers.LINE).features.single().props
+        val props = build(13, a).getValue(Layers.LINE).features.single().props
         assertEquals("primary", props["highway"])
         assertEquals("X", props["name"])
         assertFalse("maxspeed" in props)
-        val full = build(16, a).getValue(Layers.LINE).features.single().props
+        val full = build(15, a).getValue(Layers.LINE).features.single().props
         assertEquals("50", full["maxspeed"])
     }
 
@@ -82,8 +97,8 @@ class TileBuilderTest {
         val a = SourceFeature(SourceType.WAY, 1, mapOf("highway" to "primary"), SourceGeometry.Line(xy(-1.0 to 0.5, 2.0 to 0.5)))
         val ring = build(f = arrayOf(a)).getValue(Layers.LINE).features.single().rings().single()
         assertEquals(2, ring.size)
-        assertEquals(-512, ring[0].first)
-        assertEquals(8192 + 512, ring[1].first)
+        assertEquals(-256, ring[0].first)
+        assertEquals(8192 + 256, ring[1].first)
     }
 
     @Test
@@ -108,7 +123,7 @@ class TileBuilderTest {
         val band16 = bands.single { it.props[Meta.ID] == 4L && it.props[Meta.BAND_ZOOM] == 16L }.rings()
         assertEquals(2, band16.size)
         val hole = band16[1]
-        assertEquals(819 + 960, hole.minOf { it.first })
+        assertEquals(819 + 480, hole.minOf { it.first })
         val label = tile.getValue(Layers.LABEL).features.single()
         assertEquals("Park", label.props["name"])
         assertEquals(listOf(4096 to 4096), label.rings().single())

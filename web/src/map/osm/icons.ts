@@ -175,3 +175,54 @@ export function addOneway(map: MlMap) {
     add(map, name, c)
   }
 }
+
+const pendingIcons = new Map<string, Promise<unknown>>()
+
+export function ensureIcon(map: MlMap, name: string): Promise<unknown> {
+  if (map.hasImage(name)) return Promise.resolve()
+  let p = pendingIcons.get(name)
+  if (!p) {
+    const [kind, icon, flag] = name.split(':')
+    p =
+      kind === 'pin' ? addPin(map, icon || null, flag === 'w')
+      : kind === 'vicon' ? addVertexIcon(map, icon)
+      : kind === 'aicon' ? addAreaIcon(map, icon)
+      : Promise.resolve()
+    p = p.catch(() => undefined).finally(() => pendingIcons.delete(name))
+    pendingIcons.set(name, p)
+  }
+  return p
+}
+
+const PATTERN_PNGS = import.meta.glob('../../../../node_modules/@openstreetmap/id/dist/img/pattern/*.png', {
+  query: '?url',
+  import: 'default',
+  eager: true,
+}) as Record<string, string>
+
+function loadUrl(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = reject
+    img.src = url
+  })
+}
+
+export async function addPatterns(map: MlMap, patterns: Record<string, [string, string]>): Promise<void> {
+  const byFile = new Map<string, string>()
+  for (const [path, url] of Object.entries(PATTERN_PNGS)) byFile.set(path.replace(/^.*\/(\w+)\.png$/, '$1'), url)
+  await Promise.all(
+    Object.entries(patterns).map(async ([name, [file, color]]) => {
+      const id = `pat:${name}`
+      if (map.hasImage(id)) return
+      const url = byFile.get(file)
+      const img = url ? await loadUrl(url).catch(() => null) : null
+      const [c, ctx] = canvas(32, 32)
+      ctx.fillStyle = color
+      ctx.fillRect(0, 0, 32, 32)
+      if (img) ctx.drawImage(img, 0, 0, 32, 32)
+      if (!map.hasImage(id)) add(map, id, c)
+    }),
+  )
+}

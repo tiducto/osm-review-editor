@@ -53,7 +53,7 @@ function createDraft(r: Rule) {
             :value="mapStore.imageryId ?? ''"
             @change="mapStore.setImagery(($event.target as HTMLSelectElement).value || null)"
           >
-            <option value="">None (basemap only)</option>
+            <option value="">None</option>
             <option v-for="s in mapStore.allImagery" :key="s.id" :value="s.id">{{ s.name }}</option>
           </select>
           <Icon name="chevron-down" :size="13" class="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-fg-3" />

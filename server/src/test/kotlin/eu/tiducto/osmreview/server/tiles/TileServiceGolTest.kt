@@ -43,13 +43,13 @@ class TileServiceGolTest {
             assertTrue(cached.cached)
             assertEquals(service.etag(16, 36025, 22243), cached.etag)
 
-            for ((z, x, y) in listOf(Triple(15, 18012, 11121), Triple(14, 9006, 5560), Triple(13, 4503, 2780), Triple(12, 2251, 1390), Triple(10, 562, 347))) {
+            for ((z, x, y) in listOf(Triple(15, 18012, 11121), Triple(14, 9006, 5560), Triple(13, 4503, 2780), Triple(12, 2251, 1390), Triple(11, 1125, 695), Triple(9, 281, 173))) {
                 val r = service.tile(z, x, y)
                 val layers = decode(r)
                 println("z$z $x/$y: ${r.buildMs} ms, ${r.features} features, ${r.gzipped.size / 1024} KiB gz, layers ${layers.mapValues { it.value.features.size }}")
-                assertTrue(layers[Layers.VERTEX] == null)
-                if (z < 14) assertTrue(layers[Layers.AREA]?.features.orEmpty().none { it.props["building"] != null })
-                if (z < 15) assertTrue(layers[Layers.POINT]?.features.orEmpty().all { it.props["place"] != null })
+                if (z < 13) assertTrue(layers[Layers.AREA]?.features.orEmpty().none { it.props["building"] != null })
+                if (z < 14) assertTrue(layers[Layers.POINT]?.features.orEmpty().all { it.props["place"] != null })
+                assertEquals(z >= 15, layers[Layers.VERTEX] != null)
             }
         }
     }

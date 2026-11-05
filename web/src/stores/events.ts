@@ -53,7 +53,7 @@ export function connectEvents(): () => void {
       case 'mirror_swapped':
         app.setMirror(e.status)
         void rules.refresh()
-        void mapStore.loadFeatures()
+        mapStore.refreshTiles()
         app.toast('Local mirror updated')
         break
     }

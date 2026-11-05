@@ -7,4 +7,20 @@ This product includes rules/src/main/resources/id-tagging-schema/deprecated.json
 id-tagging-schema (https://github.com/openstreetmap/id-tagging-schema),
 Copyright (c) iD Contributors, ISC License.
 
+The map style reproduces iD's look (https://github.com/openstreetmap/iD), Copyright (c) 2017 iD
+Contributors, ISC License; at build time the web app bundles from the @openstreetmap/id package its
+icon sprites (dist/img/*-sprite.svg) and area fill patterns (dist/img/pattern/*.png), and ports iD's
+line, area, vertex, pin and pattern styling rules.
+
+The web app bundles presets.min.json from id-tagging-schema
+(https://github.com/openstreetmap/id-tagging-schema), Copyright (c) iD Contributors, ISC License, for
+preset icon matching.
+
+Icons in iD's sprites come from:
+- Temaki (https://github.com/rapideditor/temaki), CC0 1.0
+- Maki (https://github.com/mapbox/maki), CC0 1.0
+- Pinhead (https://github.com/waysidemapping/pinhead), CC0 1.0
+- Font Awesome Free (https://fontawesome.com), icons under CC BY 4.0
+- Roentgen (https://github.com/enzet/Roentgen), CC BY 4.0
+
 Map data © OpenStreetMap contributors, available under the Open Database License (ODbL).
