@@ -61,3 +61,8 @@ tasks.processResources {
 tasks.processResources {
     from(rootProject.file("VERSION")) { rename { "version.txt" } }
 }
+
+tasks.named<JavaExec>("run") {
+    // Relative DATA_DIR (default "data") and GOL_FILE resolve against the repo root in dev.
+    workingDir = rootProject.projectDir
+}
