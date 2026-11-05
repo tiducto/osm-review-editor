@@ -19,6 +19,8 @@
     "vue": "^3.5.45"
   },
   "devDependencies": {
+    "@openstreetmap/id": "^2.42.3",
+    "@openstreetmap/id-tagging-schema": "^7.3.0",
     "@tailwindcss/vite": "^4.3.4",
     "@types/geojson": "^7946.0.16",
     "@types/node": "^26.6.6",
