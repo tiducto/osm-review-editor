@@ -18,6 +18,9 @@ object DraftsTable : Table("app.drafts") {
     val author = text("author")
     val scopeGeom = jsonb("scope_geom", WireJson, JsonElement.serializer()).nullable()
     val status = text("status")
+    val area = text("area").nullable()
+    val changesetComment = text("changeset_comment").nullable()
+    val changesetSource = text("changeset_source").nullable()
     val createdAt = timestampWithTimeZone("created_at")
     val updatedAt = timestampWithTimeZone("updated_at")
     override val primaryKey = PrimaryKey(id)
@@ -54,6 +57,7 @@ object ReviewsTable : Table("app.reviews") {
     val decision = text("decision")
     val comment = text("comment").nullable()
     val editedTags = jsonb("edited_tags", WireJson, tagsSerializer).nullable()
+    val imagery = text("imagery").nullable()
     val createdAt = timestampWithTimeZone("created_at")
     override val primaryKey = PrimaryKey(id)
 }

@@ -5,9 +5,9 @@ import eu.tiducto.osmreview.rules.MirrorQueries
 import eu.tiducto.osmreview.rules.RuleEngine
 import eu.tiducto.osmreview.server.Config
 import eu.tiducto.osmreview.server.db.Db
+import eu.tiducto.osmreview.server.db.DraftMeta
 import eu.tiducto.osmreview.server.db.DraftRepo
 import eu.tiducto.osmreview.server.db.SettingsRepo
-import eu.tiducto.osmreview.server.osm.OsmXml
 import eu.tiducto.osmreview.shared.Authors
 import eu.tiducto.osmreview.shared.ChangeStatus
 import eu.tiducto.osmreview.shared.DraftStatus
@@ -20,14 +20,6 @@ import eu.tiducto.osmreview.shared.ReviewRequest
 import eu.tiducto.osmreview.shared.TagEdit
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
-import io.ktor.client.engine.mock.MockRequestHandleScope
-import io.ktor.client.engine.mock.respond
-import io.ktor.client.request.HttpRequestData
-import io.ktor.client.request.HttpResponseData
-import io.ktor.http.HttpMethod
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.content.OutgoingContent
-import io.ktor.http.headersOf
 import kotlinx.coroutines.runBlocking
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.postgresql.PostgreSQLContainer
@@ -156,76 +148,122 @@ class DraftFlowTest {
         assertNotNull(osm.closed.firstOrNull())
     }
 
-    private class FakeOsm {
-        private data class El(val type: String, val id: Long, var version: Int, var tags: Map<String, String>, val extra: String)
+    @Test
+    fun manualEditOnLiveBaseKeepsUpstreamEdits(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        val way = OsmRef(OsmType.WAY, 55)
+        val seen = mapOf("highway" to "footway")
+        osm.edit(way, mapOf("name" to "Pěšina"))
+        val c = drafts.manualEdit(way, seen + ("surface" to "asphalt"), null, baseTags = seen)
+        assertEquals(ChangeStatus.PENDING, c.status)
+        assertEquals(4, c.baseVersion)
+        assertEquals(mapOf("highway" to "footway", "name" to "Pěšina", "surface" to "asphalt"), c.newTags)
+    }
 
-        private val els = mutableMapOf(
-            "way/55" to El("way", 55, 3, mapOf("highway" to "footway"), """<nd ref="1"/><nd ref="2"/><nd ref="3"/><nd ref="1"/>"""),
-            "node/101" to El("node", 101, 4, mapOf("highway" to "crossing", "crossing_ref" to "zebra"), ""),
-            "node/102" to El("node", 102, 1, mapOf("highway" to "crossing"), ""),
+    @Test
+    fun manualEditOnStaleBaseIsAConflict(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        val way = OsmRef(OsmType.WAY, 55)
+        val seen = mapOf("highway" to "footway")
+        osm.edit(way, mapOf("surface" to "gravel"))
+        val c = drafts.manualEdit(way, seen + ("surface" to "asphalt"), null, baseTags = seen)
+        assertEquals(ChangeStatus.CONFLICT, c.status)
+        assertEquals(seen, c.baseTags)
+        assertEquals(seen + ("surface" to "asphalt"), c.newTags)
+        assertEquals("gravel", c.liveTags!!["surface"])
+        assertEquals(4, c.liveVersion)
+        assertFailsWith<StateException> { drafts.review(c.id, ReviewRequest(ReviewDecision.APPROVE)) }
+        val resolved = drafts.resolveConflict(c.id, mapOf("highway" to "footway", "surface" to "asphalt"))
+        assertEquals(ChangeStatus.PENDING, resolved.status)
+        assertEquals(mapOf("surface" to listOf("gravel", "asphalt")), resolved.diff.changed)
+    }
+
+    @Test
+    fun manualEditWithoutBaseReplacesTags(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        val way = OsmRef(OsmType.WAY, 55)
+        osm.edit(way, mapOf("name" to "Pěšina"))
+        val c = drafts.manualEdit(way, mapOf("highway" to "footway", "surface" to "asphalt"), null)
+        assertEquals(mapOf("highway" to "footway", "surface" to "asphalt"), c.newTags)
+    }
+
+    @Test
+    fun changesetGroupsUseDraftAreaCommentAndSource(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        connect()
+        val d = drafts.createDraft("Fixes · ignored", "", Authors.CLAUDE, meta = DraftMeta(area = "Opava", changesetSource = "survey"))
+        assertEquals("Opava", d.area)
+        drafts.proposeChanges(
+            d.id,
+            listOf(
+                ProposedChange(OsmRef(OsmType.NODE, 101), TagEdit(set = mapOf("crossing" to "uncontrolled")), ruleId = "crossing_ref"),
+                ProposedChange(OsmRef(OsmType.WAY, 55), TagEdit(set = mapOf("surface" to "asphalt"))),
+            ),
         )
-        val uploads = mutableListOf<String>()
-        val closed = mutableListOf<Long>()
-        var raceOnNextUpload: Map<String, String>? = null
-        private var nextChangeset = 1001L
+        val changes = drafts.detail(d.id).changes
+        val nodeChange = changes.first { it.ref.type == OsmType.NODE }
+        val wayChange = changes.first { it.ref.type == OsmType.WAY }
+        drafts.review(nodeChange.id, ReviewRequest(ReviewDecision.APPROVE, imagery = "Esri World Imagery"))
+        drafts.review(wayChange.id, ReviewRequest(ReviewDecision.EDIT, tags = wayChange.newTags + ("lit" to "yes"), imagery = " ČÚZK orthophoto "))
+        assertEquals("Esri World Imagery", drafts.detail(d.id).changes.first { it.id == nodeChange.id }.reviews.single().imagery)
 
-        fun version(r: OsmRef) = els.getValue("${r.type.apiName}/${r.id}").version
-        fun tags(r: OsmRef) = els.getValue("${r.type.apiName}/${r.id}").tags
-        fun nodes(r: OsmRef) = OsmXml.parseElements(xml(listOf(els.getValue("${r.type.apiName}/${r.id}")))).single().nodeIds
+        val groups = merge.preview(d.id).groups.associateBy { it.key }
+        assertEquals(setOf("crossing_ref", "manual"), groups.keys)
+        assertEquals("Opava: crossing_ref (rule crossing_ref), reviewed individually", groups.getValue("crossing_ref").comment)
+        assertEquals("Opava: Fixes · ignored, reviewed individually", groups.getValue("manual").comment)
+        assertEquals("survey; Esri World Imagery", groups.getValue("crossing_ref").tags["source"])
+        assertEquals("survey; ČÚZK orthophoto", groups.getValue("manual").tags["source"])
 
-        fun edit(r: OsmRef, set: Map<String, String>) {
-            val e = els.getValue("${r.type.apiName}/${r.id}")
-            e.tags = e.tags + set
-            e.version++
-        }
+        merge.merge(d.id)
+        assertEquals(2, osm.changesetTags.size)
+        assertTrue(osm.changesetTags.any { "survey; Esri World Imagery" in it })
 
-        private fun xml(list: List<El>) = "<osm version=\"0.6\">" + list.joinToString("") { e ->
-            val coords = if (e.type == "node") """ lat="49.9" lon="17.9"""" else ""
-            """<${e.type} id="${e.id}" version="${e.version}" visible="true"$coords>${e.extra}""" +
-                e.tags.entries.joinToString("") { """<tag k="${it.key}" v="${it.value}"/>""" } + "</${e.type}>"
-        } + "</osm>"
+        val custom = drafts.createDraft("Plain", "", Authors.USER, meta = DraftMeta(changesetComment = "Fix crossings after survey"))
+        drafts.proposeChanges(custom.id, listOf(ProposedChange(OsmRef(OsmType.NODE, 102), TagEdit(set = mapOf("crossing" to "marked")))))
+        val only = drafts.detail(custom.id).changes.single()
+        drafts.review(only.id, ReviewRequest(ReviewDecision.APPROVE))
+        val g = merge.preview(custom.id).groups.single()
+        assertEquals("Fix crossings after survey", g.comment)
+        assertEquals("Fix crossings after survey", g.tags["comment"])
+        assertTrue("source" !in g.tags)
+    }
 
-        fun handle(scope: MockRequestHandleScope, req: HttpRequestData): HttpResponseData = with(scope) {
-            val path = req.url.encodedPath
-            val body = (req.body as? OutgoingContent.ByteArrayContent)?.bytes()?.decodeToString().orEmpty()
-            when {
-                path.endsWith("/oauth2/token") -> respond("""{"access_token":"tok","token_type":"Bearer"}""", headers = headersOf("Content-Type", "application/json"))
-                path.endsWith("/user/details") -> respond("""<osm><user id="1" display_name="tester"/></osm>""")
-                path.endsWith("/changeset/create") -> respond((nextChangeset++).toString())
-                path.endsWith("/close") -> {
-                    closed += path.split("/").dropLast(1).last().toLong()
-                    respond("")
-                }
-                path.endsWith("/upload") -> upload(body)
-                req.method == HttpMethod.Get -> {
-                    val type = path.substringAfterLast("/").removeSuffix("s")
-                    val ids = req.url.parameters["${type}s"]!!.split(",")
-                    val found = ids.mapNotNull { els["$type/$it"] }
-                    if (found.size < ids.size) respond("", HttpStatusCode.NotFound) else respond(xml(found))
-                }
-                else -> respond("unexpected $path", HttpStatusCode.BadRequest)
-            }
-        }
+    @Test
+    fun draftStatusAfterMerge(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        connect()
+        val node = OsmRef(OsmType.NODE, 101)
+        val way = OsmRef(OsmType.WAY, 55)
 
-        private fun MockRequestHandleScope.upload(body: String): HttpResponseData {
-            uploads += body
-            val sent = OsmXml.parseElements(body.replace("osmChange", "osm").replace(Regex("</?(modify|create|delete)[^>]*>"), ""))
-            raceOnNextUpload?.let { race ->
-                raceOnNextUpload = null
-                sent.forEach { edit(it.ref, race) }
-                return respond("Version mismatch", HttpStatusCode.Conflict)
-            }
-            sent.forEach { s ->
-                val e = els.getValue("${s.type.apiName}/${s.id}")
-                if (e.version != s.version) return respond("Version mismatch", HttpStatusCode.Conflict)
-            }
-            val diff = sent.joinToString("") { s ->
-                val e = els.getValue("${s.type.apiName}/${s.id}")
-                e.tags = s.tags
-                e.version++
-                """<${e.type} old_id="${e.id}" new_id="${e.id}" new_version="${e.version}"/>"""
-            }
-            return respond("<diffResult>$diff</diffResult>")
-        }
+        val d = drafts.createDraft("Partial", "", Authors.USER)
+        drafts.proposeChanges(
+            d.id,
+            listOf(ProposedChange(node, TagEdit(set = mapOf("crossing" to "uncontrolled"))), ProposedChange(way, TagEdit(set = mapOf("surface" to "asphalt")))),
+        )
+        var changes = drafts.detail(d.id).changes
+        drafts.review(changes.first { it.ref == node }.id, ReviewRequest(ReviewDecision.APPROVE))
+        merge.merge(d.id)
+        assertEquals(DraftStatus.PARTIALLY_MERGED, drafts.detail(d.id).draft.status)
+
+        drafts.review(changes.first { it.ref == way }.id, ReviewRequest(ReviewDecision.REJECT, comment = "not sure"))
+        drafts.proposeChanges(d.id, listOf(ProposedChange(OsmRef(OsmType.NODE, 102), TagEdit(set = mapOf("crossing" to "marked")))))
+        changes = drafts.detail(d.id).changes
+        drafts.review(changes.first { it.ref.id == 102L }.id, ReviewRequest(ReviewDecision.APPROVE))
+        merge.merge(d.id)
+        val done = drafts.detail(d.id)
+        assertEquals(DraftStatus.MERGED, done.draft.status)
+        assertEquals(ChangeStatus.REJECTED, done.changes.first { it.ref == way }.status)
+
+        fun change(status: ChangeStatus) = done.changes.first().copy(status = status)
+        assertEquals(DraftStatus.OPEN, MergeService.statusAfterMerge(listOf(change(ChangeStatus.APPROVED)), DraftStatus.OPEN))
+        assertEquals(DraftStatus.OPEN, MergeService.statusAfterMerge(listOf(change(ChangeStatus.REJECTED)), DraftStatus.OPEN))
+        assertEquals(
+            DraftStatus.PARTIALLY_MERGED,
+            MergeService.statusAfterMerge(listOf(change(ChangeStatus.UPLOADED), change(ChangeStatus.CONFLICT)), DraftStatus.OPEN),
+        )
+        assertEquals(
+            DraftStatus.MERGED,
+            MergeService.statusAfterMerge(listOf(change(ChangeStatus.UPLOADED), change(ChangeStatus.REJECTED)), DraftStatus.PARTIALLY_MERGED),
+        )
     }
 }

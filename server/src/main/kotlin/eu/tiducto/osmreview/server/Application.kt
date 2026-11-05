@@ -12,6 +12,7 @@ import eu.tiducto.osmreview.server.remote.remoteControlRoutes
 import eu.tiducto.osmreview.shared.ApiError
 import eu.tiducto.osmreview.shared.UiEvent
 import eu.tiducto.osmreview.shared.WireJson
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.KotlinxWebsocketSerializationConverter
 import io.ktor.serialization.kotlinx.json.json
@@ -27,6 +28,7 @@ import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.path
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.localPort
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
@@ -77,6 +79,13 @@ fun Application.module(app: App) {
     }
     install(StatusPages) {
         exception<Throwable> { call, e ->
+            if (call.request.local.localPort == app.config.remoteControlPort) {
+                val bad = e is IllegalArgumentException || e is BadRequestException || e is SerializationException
+                if (!bad) log.error("Remote control error on {}", call.request.path(), e)
+                val status = if (bad) HttpStatusCode.BadRequest else HttpStatusCode.InternalServerError
+                call.respondText(e.message ?: status.description, ContentType.Text.Plain, status)
+                return@exception
+            }
             val (status, msg) = when (e) {
                 is NotFoundException -> HttpStatusCode.NotFound to e.message
                 is UnknownRuleException -> HttpStatusCode.NotFound to e.message

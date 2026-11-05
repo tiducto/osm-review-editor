@@ -12,6 +12,9 @@ export interface Draft {
   createdAt: string
   updatedAt: string
   counts: ChangeCounts
+  area: string | null
+  changesetComment: string | null
+  changesetSource: string | null
 }
 
 export interface DraftDetail {
@@ -50,6 +53,7 @@ export interface Review {
   comment: string | null
   editedTags: Record<string, string> | null
   createdAt: string
+  imagery: string | null
 }
 
 export interface Rule {
@@ -169,6 +173,8 @@ export interface UiEventRemoteCommand {
   select: OsmRef[]
   draftId: string | null
   imagery: ImagerySource | null
+  draftIds: string[]
+  message: string | null
 }
 
 export type UiEvent = UiEventDraftUpdated | UiEventMergeProgress | UiEventMirrorSwapped | UiEventRemoteCommand
@@ -211,6 +217,9 @@ export interface CreateDraftRequest {
   title: string
   description?: string
   scope?: JsonValue | null
+  area?: string | null
+  changesetComment?: string | null
+  changesetSource?: string | null
 }
 
 export interface DraftFromRuleRequest {
@@ -237,6 +246,7 @@ export interface ReviewRequest {
   decision: ReviewDecision
   comment?: string | null
   tags?: Record<string, string> | null
+  imagery?: string | null
 }
 
 export interface ResolveConflictRequest {
@@ -247,6 +257,7 @@ export interface ManualEditRequest {
   ref: OsmRef
   tags: Record<string, string>
   reason?: string | null
+  baseTags?: Record<string, string> | null
 }
 
 export interface UpdateDraftRequest {

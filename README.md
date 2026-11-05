@@ -150,8 +150,20 @@ Resources: `draft://{id}`, `rule://{id}`, `area://{name}`.
 
 The app listens on `127.0.0.1:8111` like JOSM (`/version`, `/load_and_zoom`, `/zoom`,
 `/load_object`, `/import`, `/load_data`, `/add_node`, `/imagery`). Requests fly the open tab to the
-object; `addtags` lands as a one-change draft ready to approve. If no tab is open, the command is
-queued and replayed when one connects. Real JOSM cannot run at the same time (same port).
+object. If no tab is open, the command is queued and replayed when one connects. Real JOSM cannot
+run at the same time (same port).
+
+- `addtags` on `/load_and_zoom` and `/load_object` creates one one-change draft per selected object,
+  ready to approve. `select` accepts `n123` and `node123` forms.
+- `changeset_comment` and `changeset_source` are stored on the draft and become the `comment` and
+  `source` tags of its changesets; the draft title stays descriptive.
+- `/load_object` with `relation_members=true` also frames the relation's members. Objects missing
+  from the mirror are fetched live to frame them.
+- `/import` and `/load_data` keep tag changes on existing objects and new tagged nodes. Geometry is
+  out of scope for v1: moved nodes, changed way node lists or relation members, deletions, new ways
+  and relations and untagged new nodes are skipped, and their counts are listed in the draft
+  description and in the response (`OK` followed by a `Skipped ...` line).
+- Errors are plain text like JOSM: 400 for missing or invalid parameters, 500 otherwise.
 
 ## QA rules
 

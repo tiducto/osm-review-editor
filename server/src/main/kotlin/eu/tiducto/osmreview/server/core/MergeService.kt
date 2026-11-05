@@ -20,6 +20,7 @@ import eu.tiducto.osmreview.shared.DraftStatus
 import eu.tiducto.osmreview.shared.MergePreview
 import eu.tiducto.osmreview.shared.MergeProgress
 import eu.tiducto.osmreview.shared.OsmType
+import eu.tiducto.osmreview.shared.ReviewDecision
 import eu.tiducto.osmreview.shared.UiEvent
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.sync.Mutex
@@ -51,28 +52,45 @@ class MergeService(
     }
 
     fun groups(draft: Draft, approved: List<Change>): List<ChangesetGroup> {
-        val area = draft.title.substringAfter(" · ", "").ifBlank { null }
-        return approved.groupBy { it.ruleId ?: "manual" }.flatMap { (ruleId, changes) ->
+        val area = draft.area?.ifBlank { null }
+        return approved.groupBy { (it.ruleId ?: "manual") to area }.flatMap { (key, changes) ->
+            val ruleId = key.first
             val chunks = changes.sortedBy { it.centroid?.lng ?: 0.0 }.chunked(MAX_PER_CHANGESET)
             chunks.mapIndexed { i, chunk ->
-                val what = if (ruleId == "manual") {
-                    draft.title
-                } else {
-                    val verb = runCatching { rules.definition(ruleId).changesetComment }.getOrDefault(ruleId)
-                    "$verb (rule $ruleId)"
+                val comment = draft.changesetComment?.ifBlank { null } ?: run {
+                    val what = if (ruleId == "manual") {
+                        draft.title
+                    } else {
+                        val verb = runCatching { rules.definition(ruleId).changesetComment }.getOrDefault(ruleId)
+                        "$verb (rule $ruleId)"
+                    }
+                    (area?.let { "$it: " } ?: "") + what + ", reviewed individually"
                 }
-                val comment = (area?.let { "$it: " } ?: "") + what + ", reviewed individually"
+                val source = sourceOf(draft, chunk)
                 ChangesetGroup(
                     key = if (chunks.size > 1) "$ruleId#${i + 1}" else ruleId,
                     comment = comment,
-                    tags = mapOf(
-                        "comment" to comment,
-                        "created_by" to "OSM Review Editor ${config.version}",
-                    ),
+                    tags = buildMap {
+                        put("comment", comment)
+                        put("created_by", "OSM Review Editor ${config.version}")
+                        source?.let { put("source", it) }
+                    },
                     changeIds = chunk.map { it.id },
                 )
             }
         }
+    }
+
+    private fun sourceOf(draft: Draft, changes: List<Change>): String? {
+        val reviewed = changes.flatMap { c ->
+            c.reviews.filter { it.decision == ReviewDecision.APPROVE || it.decision == ReviewDecision.EDIT }.mapNotNull { it.imagery }
+        }
+        return (listOfNotNull(draft.changesetSource) + reviewed)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .joinToString("; ")
+            .ifEmpty { null }
     }
 
     suspend fun merge(draftId: String) = lock.withLock {
@@ -118,11 +136,7 @@ class MergeService(
         }
 
         val after = repo.changes(UUID.fromString(draftId))
-        val status = when {
-            after.all { it.status == ChangeStatus.UPLOADED } -> DraftStatus.MERGED
-            after.any { it.status == ChangeStatus.UPLOADED } -> DraftStatus.PARTIALLY_MERGED
-            else -> start.draft.status
-        }
+        val status = statusAfterMerge(after, start.draft.status)
         repo.updateDraft(UUID.fromString(draftId), status = status)
         progress(draftId, "", done, total, null, "Merge finished: $done of $total uploaded", finished = true)
         events.emit(UiEvent.DraftUpdated(draftId))
@@ -168,5 +182,17 @@ class MergeService(
 
     companion object {
         const val MAX_PER_CHANGESET = 500
+
+        private val REMAINING = setOf(ChangeStatus.PENDING, ChangeStatus.APPROVED, ChangeStatus.CONFLICT)
+
+        fun statusAfterMerge(changes: List<Change>, current: DraftStatus): DraftStatus {
+            val uploaded = changes.any { it.status == ChangeStatus.UPLOADED }
+            val remaining = changes.any { it.status in REMAINING }
+            return when {
+                !uploaded -> current
+                remaining -> DraftStatus.PARTIALLY_MERGED
+                else -> DraftStatus.MERGED
+            }
+        }
     }
 }

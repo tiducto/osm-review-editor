@@ -116,6 +116,9 @@ data class Draft(
     val createdAt: String,
     val updatedAt: String,
     val counts: ChangeCounts = ChangeCounts(),
+    val area: String? = null,
+    val changesetComment: String? = null,
+    val changesetSource: String? = null,
 )
 
 @Serializable
@@ -126,6 +129,7 @@ data class Review(
     val comment: String? = null,
     val editedTags: Map<String, String>? = null,
     val createdAt: String,
+    val imagery: String? = null,
 )
 
 @Serializable

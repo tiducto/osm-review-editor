@@ -36,6 +36,16 @@ class OsmApi(
 
     suspend fun fetchOne(ref: OsmRef): OsmElement? = fetch(listOf(ref))[ref]
 
+    suspend fun fetchFull(ref: OsmRef): List<OsmElement> {
+        if (ref.type == OsmType.NODE) return listOfNotNull(fetchOne(ref))
+        val resp = http.get("${target.apiUrl}/${ref.type.apiName}/${ref.id}/full") { header(HttpHeaders.UserAgent, userAgent) }
+        return when {
+            resp.status.isSuccess() -> OsmXml.parseElements(resp.bodyAsText())
+            resp.status == HttpStatusCode.NotFound || resp.status == HttpStatusCode.Gone -> emptyList()
+            else -> throw OsmApiException(resp.status, resp.bodyAsText(), "fetch $ref in full")
+        }
+    }
+
     private suspend fun fetchBatch(type: OsmType, ids: List<Long>, out: MutableMap<OsmRef, OsmElement>) {
         val plural = type.apiName + "s"
         val resp = http.get("${target.apiUrl}/$plural?$plural=${ids.joinToString(",")}") { header(HttpHeaders.UserAgent, userAgent) }
