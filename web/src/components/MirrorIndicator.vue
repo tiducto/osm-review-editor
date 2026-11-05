@@ -26,18 +26,25 @@ const timeLabel = computed(() => {
   return t('shell.mirror.asOf', { time: dateTime(d, sameDay ? { hour: '2-digit', minute: '2-digit' } : { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) })
 })
 
-function phaseLabel(s: string | null): string {
-  const key = `shell.mirror.phase.${s}`
-  return s && key in phaseKeys ? t(phaseKeys[key]) : (s ?? '')
+const PHASES: Record<string, MessageKey> = {
+  clipping: 'shell.mirror.phase.clipping',
+  rebasing: 'shell.mirror.phase.rebasing',
+  updating: 'shell.mirror.phase.updating',
+  checking: 'shell.mirror.phase.checking',
+  swapping: 'shell.mirror.phase.swapping',
+  rebuilding: 'shell.mirror.phase.rebuilding',
 }
 
-const phaseKeys: Record<string, MessageKey> = {
-  'shell.mirror.phase.clipping': 'shell.mirror.phase.clipping',
-  'shell.mirror.phase.updating': 'shell.mirror.phase.updating',
-  'shell.mirror.phase.checking': 'shell.mirror.phase.checking',
-  'shell.mirror.phase.swapping': 'shell.mirror.phase.swapping',
-  'shell.mirror.phase.rebuilding': 'shell.mirror.phase.rebuilding',
-  'shell.mirror.phase.building': 'shell.mirror.phase.building',
+const RESULTS: Record<string, MessageKey> = {
+  ok: 'shell.mirror.result.ok',
+  current: 'shell.mirror.result.current',
+  waiting: 'shell.mirror.result.waiting',
+  skipped: 'shell.mirror.result.skipped',
+  failed: 'shell.mirror.result.failed',
+}
+
+function phaseLabel(s: string | null): string {
+  return s && PHASES[s] ? t(PHASES[s]) : (s ?? '')
 }
 
 function duration(seconds: number | null): string {
@@ -57,10 +64,14 @@ const rows = computed(() => {
   if (mirror.fileTime && (mirror.isFileTime || mirror.fileTime !== mirror.osmTime)) out.push([t('shell.mirror.fileTime'), dateTime(mirror.fileTime)])
   if (mirror.sequence != null) out.push([t('shell.mirror.sequence'), formatNumber(mirror.sequence, { useGrouping: false })])
   out.push([t('shell.mirror.lag'), duration(mirror.lagSeconds)])
+  const r = mirror.replication
+  if (r && r.sequence != null) {
+    out.push([t('shell.mirror.clipper'), t('shell.mirror.clipperValue', { seq: formatNumber(r.sequence, { useGrouping: false }), backlog: formatNumber(r.backlog ?? 0) })])
+  }
   if (mirror.lastRunAt) {
     const parts = [dateTime(mirror.lastRunAt)]
-    if (mirror.lastDurationMs != null) parts.push(t('shell.mirror.seconds', { n: formatNumber(Math.round(mirror.lastDurationMs / 100) / 10) }))
-    if (mirror.lastResult) parts.push(mirror.lastResult)
+    if (mirror.lastCycleSeconds != null) parts.push(t('shell.mirror.seconds', { n: formatNumber(Math.round(mirror.lastCycleSeconds)) }))
+    if (mirror.lastResult) parts.push(RESULTS[mirror.lastResult] ? t(RESULTS[mirror.lastResult]) : mirror.lastResult)
     out.push([t('shell.mirror.lastCycle'), parts.join(' · ')])
   }
   if (mirror.nextCycleAt) out.push([t('shell.mirror.nextCycle'), dateTime(mirror.nextCycleAt)])
@@ -126,14 +137,14 @@ onBeforeUnmount(() => {
         <button
           v-if="mirror.updateSupported"
           class="btn btn-sm"
-          :disabled="mirror.busy || mirror.requesting"
-          :title="mirror.busy ? t('shell.mirror.updateBusy') : ''"
+          :disabled="mirror.sidecarBusy || mirror.requesting"
+          :title="mirror.sidecarBusy ? t('shell.mirror.updateBusy') : ''"
           data-testid="mirror-update-now"
           @click="mirror.updateNow()"
         >
           <Spinner v-if="mirror.requesting" :size="11" /> {{ t('shell.mirror.updateNow') }}
         </button>
-        <span v-if="mirror.busy && mirror.updateSupported" class="self-center text-[11px] text-fg-3">{{ t('shell.mirror.updateBusy') }}</span>
+        <span v-if="mirror.sidecarBusy && mirror.updateSupported" class="self-center text-[11px] text-fg-3">{{ t('shell.mirror.updateBusy') }}</span>
       </div>
     </div>
   </div>

@@ -59,6 +59,7 @@ export function connectEvents(): () => void {
         break
       case 'draft_updated':
         void drafts.onDraftUpdated(e.draftId)
+        useMirrorStore().overlayVersion++
         break
       case 'merge_progress':
         drafts.onMergeProgress(e.progress)
@@ -66,13 +67,16 @@ export function connectEvents(): () => void {
       case 'mirror_swapped':
         app.setMirror(e.status)
         void rules.refresh()
-        if (useMirrorStore().onSwapped()) {
-          mapStore.refreshTiles()
-          app.toast(t('app.mirrorUpdated'))
-        } else {
-          app.toast(t('shell.mirror.reloadHint'))
+        {
+          const mirror = useMirrorStore()
+          const wasPending = mirror.pendingReload
+          if (mirror.onSwapped(e.status)) mapStore.refreshTiles()
+          else if (!wasPending) app.toast(t('shell.mirror.reloadHint'))
         }
         void highlights.load()
+        break
+      case 'mirror_status':
+        useMirrorStore().onStatus(e.status)
         break
       case 'rules_changed':
         void highlights.load()
@@ -85,8 +89,6 @@ export function connectEvents(): () => void {
       case 'push_view':
         void pushView.apply(e)
         break
-      default:
-        if ((e as { type: string }).type === 'mirror_status') useMirrorStore().onStatusEvent(e as unknown as Record<string, unknown>)
     }
   }
 

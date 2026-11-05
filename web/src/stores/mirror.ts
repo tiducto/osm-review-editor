@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, onScopeDispose, ref, shallowRef } from 'vue'
+import type { MirrorStatus, ReplicationStatus, SidecarStatus } from '@/generated/models'
 import { ApiError, apiRequest, errorMessage } from '@/api/client'
 import { t } from '@/i18n'
 import { useAppStore } from './app'
@@ -9,102 +10,82 @@ import { useDraftsStore } from './drafts'
 
 export type MirrorHealth = 'ok' | 'behind' | 'stale' | 'unknown'
 
-export const BUSY_STATES = ['clipping', 'updating', 'checking', 'swapping', 'rebuilding', 'building'] as const
+export const SIDECAR_BUSY = ['rebuilding', 'updating', 'checking', 'swapping'] as const
+export const CLIPPER_BUSY = ['clipping', 'rebasing'] as const
 
 const OK_LAG_SECONDS = 10 * 60
 const BEHIND_LAG_SECONDS = 2 * 60 * 60
 
-type Json = Record<string, unknown>
-
-function str(o: Json | null | undefined, ...keys: string[]): string | null {
-  for (const k of keys) {
-    const v = o?.[k]
-    if (typeof v === 'string' && v) return v
-  }
-  return null
-}
-
-function num(o: Json | null | undefined, ...keys: string[]): number | null {
-  for (const k of keys) {
-    const v = o?.[k]
-    if (typeof v === 'number' && Number.isFinite(v)) return v
-  }
-  return null
-}
-
-function obj(o: Json | null | undefined, key: string): Json | null {
-  const v = o?.[key]
-  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : null
-}
+type Partial<T> = { [K in keyof T]?: T[K] | null }
 
 export const useMirrorStore = defineStore('mirror', () => {
   const app = useAppStore()
-  const live = shallowRef<Json | null>(null)
+  const live = shallowRef<Partial<MirrorStatus> | null>(null)
   const now = ref(Date.now())
   const pendingReload = ref(false)
   const updateSupported = ref(true)
   const requesting = ref(false)
-  const timer = setInterval(() => (now.value = Date.now()), 30_000)
+  const overlayVersion = ref(0)
+  const timer = setInterval(() => (now.value = Date.now()), 15_000)
   onScopeDispose(() => clearInterval(timer))
 
-  const merged = computed<Json>(() => {
-    const base = (app.mirror ?? {}) as unknown as Json
-    return live.value ? { ...base, ...live.value, sidecar: obj(live.value, 'sidecar') ?? obj(base, 'sidecar') } : base
-  })
-  const sidecar = computed(() => obj(merged.value, 'sidecar'))
-  const lastCycle = computed(() => obj(merged.value, 'lastCycle'))
+  const status = computed<Partial<MirrorStatus>>(() => ({ ...((app.mirror ?? {}) as Partial<MirrorStatus>), ...(live.value ?? {}) }))
+  const sidecar = computed<Partial<SidecarStatus> | null>(() => status.value.sidecar ?? null)
+  const replication = computed<Partial<ReplicationStatus> | null>(() => status.value.replication ?? null)
 
-  const sequence = computed(() => num(merged.value, 'dataSequence') ?? num(sidecar.value, 'replicationSequence'))
-  const osmTime = computed(() => {
-    if (num(merged.value, 'dataSequence') != null) return str(merged.value, 'dataTimestamp')
-    return str(sidecar.value, 'replicationTimestamp')
-  })
-  const fileTime = computed(() => str(merged.value, 'dataTimestamp', 'openedAt'))
+  const osmTime = computed(() => status.value.dataTimestamp ?? sidecar.value?.replicationTimestamp ?? null)
+  const fileTime = computed(() => status.value.openedAt ?? null)
   const dataTime = computed(() => osmTime.value ?? fileTime.value)
   const isFileTime = computed(() => !osmTime.value && !!fileTime.value)
+  const sequence = computed(() => status.value.dataSequence ?? sidecar.value?.replicationSequence ?? null)
 
   const lagSeconds = computed<number | null>(() => {
-    const l = num(merged.value, 'lagSeconds')
-    if (l != null) return l
-    const ts = dataTime.value ? Date.parse(dataTime.value) : NaN
-    return Number.isNaN(ts) ? null : Math.max(0, Math.round((now.value - ts) / 1000))
+    const ts = osmTime.value ? Date.parse(osmTime.value) : NaN
+    if (!Number.isNaN(ts)) return Math.max(0, Math.round((now.value - ts) / 1000))
+    return status.value.lagSeconds ?? null
   })
 
-  const state = computed(() => str(merged.value, 'state', 'phase'))
-  const busy = computed(() => !!state.value && (BUSY_STATES as readonly string[]).includes(state.value))
-  const lastResult = computed(() => str(lastCycle.value, 'result') ?? str(sidecar.value, 'result'))
-  const lastError = computed(() => str(lastCycle.value, 'error') ?? str(sidecar.value, 'error') ?? str(merged.value, 'error'))
-  const lastRunAt = computed(() => str(lastCycle.value, 'finishedAt', 'startedAt') ?? str(sidecar.value, 'lastRunAt'))
-  const lastDurationMs = computed(() => num(lastCycle.value, 'durationMs', 'tookMs'))
-  const nextCycleAt = computed(() => str(merged.value, 'nextCycleAt', 'nextUpdateAt'))
-  const nextRebuildAt = computed(() => str(merged.value, 'nextFullBuildDue') ?? str(sidecar.value, 'nextFullBuildDue'))
-  const available = computed(() => merged.value.available !== false)
+  const sidecarPhase = computed(() => sidecar.value?.phase ?? null)
+  const clipperPhase = computed(() => replication.value?.phase ?? null)
+  const sidecarBusy = computed(() => !!sidecarPhase.value && (SIDECAR_BUSY as readonly string[]).includes(sidecarPhase.value))
+  const clipperBusy = computed(() => !!clipperPhase.value && (CLIPPER_BUSY as readonly string[]).includes(clipperPhase.value))
+  const busy = computed(() => sidecarBusy.value || clipperBusy.value)
+  const state = computed(() => (sidecarBusy.value ? sidecarPhase.value : clipperBusy.value ? clipperPhase.value : null))
+
+  const lastResult = computed(() => sidecar.value?.result ?? null)
+  const lastRunAt = computed(() => sidecar.value?.lastRunAt ?? replication.value?.lastRunAt ?? null)
+  const lastCycleSeconds = computed(() => sidecar.value?.lastCycleSeconds ?? replication.value?.lastRunSeconds ?? null)
+  const nextCycleAt = computed(() => sidecar.value?.nextCycleAt ?? replication.value?.nextRunAt ?? null)
+  const nextRebuildAt = computed(() => sidecar.value?.nextFullBuildDue ?? null)
+  const available = computed(() => status.value.available !== false)
+  const lastError = computed(() => {
+    if (lastResult.value === 'failed' && sidecar.value?.error) return sidecar.value.error
+    if (replication.value?.error) return replication.value.error
+    if (!available.value && status.value.message) return status.value.message
+    return sidecar.value?.error ?? null
+  })
+  const failing = computed(() => !available.value || lastResult.value === 'failed' || !!replication.value?.error)
 
   const health = computed<MirrorHealth>(() => {
-    if (!available.value || lastResult.value === 'failed' || lastResult.value === 'error') return 'stale'
+    if (failing.value) return 'stale'
     const lag = lagSeconds.value
-    if (lag == null) return 'unknown'
+    if (lag == null || isFileTime.value) return 'unknown'
     if (lag < OK_LAG_SECONDS) return 'ok'
     if (lag < BEHIND_LAG_SECONDS) return 'behind'
     return 'stale'
   })
 
-  function onStatusEvent(e: Json) {
-    const body = obj(e, 'status') ?? e
-    const { type: _type, ...rest } = body
-    void _type
-    live.value = rest
+  function onStatus(s: MirrorStatus) {
+    live.value = s
+    overlayVersion.value++
   }
 
-  function onSwapped() {
-    live.value = null
+  function onSwapped(s: MirrorStatus) {
+    live.value = s
+    overlayVersion.value++
     const editing = useEditorStore().active || useDraftsStore().reviewing
-    if (editing) {
-      pendingReload.value = true
-      return false
-    }
-    pendingReload.value = false
-    return true
+    pendingReload.value = editing
+    return !editing
   }
 
   function reloadMapData() {
@@ -113,10 +94,11 @@ export const useMirrorStore = defineStore('mirror', () => {
   }
 
   async function updateNow() {
-    if (busy.value || requesting.value || !updateSupported.value) return
+    if (sidecarBusy.value || requesting.value || !updateSupported.value) return
     requesting.value = true
     try {
-      await apiRequest('POST', '/api/mirror/update-now')
+      const s = await apiRequest<MirrorStatus>('POST', '/api/mirror/update-now')
+      if (s && typeof s === 'object' && 'available' in s) live.value = s
       app.toast(t('shell.mirror.updateStarted'))
     } catch (e) {
       if (e instanceof ApiError && (e.status === 404 || e.status === 405)) updateSupported.value = false
@@ -127,8 +109,8 @@ export const useMirrorStore = defineStore('mirror', () => {
   }
 
   return {
-    sequence, osmTime, fileTime, dataTime, isFileTime, lagSeconds, state, busy, lastResult, lastError, lastRunAt, lastDurationMs,
-    nextCycleAt, nextRebuildAt, available, health, pendingReload, updateSupported, requesting,
-    onStatusEvent, onSwapped, reloadMapData, updateNow,
+    status, sidecar, replication, sequence, osmTime, fileTime, dataTime, isFileTime, lagSeconds, state, busy, sidecarBusy,
+    lastResult, lastError, lastRunAt, lastCycleSeconds, nextCycleAt, nextRebuildAt, available, health, pendingReload,
+    updateSupported, requesting, overlayVersion, onStatus, onSwapped, reloadMapData, updateNow,
   }
 })

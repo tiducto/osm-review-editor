@@ -15,6 +15,7 @@ import { hasModifier, isTyping } from '@/lib/keyboard'
 import MapView from '@/map/MapView.vue'
 import HighlightMapLayers from '@/map/HighlightMapLayers.vue'
 import ScanMapLayers from '@/map/ScanMapLayers.vue'
+import UploadOverlayLayers from '@/map/UploadOverlayLayers.vue'
 import TopBar from '@/components/TopBar.vue'
 import HighlightLegend from '@/components/HighlightLegend.vue'
 import Inspector from '@/components/Inspector.vue'
@@ -217,6 +218,7 @@ onBeforeUnmount(() => {
       <MapView />
       <HighlightMapLayers />
       <ScanMapLayers />
+      <UploadOverlayLayers />
       <HighlightLegend />
 
       <template v-if="!layout.phone">
