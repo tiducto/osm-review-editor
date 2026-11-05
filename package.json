@@ -8,7 +8,8 @@
   "scripts": {
     "build:shared": "./gradlew :shared:jsBrowserProductionLibraryDistribution :shared:generateTsModels",
     "dev": "npm run dev -w web",
-    "build": "npm run build -w web"
+    "build": "npm run build -w web",
+    "e2e": "npm run build -w web && ./gradlew :server:installDist && npm run e2e -w web"
   },
   "devDependencies": {
     "@openstreetmap/id-tagging-schema": "7.3.0"

@@ -8,7 +8,7 @@ import { useAppStore } from './app'
 import { refString, sameRef } from '@/lib/osm'
 import { asGeometry, geometryBBox } from '@/lib/geo'
 import { t } from '@/i18n'
-import { useLayoutStore } from './layout'
+import { readHiddenFeatures, writeHiddenFeatures, type FeatureGroup } from '@/map/osm/features'
 
 const IMAGERY_KEY = 'ore.imagery'
 
@@ -95,29 +95,46 @@ export const useMapStore = defineStore('map', () => {
     return map
   }
 
-  function cameraPadding(extra = 64): FitPadding {
-    const inset = useLayoutStore().insets
-    return { top: extra, bottom: extra + inset.bottom, left: extra + inset.left, right: extra + inset.right }
+  const insets = ref<FitPadding>({ top: 0, bottom: 0, left: 0, right: 0 })
+  function setInsets(next: FitPadding) {
+    const cur = insets.value
+    if (cur.top === next.top && cur.bottom === next.bottom && cur.left === next.left && cur.right === next.right) return
+    insets.value = { ...next }
+  }
+  function fitPadding(): FitPadding {
+    const i = insets.value
+    return { top: i.top + 64, bottom: i.bottom + 64, left: i.left + 64, right: i.right + 64 }
+  }
+  function visibleOffset(): [number, number] {
+    const i = insets.value
+    return [(i.left - i.right) / 2, (i.top - i.bottom) / 2]
   }
 
-  function centerOffset(): [number, number] {
-    const inset = useLayoutStore().insets
-    return [(inset.left - inset.right) / 2, -inset.bottom / 2]
+  const hiddenFeatures = ref<FeatureGroup[]>(readHiddenFeatures())
+  function setFeatureVisible(group: FeatureGroup, visible: boolean) {
+    const next = hiddenFeatures.value.filter((g) => g !== group)
+    if (!visible) next.push(group)
+    hiddenFeatures.value = next
+    writeHiddenFeatures(next)
+  }
+  function setHiddenFeatures(groups: FeatureGroup[]) {
+    hiddenFeatures.value = [...new Set(groups)]
+    writeHiddenFeatures(hiddenFeatures.value)
   }
 
   function visibleContains(lng: number, lat: number): boolean {
     if (!map) return false
     const p = map.project([lng, lat])
-    const inset = useLayoutStore().insets
+    const i = insets.value
     const c = map.getContainer()
-    return p.x >= inset.left && p.x <= c.clientWidth - inset.right && p.y >= 0 && p.y <= c.clientHeight - inset.bottom
+    return p.x >= i.left && p.x <= c.clientWidth - i.right && p.y >= i.top && p.y <= c.clientHeight - i.bottom
   }
 
   function fitBBox(b: BBox, maxZoom = 18, animate = true) {
     if (!map) return
     const degenerate = b.west === b.east && b.south === b.north
     if (degenerate) {
-      map.flyTo({ center: [b.west, b.south], zoom: Math.max(map.getZoom(), Math.min(maxZoom, 18)), offset: centerOffset(), animate })
+      map.flyTo({ center: [b.west, b.south], zoom: Math.max(map.getZoom(), Math.min(maxZoom, 18)), offset: visibleOffset(), animate })
       return
     }
     map.fitBounds(
@@ -125,16 +142,16 @@ export const useMapStore = defineStore('map', () => {
         [b.west, b.south],
         [b.east, b.north],
       ],
-      { padding: cameraPadding(), maxZoom, animate, duration: animate ? 900 : 0 },
+      { padding: fitPadding(), maxZoom, animate, duration: animate ? 900 : 0 },
     )
   }
 
   function flyTo(p: LngLat, z?: number) {
-    map?.flyTo({ center: [p.lng, p.lat], zoom: z ?? Math.max(map.getZoom(), 17), offset: centerOffset(), duration: 900 })
+    map?.flyTo({ center: [p.lng, p.lat], zoom: z ?? Math.max(map.getZoom(), 17), offset: visibleOffset(), duration: 900 })
   }
 
   function easeTo(p: LngLat, opts: { zoom?: number; duration?: number } = {}) {
-    map?.easeTo({ center: [p.lng, p.lat], zoom: opts.zoom, offset: centerOffset(), duration: opts.duration ?? 500 })
+    map?.easeTo({ center: [p.lng, p.lat], zoom: opts.zoom, offset: visibleOffset(), duration: opts.duration ?? 500 })
   }
 
   function updateView(b: BBox, z: number) {
@@ -201,7 +218,8 @@ export const useMapStore = defineStore('map', () => {
     selected, selectedFeature, selectedLoading, highlighted,
     area, areaLoading, polygon, drawing, scopeName, setPolygon,
     imageryId, allImagery, activeImagery, setImagery, addImagery,
-    attach, detach, instance, cameraPadding, centerOffset, visibleContains, fitBBox, flyTo, easeTo, updateView,
+    attach, detach, instance, insets, setInsets, fitPadding, visibleOffset, visibleContains, fitBBox, flyTo, easeTo, updateView,
+    hiddenFeatures, setFeatureVisible, setHiddenFeatures,
     select, patchSelectedTags, setArea,
   }
 })

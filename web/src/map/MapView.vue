@@ -12,15 +12,13 @@ import { INTERACTIVE, ISSUE_LAYERS, SRC, installLayers, setData, setImagery, set
 import { areaToGeoJSON, beforeToGeoJSON, changesToGeoJSON, empty, featuresToGeoJSON, issuesToGeoJSON, selectionToGeoJSON } from './data'
 import { asGeometry } from '@/lib/geo'
 import { PolygonDraw, drawJustEnded, type DrawState } from './draw'
-import { setFilterPart } from './filters'
-import { refString, featureTitle } from '@/lib/osm'
+import { applyFeatureFilters } from './osm/features'
 import { changeKindColor, changeKindLabel, type ChangeKind } from '@/lib/colors'
-import { changeKind } from '@/lib/changes'
-import { AUTO_HIDE, baseStyle, DASHED_LAYERS, DETAIL_MIN_ZOOM, dashExpr, HOVER_LAYERS, INTERACTIVE_OSM, lowZoomThreshold, OSM_SRC, parseDash } from './osm/style'
+import { baseStyle, DASHED_LAYERS, dashExpr, HOVER_LAYERS, INTERACTIVE_OSM, lowZoomThreshold, OSM_SRC, parseDash } from './osm/style'
 import { clearTileCache, gateTiles, registerTileProtocol, tileUrl } from './osm/protocol'
 import { addOneway, addPatterns, addShield } from './osm/icons'
 import { PATTERN_IMAGES } from './osm/patterns'
-import { knownDashes, OUT, tagsOf, type Props } from './osm/transform'
+import { knownDashes, OUT, type Props } from './osm/transform'
 import Icon from '@/components/Icon.vue'
 import Spinner from '@/components/Spinner.vue'
 import EditToolbar from '@/components/editor/EditToolbar.vue'
@@ -141,45 +139,6 @@ function syncAll() {
   syncImagery()
 }
 
-type HideGroup = keyof typeof AUTO_HIDE
-const hidden: Record<HideGroup, boolean> = { buildings: false, points: false, addresses: false }
-const HIDE_LIMITS: Record<HideGroup, number> = { buildings: 250, points: 200, addresses: 100 }
-
-function applyHidden(group: HideGroup, hide: boolean) {
-  if (!map || hidden[group] === hide) return
-  hidden[group] = hide
-  for (const part of AUTO_HIDE[group]) {
-    for (const id of part.layers) {
-      for (const layer of [id, `edit-${id}`]) setFilterPart(map, layer, `autohide-${group}`, hide ? (part.hide as maplibregl.FilterSpecification) : null)
-    }
-  }
-}
-
-function autoHide() {
-  if (!map || !styleReady) return
-  if (map.getZoom() < DETAIL_MIN_ZOOM) {
-    for (const g of Object.keys(hidden) as HideGroup[]) applyHidden(g, false)
-    return
-  }
-  const b = map.getBounds()
-  const canvas = map.getCanvas()
-  const cull = (canvas.clientWidth * canvas.clientHeight) / 1e6
-  const inView = (c: number[]) => b.contains([c[0], c[1]])
-  const count = (sourceLayer: string, filter: maplibregl.FilterSpecification, first: (g: GeoJSON.Geometry) => number[] | null) => {
-    const ids = new Set<string | number>()
-    for (const f of map!.querySourceFeatures(OSM_SRC, { sourceLayer, filter })) {
-      const c = first(f.geometry)
-      if (f.id != null && c && inView(c)) ids.add(f.id)
-    }
-    return ids.size
-  }
-  const firstOf = (g: GeoJSON.Geometry): number[] | null =>
-    g.type === 'Point' ? g.coordinates : g.type === 'Polygon' ? g.coordinates[0][0] : g.type === 'MultiPolygon' ? g.coordinates[0][0][0] : null
-  applyHidden('buildings', count(OUT.area, ['==', ['get', '@bld'], true], firstOf) > HIDE_LIMITS.buildings * cull)
-  applyHidden('points', count(OUT.point, ['==', ['get', '@addr'], false], firstOf) > HIDE_LIMITS.points * cull)
-  applyHidden('addresses', count(OUT.point, ['==', ['get', '@addr'], true], firstOf) > HIDE_LIMITS.addresses * cull)
-}
-
 const issuesFC = computed(() => issuesToGeoJSON(rules.shownIssues))
 
 watch(() => mapStore.highlighted, syncHighlight, { deep: true })
@@ -200,25 +159,20 @@ watch(
   () => clearHover(),
 )
 watch(
+  () => mapStore.drawing,
+  () => cancelPopup(),
+)
+watch(
   () => editor.active,
-  () => {
-    clearHover()
-    for (const g of Object.keys(hidden) as HideGroup[]) {
-      const cur = hidden[g]
-      hidden[g] = !cur
-      applyHidden(g, cur)
-    }
-    autoHide()
+  () => clearHover(),
+)
+watch(
+  () => mapStore.hiddenFeatures,
+  (list) => {
+    if (map && styleReady) applyFeatureFilters(map, list)
   },
 )
 
-const editHover = computed(() => {
-  const h = editor.hover
-  if (!h || editor.menu) return null
-  const s = editor.describe(h.id)
-  if (!s) return null
-  return { x: h.x, y: h.y, text: s.displayName ?? s.preset.name, sub: `${s.id[0]}${s.osmId}${s.isNew ? ' · new' : ''}` }
-})
 watch(() => [drafts.current, drafts.index, drafts.reviewing, drafts.showBefore], syncChanges)
 watch(() => [drafts.context, drafts.reviewing], syncContext)
 watch(() => mapStore.activeImagery, syncImagery)
@@ -321,58 +275,53 @@ function setHoverState(next: { sourceLayer: string; id: number } | null) {
   if (next) map.setFeatureState({ source: OSM_SRC, ...next }, { hover: true })
 }
 
-function clearHover() {
+const HOVER_DELAY = 800
+let hoverTimer: ReturnType<typeof setTimeout> | null = null
+
+function cancelPopup() {
+  if (hoverTimer) clearTimeout(hoverTimer)
+  hoverTimer = null
   hover.value = null
+}
+
+function clearHover() {
+  cancelPopup()
   setHoverState(null)
 }
 
+function issuePopup(f: MapGeoJSONFeature, x: number, y: number) {
+  const props = f.properties as Record<string, unknown>
+  const rule = rules.ruleById.get(String(props.ruleId))
+  return { x, y, text: rule?.title ?? String(props.ruleId), sub: String(props.key), color: String(props.color) }
+}
+
 function onMouseMove(e: MapMouseEvent) {
-  if (!map || mapStore.drawing) return
+  if (!map) return
+  cancelPopup()
+  if (mapStore.drawing) return
   if (editor.active) {
-    if (hover.value) clearHover()
+    setHoverState(null)
     return
   }
   const f = topFeature(e)
   map.getCanvas().style.cursor = f ? 'pointer' : ''
   if (!f) {
-    clearHover()
+    setHoverState(null)
     return
   }
-  const props = f.properties as Record<string, unknown>
-  const layer = f.layer.id
-  let text = ''
-  let sub: string | undefined
-  let color: string | undefined
   if (f.source === OSM_SRC) {
-    const r = osmRef(f)!
     const sourceLayer = f.sourceLayer === OUT.band ? OUT.area : (f.sourceLayer ?? OUT.area)
     setHoverState(typeof f.id === 'number' ? { sourceLayer, id: f.id } : null)
-    text = featureTitle(r, tagsOf(f.properties as Props))
-    sub = refString(r)
-  } else {
-    setHoverState(null)
-    if (layer === 'ore-issues-cluster') {
-      text = tn('shell.map.clusterIssues', Number(props.point_count))
-      sub = t('shell.map.clickToZoom')
-    } else if (layer === 'ore-issues-point') {
-      const rule = rules.ruleById.get(String(props.ruleId))
-      text = rule?.title ?? String(props.ruleId)
-      sub = String(props.key)
-      color = String(props.color)
-    } else if (layer.startsWith('ore-changes')) {
-      const c = drafts.changes[props.i as number]
-      if (c) {
-        const kind = changeKind(c) as ChangeKind
-        text = featureTitle(c.ref, c.newTags)
-        sub = `${changeKindLabel[kind]} · ${refString(c.ref)}`
-        color = changeKindColor[kind]
-      }
-    } else if (layer.startsWith('ore-context')) {
-      text = t('shell.map.context')
-      sub = String(props.key)
-    }
+    return
   }
-  hover.value = { x: e.point.x, y: e.point.y, text, sub, color }
+  setHoverState(null)
+  if (f.layer.id !== 'ore-issues-point' || drafts.reviewing || (e.originalEvent as MouseEvent).buttons) return
+  const { x, y } = e.point
+  hoverTimer = setTimeout(() => {
+    hoverTimer = null
+    if (!map || map.isMoving() || mapStore.drawing || editor.active || drafts.reviewing) return
+    hover.value = issuePopup(f, x, y)
+  }, HOVER_DELAY)
 }
 
 const hoverStyle = computed(() => {
@@ -405,6 +354,7 @@ onMounted(() => {
     dragRotate: false,
     pitchWithRotate: false,
     fadeDuration: 100,
+    trackResize: false,
   })
   registerTileProtocol(map, onDashes)
   setDashState({ dashes, lowZoom, add: onDashes })
@@ -416,15 +366,17 @@ onMounted(() => {
     addOneway(map)
     gateTiles(addPatterns(map, PATTERN_IMAGES))
     installLayers(map)
+    applyFeatureFilters(map, mapStore.hiddenFeatures)
     styleReady = true
     syncAll()
     draw?.redraw()
   })
   map.on('moveend', onMoveEnd)
-  map.on('idle', autoHide)
   map.on('click', (e) => void onClick(e))
   map.on('mousemove', onMouseMove)
   map.on('mouseout', clearHover)
+  map.on('movestart', cancelPopup)
+  map.on('mousedown', cancelPopup)
   map.on('sourcedata', (e) => {
     if (e.sourceId === OSM_SRC && e.isSourceLoaded && mapStore.selectedFeature?.ref.type === 'node') syncSelection()
   })
@@ -439,8 +391,15 @@ onMounted(() => {
   })
   if (mapStore.drawing) draw.start()
   mapStore.attach(map)
-  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__oreMap = map
-  resizeObserver = new ResizeObserver(() => map?.resize())
+  ;(window as unknown as Record<string, unknown>).__oreMap = map
+  resizeObserver = new ResizeObserver(() => {
+    if (!map) return
+    const c = map.getContainer()
+    const canvas = map.getCanvas()
+    if (c.clientWidth === canvas.clientWidth && c.clientHeight === canvas.clientHeight) return
+    map.resize()
+    if (styleReady) map.redraw()
+  })
   resizeObserver.observe(el.value)
 })
 
@@ -467,21 +426,17 @@ const currentHasGeometryChange = computed(() => {
 </script>
 
 <template>
-  <div class="relative h-full w-full overflow-hidden">
-    <div ref="el" class="absolute inset-0" />
+  <div
+    class="ore-map relative h-full w-full overflow-hidden"
+    :style="{ '--ore-l': `${mapStore.insets.left}px`, '--ore-r': `${mapStore.insets.right}px`, '--ore-b': `${mapStore.insets.bottom}px`, '--ore-t': `${mapStore.insets.top}px` }"
+  >
+    <div ref="el" class="absolute inset-0" data-testid="map" />
 
     <EditMenu v-if="editor.menu" />
     <div
-      v-if="editHover"
-      class="pointer-events-none absolute z-10 max-w-64 rounded-md border border-line-strong bg-surface px-2.5 py-1.5 text-[12px] leading-4 shadow-panel"
-      :style="{ left: `${editHover.x + 14}px`, top: `${editHover.y + 10}px` }"
-    >
-      <div class="truncate font-bold">{{ editHover.text }}</div>
-      <div class="font-mono text-[10.5px] text-fg-3">{{ editHover.sub }}</div>
-    </div>
-    <div
       v-if="hover"
-      class="pointer-events-none absolute z-10 max-w-64 rounded-md border border-line-strong bg-surface px-2.5 py-1.5 text-[12px] leading-4 shadow-panel"
+      data-testid="map-popup"
+      class="pointer-events-none absolute z-10 max-w-64 rounded-md border border-line bg-surface/95 px-2 py-1 text-[12px] shadow-panel backdrop-blur"
       :style="hoverStyle"
     >
       <div class="flex items-center gap-1.5 font-bold">
@@ -491,7 +446,7 @@ const currentHasGeometryChange = computed(() => {
       <div v-if="hover.sub" class="font-mono text-[10.5px] text-fg-3">{{ hover.sub }}</div>
     </div>
 
-    <div class="pointer-events-none absolute top-0 z-10" :style="{ left: 'var(--inset-left)', right: 'var(--inset-right)', bottom: 'var(--inset-bottom)' }" data-testid="map-visible-area">
+    <div class="ore-safe pointer-events-none absolute">
     <div class="pointer-events-none absolute top-3 left-1/2 z-10 flex w-max max-w-[calc(100%-24px)] -translate-x-1/2 flex-col items-center gap-2">
       <EditToolbar v-if="!drafts.reviewing && !mapStore.drawing" />
       <div
@@ -565,3 +520,37 @@ const currentHasGeometryChange = computed(() => {
     </div>
   </div>
 </template>
+
+<style>
+.ore-map .ore-safe {
+  left: var(--ore-l);
+  right: var(--ore-r);
+  top: var(--ore-t);
+  bottom: var(--ore-b);
+}
+.ore-map .ore-safe,
+.ore-map .maplibregl-ctrl-bottom-left,
+.ore-map .maplibregl-ctrl-bottom-right,
+.ore-map .maplibregl-ctrl-top-left,
+.ore-map .maplibregl-ctrl-top-right {
+  transition-property: left, right, top, bottom;
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+.ore-map .maplibregl-ctrl-bottom-left {
+  left: var(--ore-l);
+  bottom: var(--ore-b);
+}
+.ore-map .maplibregl-ctrl-bottom-right {
+  right: var(--ore-r);
+  bottom: var(--ore-b);
+}
+.ore-map .maplibregl-ctrl-top-left {
+  left: var(--ore-l);
+  top: var(--ore-t);
+}
+.ore-map .maplibregl-ctrl-top-right {
+  right: var(--ore-r);
+  top: var(--ore-t);
+}
+</style>

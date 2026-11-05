@@ -70,6 +70,11 @@ watch(
   },
 )
 watch(
+  () => ({ top: 0, left: layout.insets.left, right: layout.insets.right, bottom: layout.insets.bottom }),
+  (i) => mapStore.setInsets(i),
+  { immediate: true },
+)
+watch(
   () => panel.pane,
   (p) => {
     scans.active = p === 'validation'

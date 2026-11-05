@@ -122,11 +122,16 @@ export async function addPin(map: MlMap, icon: string | null, wikidata: boolean)
   return name
 }
 
+function blank(map: MlMap, name: string): null {
+  if (!map.hasImage(name)) add(map, name, canvas(1, 1)[0])
+  return null
+}
+
 export async function addVertexIcon(map: MlMap, icon: string): Promise<string | null> {
   const name = `vicon:${icon}`
   if (map.hasImage(name)) return name
   const sym = await symbolFor(icon)
-  if (!sym) return null
+  if (!sym) return blank(map, name)
   const [c, ctx] = canvas(12, 12)
   ctx.drawImage(await iconImage(sym, 12, '#333'), 0, 0, 12, 12)
   add(map, name, c)
@@ -137,7 +142,7 @@ export async function addAreaIcon(map: MlMap, icon: string): Promise<string | nu
   const name = `aicon:${icon}`
   if (map.hasImage(name)) return name
   const sym = await symbolFor(icon)
-  if (!sym) return null
+  if (!sym) return blank(map, name)
   const [c, ctx] = canvas(21, 21)
   const img = await iconImage(sym, 17, 'rgba(34,34,34,0.8)', { color: '#999', width: 2, opacity: 0.6 })
   ctx.drawImage(img, 2, 2, 17, 17)

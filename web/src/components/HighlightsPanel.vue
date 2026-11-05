@@ -8,6 +8,7 @@ import Spinner from './Spinner.vue'
 import Modal from './Modal.vue'
 import { useI18n } from '@/i18n'
 import type { Scope } from '@/lib/scope'
+import MapFeaturesPanel from './MapFeaturesPanel.vue'
 
 const emit = defineEmits<{ edit: [path: string] }>()
 const hl = useHighlightsStore()
@@ -48,6 +49,8 @@ async function save() {
 
 <template>
   <div class="bg-surface-2">
+    <MapFeaturesPanel />
+
     <section class="space-y-2 border-b border-line-strong px-3 py-3">
       <div class="flex items-center">
         <span class="section-title">{{ t('highlight.filter') }}</span>

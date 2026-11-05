@@ -276,14 +276,6 @@
   --inset-right: 0px;
   --inset-bottom: 0px;
 }
-.maplibregl-ctrl-bottom-left {
-  left: var(--inset-left);
-  bottom: var(--inset-bottom);
-}
-.maplibregl-ctrl-bottom-right {
-  right: var(--inset-right);
-  bottom: var(--inset-bottom);
-}
 
 .maplibregl-ctrl-group {
   background: var(--control) !important;

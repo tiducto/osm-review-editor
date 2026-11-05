@@ -158,7 +158,10 @@ The server cuts vector tiles from the GOL ([`/api/tiles`](docs/api.md#vector-til
 classifies every feature like iD (way and area colours, casings, dashes, fill patterns, partial fills
 of large areas, preset icons from id-tagging-schema) and the map draws them with MapLibre. A z16 tile
 in central Opava builds in about 25 ms (z15 about 75 ms) on Apple Silicon; built tiles are cached per
-mirror generation. Imagery, when chosen, replaces the light grey background.
+mirror generation. Imagery, when chosen, replaces the light grey background. Nothing is hidden
+automatically: the Map features switches in the Map data pane (iD's groups: points, address points,
+roads, paths, buildings, landuse, water, rail and so on) hide a group until you turn it back on, saved
+per browser.
 
 The layout follows iD: the left sidebar shows what you are working on (the inspector of the selected
 feature, the editor or the review card of a draft); it opens on its own, can be resized by dragging its
@@ -167,7 +170,7 @@ controls on the right has zoom, "show my location" and buttons for panes that op
 time (`]` closes the pane or reopens the last one, `Esc` closes it):
 
 - **Background** (`B`): imagery.
-- **Map data** (`F`, not while reviewing): a quick tag filter (`highway=footway !surface`, saved as a
+- **Map data** (`F`, not while reviewing): Map features switches, a quick tag filter (`highway=footway !surface`, saved as a
   highlight file with one click) and the highlight files.
 - **Validation** (`I`): validation scans (see below).
 - **Rules** (`L`): the rules folder by kind, a CodeMirror editor with live diagnostics, templates, save

@@ -9,7 +9,8 @@
     "build": "vue-tsc -b && vite build",
     "type-check": "vue-tsc -b",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",
@@ -36,6 +37,7 @@
   "devDependencies": {
     "@maplibre/maplibre-gl-style-spec": "^26.5.1",
     "@openstreetmap/id-tagging-schema": "^7.3.0",
+    "@playwright/test": "^1.65.0",
     "@tailwindcss/vite": "^4.3.4",
     "@types/geojson": "^7946.0.16",
     "@types/node": "^26.6.6",
