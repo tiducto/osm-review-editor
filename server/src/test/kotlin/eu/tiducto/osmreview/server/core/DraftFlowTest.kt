@@ -110,6 +110,17 @@ class DraftFlowTest {
         assertEquals(listOf(1L, 2L, 3L, 1L), osm.nodes(way), "a modify must carry the full node list")
         assertTrue(osm.uploads.single().contains("""changeset="1001""""))
         assertTrue(osm.closed.contains(1001L))
+
+        var dataTime: java.time.Instant? = java.time.Instant.parse("2026-01-01T00:00:00Z")
+        val overlay = OverlayService(repo, { dataTime })
+        val pending = overlay.overlay()
+        assertEquals(setOf(way, node), pending.features.map { it.properties.ref }.toSet())
+        assertEquals(mapOf("highway" to "footway", "lit" to "yes", "surface" to "asphalt"), pending.features.first { it.properties.ref == way }.properties.tags)
+        assertEquals(1001L, pending.features.first().properties.changesetId)
+        dataTime = java.time.Instant.now().plusSeconds(120)
+        assertTrue(overlay.overlay().features.isEmpty())
+        dataTime = null
+        assertEquals(2, overlay.overlay().features.size)
     }
 
     @Test

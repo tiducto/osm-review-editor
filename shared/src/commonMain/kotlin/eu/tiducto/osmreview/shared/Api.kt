@@ -184,6 +184,10 @@ data class MirrorStatus(
     val dataTimestamp: String? = null,
     val message: String? = null,
     val sidecar: SidecarStatus? = null,
+    val dataSequence: Long? = null,
+    val dataSource: String? = null,
+    val lagSeconds: Long? = null,
+    val replication: ReplicationStatus? = null,
 )
 
 @Serializable
@@ -197,6 +201,64 @@ data class SidecarStatus(
     val replicationSequence: Long? = null,
     val replicationTimestamp: String? = null,
     val current: String? = null,
+    val phase: String? = null,
+    val cycleStartedAt: String? = null,
+    val lastCycleSeconds: Long? = null,
+    val nextCycleAt: String? = null,
+    val availableSequence: Long? = null,
+    val dataTimestamp: String? = null,
+    val lagSeconds: Long? = null,
+    val intervalSeconds: Long? = null,
+)
+
+@Serializable
+data class ReplicationStatus(
+    val enabled: Boolean,
+    val phase: String = "idle",
+    val source: String? = null,
+    val area: String? = null,
+    val sequence: Long? = null,
+    val timestamp: String? = null,
+    val lagSeconds: Long? = null,
+    val firstSequence: Long? = null,
+    val sourceSequence: Long? = null,
+    val backlog: Long? = null,
+    val lastRunAt: String? = null,
+    val lastRunSeconds: Double? = null,
+    val lastRunSequences: Int = 0,
+    val keptLastRun: Int = 0,
+    val droppedLastRun: Int = 0,
+    val keptTotal: Long = 0,
+    val droppedTotal: Long = 0,
+    val nextRunAt: String? = null,
+    val rebasedAt: String? = null,
+    val error: String? = null,
+)
+
+@Serializable
+data class OverlayProperties(
+    val ref: OsmRef,
+    val action: ChangeAction,
+    val tags: Map<String, String> = emptyMap(),
+    val draftId: String,
+    val changeId: String,
+    val changesetId: Long? = null,
+    val uploadedAt: String,
+)
+
+@Serializable
+data class OverlayFeature(
+    val type: String = "Feature",
+    val id: String,
+    val geometry: JsonElement? = null,
+    val properties: OverlayProperties,
+)
+
+@Serializable
+data class OverlayCollection(
+    val type: String = "FeatureCollection",
+    val dataTimestamp: String? = null,
+    val features: List<OverlayFeature> = emptyList(),
 )
 
 @Serializable
@@ -244,6 +306,10 @@ sealed interface UiEvent {
     @Serializable
     @SerialName("mirror_swapped")
     data class MirrorSwapped(val status: MirrorStatus) : UiEvent
+
+    @Serializable
+    @SerialName("mirror_status")
+    data class MirrorStatusChanged(val status: MirrorStatus) : UiEvent
 
     @Serializable
     @SerialName("rules_changed")

@@ -83,6 +83,7 @@ object UploadsTable : Table("app.uploads") {
     val status = text("status")
     val error = text("error").nullable()
     val createdAt = timestampWithTimeZone("created_at")
+    val finishedAt = timestampWithTimeZone("finished_at").nullable()
     override val primaryKey = PrimaryKey(id)
 }
 

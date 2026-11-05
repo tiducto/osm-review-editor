@@ -439,6 +439,13 @@ private fun buildServer(app: App): Server {
         val a = app.area(name) ?: throw IllegalArgumentException("Unknown area '$name'")
         ReadResourceResult(listOf(TextResourceContents(WireJson.encodeToString(eu.tiducto.osmreview.shared.Area.serializer(), a), request.uri, "application/json")))
     }
+    server.tool(
+        "update_mirror_now",
+        "Ask the gol sidecar to update the local OSM mirror now instead of waiting for its next cycle (every few minutes). " +
+            "Returns the mirror status: dataTimestamp is the OSM data time, lagSeconds how far it is behind, sidecar.phase the running step. " +
+            "Fails when a cycle or rebuild is already running.",
+    ) { ok(app.mirrorControl.requestUpdate(), eu.tiducto.osmreview.shared.MirrorStatus.serializer()) }
+
     registerRuleFileTools(server, app)
     registerMapCssTools(server, app)
     registerPushView(server, app)

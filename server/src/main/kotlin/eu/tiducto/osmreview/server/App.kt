@@ -7,6 +7,10 @@ import eu.tiducto.osmreview.server.core.Account
 import eu.tiducto.osmreview.server.core.DraftService
 import eu.tiducto.osmreview.server.core.EventBus
 import eu.tiducto.osmreview.server.core.MergeService
+import eu.tiducto.osmreview.server.core.OverlayService
+import eu.tiducto.osmreview.server.replication.HttpReplicationSource
+import eu.tiducto.osmreview.server.replication.ReplicationConfig
+import eu.tiducto.osmreview.server.replication.ReplicationService
 import eu.tiducto.osmreview.server.db.Db
 import eu.tiducto.osmreview.server.db.DraftRepo
 import eu.tiducto.osmreview.server.db.SettingsRepo
@@ -84,6 +88,17 @@ class App(val config: Config, val http: HttpClient = defaultHttpClient()) : Auto
     val ruleSources = RemoteRuleSources(ruleFiles, config.dataDir.resolve("rule-cache"), http, config.userAgent)
     val presets = PresetService(idPresets, ruleFiles)
     val presetBulk = PresetBulkService(presets, drafts, mirror, queries)
+    val replicationConfig = config.replication ?: ReplicationConfig(dir = config.dataDir.resolve("replication"))
+    val mirrorControl = MirrorControl(config.dataDir, mirror, { replication }, events::emit)
+    val replication: ReplicationService? = if (replicationConfig.enabled) {
+        ReplicationService(
+            replicationConfig, mirror, HttpReplicationSource(replicationConfig.sourceUrl, config.userAgent),
+            onChange = { runCatching { mirrorControl.emitStatus() } },
+        )
+    } else {
+        null
+    }
+    val overlay = OverlayService(repo, { mirror.dataTimestamp })
 
     val mcpToken: String = config.mcpToken ?: settings.get(MCP_TOKEN_KEY) ?: ByteArray(24)
         .also(SecureRandom()::nextBytes)
@@ -105,13 +120,17 @@ class App(val config: Config, val http: HttpClient = defaultHttpClient()) : Auto
             }
         }
         if (mirror.reloadIfChanged()) log.info("Opened GOL {}", mirror.status().file) else log.warn(mirror.status().message)
+        replication?.start(scope)
         scope.launch {
             while (isActive) {
                 delay(SWAP_POLL_MS)
+                runCatching { mirrorControl.pollSidecar() }.onFailure { log.warn("Sidecar status check failed", it) }
                 runCatching {
                     if (mirror.reloadIfChanged()) {
                         log.info("Swapped to GOL {}", mirror.status().file)
-                        events.emit(UiEvent.MirrorSwapped(mirror.status()))
+                        events.emit(UiEvent.MirrorSwapped(mirrorControl.status()))
+                        mirrorControl.emitStatus()
+                        replication?.requestRun()
                         highlights.clear()
                         launch {
                             runCatching { scans.rerunRecent(config.scanRerunDays) }
@@ -152,7 +171,7 @@ class App(val config: Config, val http: HttpClient = defaultHttpClient()) : Auto
     }
 
     companion object {
-        private const val SWAP_POLL_MS = 15_000L
+        private const val SWAP_POLL_MS = 5_000L
         private const val MCP_TOKEN_KEY = "mcp.token"
     }
 }

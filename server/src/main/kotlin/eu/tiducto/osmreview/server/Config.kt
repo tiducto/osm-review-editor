@@ -1,6 +1,7 @@
 package eu.tiducto.osmreview.server
 
 import eu.tiducto.osmreview.shared.OsmTarget
+import eu.tiducto.osmreview.server.replication.ReplicationConfig
 import java.nio.file.Path
 
 data class OsmTargetConfig(
@@ -34,6 +35,7 @@ data class Config(
     val bingKey: String? = null,
     val rulesDir: Path = Path.of("user-rules"),
     val scanRerunDays: Int = 7,
+    val replication: ReplicationConfig? = null,
 ) {
     fun target(t: OsmTarget) = if (t == OsmTarget.PROD) prod else dev
 
@@ -76,6 +78,17 @@ data class Config(
                 bingKey = get("BING_KEY"),
                 rulesDir = Path.of(get("RULES_DIR") ?: "user-rules"),
                 scanRerunDays = get("SCAN_RERUN_DAYS")?.toInt() ?: 7,
+                replication = ReplicationConfig(
+                    enabled = get("REPLICATION_ENABLED")?.toBooleanStrictOrNull() ?: false,
+                    sourceUrl = get("REPLICATION_SOURCE_URL") ?: ReplicationConfig.DEFAULT_SOURCE,
+                    dir = get("REPLICATION_DIR")?.let(Path::of) ?: Path.of(get("DATA_DIR") ?: "data").resolve("replication"),
+                    intervalSeconds = get("REPLICATION_INTERVAL_SECONDS")?.toLong() ?: 60,
+                    batchSize = get("REPLICATION_BATCH")?.toInt() ?: 60,
+                    area = get("REPLICATION_AREA"),
+                    bufferMeters = get("REPLICATION_BUFFER_METERS")?.toDouble() ?: 2000.0,
+                    keepDays = get("REPLICATION_KEEP_DAYS")?.toLong() ?: 3,
+                    generator = "OSM Review Editor $version",
+                ),
             )
         }
     }

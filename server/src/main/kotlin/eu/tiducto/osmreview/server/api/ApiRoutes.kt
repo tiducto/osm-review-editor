@@ -55,12 +55,18 @@ fun Route.apiRoutes(app: App) {
             call.respond(
                 AppStatus(
                     version = app.config.version,
-                    mirror = app.mirror.status(),
+                    mirror = app.mirrorControl.status(),
                     account = app.account.status(),
                     mcpUrl = "${app.config.publicUrl}/mcp",
                     remoteControlPort = app.config.remoteControlPort,
                 ),
             )
+        }
+
+        get("/mirror/status") { call.respond(app.mirrorControl.status()) }
+        post("/mirror/update-now") { call.respond(HttpStatusCode.Accepted, app.mirrorControl.requestUpdate()) }
+        get("/overlay") {
+            call.respond(app.overlay.overlay(call.bboxParam()))
         }
 
         get("/areas") { call.respond(app.areas.presets()) }
