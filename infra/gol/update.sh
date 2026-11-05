@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-# gol sidecar: keeps a GOL of EXTRACT_URL current for the app.
-#
-# Swap protocol (the app watches /data/current):
-#   - two files, a.gol and b.gol; /data/current names the one the app reads
-#   - an update works on a fresh copy of the current file under the idle name (copy to a temp name,
-#     then rename, so even a file the app still maps is never written in place)
-#   - `gol update` the idle file, `gol check` it, then write its name to /data/current atomically
-#   - the app opens the new file, switches, invalidates rule caches and closes the old one
-#   - a full rebuild from a fresh PBF runs every REBUILD_DAYS, because `gol update` is experimental
 set -euo pipefail
 
 DATA=${DATA_DIR:-/data}
@@ -21,7 +12,7 @@ log() { echo "$(date -u +%FT%TZ) gol-sidecar: $*"; }
 current_name() { [ -s "$CURRENT" ] && cat "$CURRENT" || true; }
 idle_name() { [ "$(current_name)" = "a.gol" ] && echo "b.gol" || echo "a.gol"; }
 
-publish() { # $1 = file name to make current
+publish() {
   echo "$1" > "$CURRENT.tmp"
   mv -f "$CURRENT.tmp" "$CURRENT"
   log "current -> $1"

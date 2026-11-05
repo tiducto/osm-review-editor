@@ -1,4 +1,3 @@
-# Multi-stage: Gradle builds the shared KMP module, the Vue app and the server; a JRE image runs it.
 FROM node:26-slim AS node
 
 FROM eclipse-temurin:25-jdk-noble AS build

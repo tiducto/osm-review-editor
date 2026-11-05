@@ -15,7 +15,6 @@ enum class OsmType(val letter: Char) {
     RELATION('r'),
     ;
 
-    /** The lowercase name OSM API v0.6 uses in paths and XML (`node`, `way`, `relation`). */
     val apiName: String get() = name.lowercase()
 
     companion object {
@@ -27,7 +26,6 @@ enum class OsmType(val letter: Char) {
     }
 }
 
-/** A typed OSM object reference. Its string form is the JOSM one: `n123`, `w45`, `r6`. */
 @Serializable
 data class OsmRef(val type: OsmType, val id: Long) {
     override fun toString(): String = "${type.letter}$id"
@@ -42,11 +40,9 @@ data class OsmRef(val type: OsmType, val id: Long) {
     }
 }
 
-/** WGS84 point, GeoJSON order. */
 @Serializable
 data class LngLat(val lng: Double, val lat: Double)
 
-/** WGS84 bounding box. */
 @Serializable
 data class BBox(val west: Double, val south: Double, val east: Double, val north: Double) {
     init {

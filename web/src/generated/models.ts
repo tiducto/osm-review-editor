@@ -107,6 +107,17 @@ export interface MergePreview {
   target: OsmTarget
 }
 
+export interface MergeProgress {
+  draftId: string
+  group: string
+  done: number
+  total: number
+  changesetId: number | null
+  message: string
+  finished: boolean
+  failed: boolean
+}
+
 export interface Upload {
   id: number
   draftId: string

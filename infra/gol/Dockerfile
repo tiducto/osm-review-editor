@@ -1,6 +1,3 @@
-# The gol sidecar: builds the GOL from a Geofabrik extract, applies replication diffs daily, and swaps
-# files for the app (see swap protocol in update.sh). GOL Tool is AGPL-3.0; it is downloaded here,
-# not vendored in this repository.
 FROM debian:trixie-slim
 ARG GOL_VERSION=2.5.3
 ARG TARGETARCH

@@ -4,10 +4,6 @@ import com.geodesk.feature.Feature
 import eu.tiducto.osmreview.shared.Confidence
 import eu.tiducto.osmreview.shared.Severity
 
-/**
- * The initial rule set from the spec. Each rule is plain Kotlin over GOQL, so new ones are easy to
- * add by hand (or by Claude): define a `rule(...)` and list it in [all].
- */
 object BuiltInRules {
     private const val PLATFORM_WAYS = "w[public_transport=platform], w[highway=platform], w[railway=platform]"
 
@@ -139,17 +135,12 @@ object BuiltInRules {
         crossingMissingType, footwayMissingSurface, platformDetails,
     )
 
-    /** Notes shown with an issue that has no fix (what is missing, what to do). */
     fun noteFor(rule: RuleDef, f: Feature): String? = when (rule.id) {
         platformDetails.id -> "missing: " + DETAIL_KEYS.filter { f.tag(it).isEmpty() }.joinToString(", ")
         platformNodeOnly.id -> "no platform way within 15 m"
         else -> null
     }
 
-    /**
-     * sidewalk=* on a road whose sidewalks are mapped separately: both sides found → sidewalk:both=
-     * separate; one side → that side separate and the other left for the reviewer to set.
-     */
     fun sidewalkFix(road: Feature, nearby: List<Feature>): Fix? {
         val sides = SidewalkSide.sides(road, nearby)
         if (sides.isEmpty()) return null

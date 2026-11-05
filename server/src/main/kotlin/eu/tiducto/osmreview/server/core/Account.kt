@@ -23,11 +23,6 @@ import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-/**
- * The OSM account and API target. Dev is the default target until the user switches to production
- * (which needs an explicit confirm). Each target has its own OAuth 2.0 app and token; tokens are
- * stored AES-GCM-encrypted with TOKEN_ENCRYPTION_KEY, or kept in memory only when no key is set.
- */
 class Account(
     private val config: Config,
     private val settings: SettingsRepo,
@@ -68,8 +63,6 @@ class Account(
     )
 
     val tokensPersisted: Boolean get() = crypto != null
-
-    // ---- OAuth 2.0 authorization code + PKCE ----
 
     private val redirectUri get() = "${config.publicUrl}/auth/callback"
 
@@ -143,7 +136,6 @@ class Account(
 
 class NotAuthorizedException(message: String) : RuntimeException(message)
 
-/** AES-256-GCM with a key derived from the configured secret (SHA-256). Output: base64(iv || ciphertext). */
 class TokenCrypto(secret: String) {
     private val key = SecretKeySpec(MessageDigest.getInstance("SHA-256").digest(secret.toByteArray()), "AES")
     private val random = SecureRandom()

@@ -30,8 +30,6 @@ kotlin {
     }
 }
 
-// Wire types for the Vue app, generated from the @Serializable descriptors so the UI cannot drift
-// from what the server sends. Output is committed (web/src/generated/models.ts) and checked in CI.
 val generateTsModels by tasks.registering(JavaExec::class) {
     group = "build"
     description = "Generates web/src/generated/models.ts from the shared @Serializable models."

@@ -6,16 +6,12 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
-/**
- * Milestone 0, update half (run by infra/gol/spike.sh): the same extract before and after
- * `gol update`, opened from Kotlin; objects changed upstream must show up in the updated GOL.
- */
 class GolUpdateSpikeTest {
     @Test
     fun updatedGolShowsChangedObjects() {
         val before = System.getenv("OSM_REVIEW_TEST_GOL")?.takeIf { it.isNotBlank() } ?: return
         val after = System.getenv("OSM_REVIEW_TEST_GOL_AFTER")?.takeIf { it.isNotBlank() } ?: return
-        val box = Box.ofWSEN(16.56, 49.17, 16.65, 49.22) // Brno-střed: busy enough to change daily
+        val box = Box.ofWSEN(16.56, 49.17, 16.65, 49.22)
         fun snapshot(p: String) = FeatureLibrary(Path.of(p)).use { gol ->
             gol.`in`(box).associate { it.ref to it.tagMap() }
         }

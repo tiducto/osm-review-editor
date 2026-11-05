@@ -53,8 +53,6 @@ fun Route.apiRoutes(app: App) {
             )
         }
 
-        // ---- areas, imagery, search ----
-
         get("/areas") { call.respond(app.areas.presets()) }
         get("/areas/{name}") {
             val name = call.parameters["name"]!!
@@ -66,8 +64,6 @@ fun Route.apiRoutes(app: App) {
             val q = call.request.queryParameters["q"].orEmpty()
             call.respond(app.search.search(q, call.bboxParam()))
         }
-
-        // ---- mirror ----
 
         get("/features") {
             val bbox = call.bboxParam() ?: throw IllegalArgumentException("bbox is required")
@@ -102,8 +98,6 @@ fun Route.apiRoutes(app: App) {
             call.respond(app.editorLinks(ref))
         }
 
-        // ---- rules ----
-
         get("/rules") { call.respond(app.rules.rules()) }
         get("/rules/{id}/issues") {
             val id = call.parameters["id"]!!
@@ -114,8 +108,6 @@ fun Route.apiRoutes(app: App) {
             app.launchRecord(id, key, result.issueCount, result.tookMs)
             call.respond(result)
         }
-
-        // ---- drafts ----
 
         route("/drafts") {
             get {
@@ -178,8 +170,6 @@ fun Route.apiRoutes(app: App) {
             call.respond(drafts.manualEdit(req.ref, req.tags, req.reason))
         }
 
-        // ---- account ----
-
         get("/account") { call.respond(app.account.status()) }
         post("/account/logout") {
             app.account.logout()
@@ -215,12 +205,10 @@ fun Route.apiRoutes(app: App) {
     }
 }
 
-/** Query-string bbox `west,south,east,north`. */
 fun ApplicationCall.bboxParam(): BBox? = request.queryParameters["bbox"]?.let { s ->
     val p = s.split(",").map { it.trim().toDouble() }
     require(p.size == 4) { "bbox must be west,south,east,north" }
     BBox(p[0], p[1], p[2], p[3])
 }
 
-/** About 0.05° × 0.03°: a zoom-14-ish viewport at Czech latitudes. */
 private const val MAX_FEATURE_BBOX_AREA = 0.05 * 0.03

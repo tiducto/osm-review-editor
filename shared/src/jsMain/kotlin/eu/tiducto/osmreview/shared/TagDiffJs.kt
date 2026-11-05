@@ -2,13 +2,9 @@
 
 package eu.tiducto.osmreview.shared
 
-// TagDiff logic for the Vue UI, so it previews an edit without a server round trip. Plain JS objects
-// in and out (`Record<string, string>`), matching the JSON wire shape; web/src/lib/tagdiff.ts types them.
-
-/** Returns `{added, removed, changed, unchanged}`, identical to the server's TagDiff JSON. */
 @JsExport
 fun tagDiff(base: dynamic, proposed: dynamic): dynamic {
-    val d = TagDiff.between(base.toStringMap(), proposed.toStringMap())
+    val d = TagDiff.between(stringMapOf(base), stringMapOf(proposed))
     val changed: dynamic = js("({})")
     d.changed.forEach { (k, v) -> changed[k] = v.toTypedArray() }
     val out: dynamic = js("({})")
@@ -19,21 +15,18 @@ fun tagDiff(base: dynamic, proposed: dynamic): dynamic {
     return out
 }
 
-/** Applies a `{set, remove}` edit to the tags and returns the new tag object (keys sorted). */
 @JsExport
 fun applyTagEdit(base: dynamic, set: dynamic, remove: Array<String>): dynamic =
-    TagEdit(set.toStringMap(), remove.toList()).applyTo(base.toStringMap()).toJsObject()
+    TagEdit(stringMapOf(set), remove.toList()).applyTo(stringMapOf(base)).toJsObject()
 
-/** One-line summary such as `+area=yes ~surface=asphalt −sidewalk`. */
 @JsExport
 fun tagDiffSummary(base: dynamic, proposed: dynamic): String =
-    TagDiff.between(base.toStringMap(), proposed.toStringMap()).summary()
+    TagDiff.between(stringMapOf(base), stringMapOf(proposed)).summary()
 
-private fun Any?.toStringMap(): Map<String, String> {
-    if (this == null) return emptyMap()
-    val obj: dynamic = this
+private fun stringMapOf(obj: dynamic): Map<String, String> {
+    if (obj == null) return emptyMap()
     val keys: Array<String> = js("Object.keys")(obj)
-    return keys.associateWith { obj[it].toString() }
+    return keys.associateWith { key -> obj[key].toString() }
 }
 
 private fun Map<String, String>.toJsObject(): dynamic {

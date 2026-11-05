@@ -36,12 +36,6 @@ import org.slf4j.LoggerFactory
 
 private val log = LoggerFactory.getLogger("eu.tiducto.osmreview.server.remote")
 
-/**
- * JOSM remote control (https://josm.openstreetmap.de/wiki/Help/RemoteControlCommands) on
- * 127.0.0.1:8111, so "Edit in JOSM" buttons on Osmose, MapRoulette, OSMCha, Overpass Turbo and
- * osm.org open objects here. Requests push a `remote_command` to the open UI tab; `addtags` becomes
- * a one-change draft per object, ready to approve. Nothing here can upload.
- */
 fun Route.remoteControlRoutes(app: App) {
     install(JosmCors)
     options("{path...}") {
@@ -134,7 +128,6 @@ fun Route.remoteControlRoutes(app: App) {
     }
 }
 
-/** `addtags=k=v|k2=v2` → a one-change draft per selected object. Returns the draft id, if any. */
 private suspend fun draftFromAddTags(app: App, refs: List<OsmRef>, addtags: String?, comment: String?): String? {
     val tags = parseAddTags(addtags)
     if (tags.isEmpty() || refs.isEmpty()) return null
@@ -145,7 +138,6 @@ private suspend fun draftFromAddTags(app: App, refs: List<OsmRef>, addtags: Stri
     return draft.id
 }
 
-/** OSM XML (from /import or /load_data) → a draft of modifications (existing ids) and creations (negative ids). */
 private suspend fun draftFromOsmXml(app: App, xml: String, title: String): String {
     val els = OsmXml.parseElements(xml)
     val draft = app.drafts.createDraft(title, "From JOSM remote control: ${els.size} objects", Authors.REMOTE)
@@ -154,7 +146,7 @@ private suspend fun draftFromOsmXml(app: App, xml: String, title: String): Strin
             e.id > 0 -> ProposedChange(e.ref, TagEdit(replaceAll = e.tags), title)
             e.type == OsmType.NODE && e.lat != null && e.lon != null ->
                 ProposedChange(e.ref, TagEdit(set = e.tags), title, action = ChangeAction.CREATE, location = LngLat(e.lon.toDouble(), e.lat.toDouble()))
-            else -> null // new ways/relations need geometry editing: hand off to iD
+            else -> null
         }
     }
     if (proposals.isNotEmpty()) app.drafts.proposeChanges(draft.id, proposals)
@@ -202,10 +194,6 @@ private suspend fun ApplicationCall.ok() = respondText("OK\r\n", ContentType.Tex
 
 private suspend fun ApplicationCall.josmError(msg: String) = respondText(msg, ContentType.Text.Plain, HttpStatusCode.BadRequest)
 
-/**
- * CORS for public HTTPS sites calling localhost: any origin may call. Preflights (answered by the
- * `options` route) also carry `Access-Control-Allow-Private-Network: true` for Chrome.
- */
 private val JosmCors = createRouteScopedPlugin("JosmCors") {
     onCall { call -> call.response.header("Access-Control-Allow-Origin", "*") }
 }

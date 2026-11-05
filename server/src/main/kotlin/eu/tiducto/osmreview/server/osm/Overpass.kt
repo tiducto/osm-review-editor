@@ -15,7 +15,6 @@ import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** Overpass, used only by MCP `query_osm` with an `overpass` query. Backs off on 429. */
 class Overpass(private val http: HttpClient, private val url: String, private val userAgent: String) {
     @Serializable
     private data class Resp(val elements: List<El> = emptyList())
@@ -38,7 +37,6 @@ class Overpass(private val http: HttpClient, private val url: String, private va
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** Runs [query]; adds `[out:json]` and `out tags center` when the query has no output statement. */
     suspend fun query(query: String, limit: Int): Pair<List<Hit>, Boolean> {
         val q = buildString {
             if (!query.trimStart().startsWith("[out:json")) append("[out:json][timeout:60];")

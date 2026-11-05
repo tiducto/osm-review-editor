@@ -19,10 +19,6 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import org.slf4j.LoggerFactory
 
-/**
- * OSM API v0.6 for one target. Reads are batched multi-fetches; writes need a bearer token.
- * Live fetches happen only for objects being proposed or uploaded; browsing and rules use the GOL.
- */
 class OsmApi(
     private val http: HttpClient,
     val target: OsmTargetConfig,
@@ -30,11 +26,6 @@ class OsmApi(
 ) {
     private val log = LoggerFactory.getLogger(OsmApi::class.java)
 
-    /**
-     * Current versions of [refs]. Deleted objects come back with `visible=false`; objects that never
-     * existed on this target are absent from the map. Batches of [BATCH] IDs per call; a 404 (the
-     * API refuses the whole batch if one ID never existed) splits the batch until the culprit is found.
-     */
     suspend fun fetch(refs: Collection<OsmRef>): Map<OsmRef, OsmElement> {
         val out = HashMap<OsmRef, OsmElement>()
         refs.filter { it.id > 0 }.distinct().groupBy { it.type }.forEach { (type, ofType) ->
@@ -56,7 +47,6 @@ class OsmApi(
         }
     }
 
-    /** Display name and id of the token's account (`GET /user/details`). */
     suspend fun userDetails(token: String): XUser {
         val resp = http.get("${target.apiUrl}/user/details") {
             header(HttpHeaders.UserAgent, userAgent)
@@ -77,7 +67,6 @@ class OsmApi(
         return resp.bodyAsText().trim().toLong()
     }
 
-    /** Uploads an osmChange document. Throws [OsmApiException] with status 409 on version conflicts. */
     suspend fun upload(token: String, changesetId: Long, osmChange: String): XDiffResult {
         val resp = http.post("${target.apiUrl}/changeset/$changesetId/upload") {
             header(HttpHeaders.UserAgent, userAgent)
@@ -102,7 +91,6 @@ class OsmApi(
     }
 
     companion object {
-        /** Multi-fetch IDs per call; keeps URLs well under common 8 KB limits. */
         const val BATCH = 700
     }
 }

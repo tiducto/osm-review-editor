@@ -96,7 +96,6 @@ fun Application.module(app: App) {
     }
 
     routing {
-        // JOSM remote control: only on its own port, like JOSM.
         localPort(app.config.remoteControlPort) { remoteControlRoutes(app) }
 
         localPort(app.config.port) {
@@ -110,15 +109,13 @@ fun Application.module(app: App) {
                 try {
                     queued.forEach { sendSerialized<UiEvent>(it) }
                     val job = launch { app.events.events.collect { sendSerialized<UiEvent>(it) } }
-                    for (frame in incoming) { /* the UI sends nothing; keep reading until close */ }
+                    for (frame in incoming) {  }
                     job.cancel()
                 } finally {
                     app.events.disconnect()
                 }
             }
-            // Unknown API paths are 404s, not the SPA.
             route("/api/{path...}") { handle { call.respond(HttpStatusCode.NotFound, ApiError("Not Found", call.request.path())) } }
-            // The Vue build, bundled at build time; other unknown paths fall back to the SPA.
             staticResources("/", "static") { default("index.html") }
         }
     }

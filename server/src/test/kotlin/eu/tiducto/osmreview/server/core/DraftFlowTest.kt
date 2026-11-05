@@ -40,11 +40,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-/**
- * The draft engine and merge end to end against Postgres (Testcontainers) and a fake OSM API:
- * OAuth, proposing with live base versions, dedupe, review, upload, auto-rebase, a three-way
- * conflict and a 409 during upload. Skipped when Docker is not available.
- */
 class DraftFlowTest {
     private val docker = runCatching { DockerClientFactory.instance().isDockerAvailable }.getOrDefault(false)
     private lateinit var pg: PostgreSQLContainer
@@ -134,14 +129,12 @@ class DraftFlowTest {
         val id = drafts.detail(d.id).changes.single().id
         drafts.review(id, ReviewRequest(ReviewDecision.APPROVE))
 
-        // Upstream edits a key we do not touch: auto-rebase, back to pending.
         osm.edit(way, mapOf("name" to "Pěšina"))
         var c = drafts.refresh(d.id).changes.single()
         assertEquals(ChangeStatus.PENDING, c.status)
         assertEquals(4, c.baseVersion)
         assertEquals("Pěšina", c.newTags["name"])
 
-        // Upstream edits the key we change: conflict with live tags for a three-way pick.
         osm.edit(way, mapOf("surface" to "gravel"))
         c = drafts.refresh(d.id).changes.single()
         assertEquals(ChangeStatus.CONFLICT, c.status)
@@ -154,7 +147,6 @@ class DraftFlowTest {
         assertEquals(5, c.baseVersion)
         drafts.review(id, ReviewRequest(ReviewDecision.APPROVE))
 
-        // Someone edits between our check and the upload: the API answers 409, nothing goes up.
         osm.raceOnNextUpload = mapOf("surface" to "concrete")
         merge.merge(d.id)
         c = drafts.detail(d.id).changes.single()
@@ -164,7 +156,6 @@ class DraftFlowTest {
         assertNotNull(osm.closed.firstOrNull())
     }
 
-    /** A tiny in-memory OSM API v0.6 + OAuth endpoints. */
     private class FakeOsm {
         private data class El(val type: String, val id: Long, var version: Int, var tags: Map<String, String>, val extra: String)
 

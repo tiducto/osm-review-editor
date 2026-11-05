@@ -13,22 +13,12 @@ import org.locationtech.jts.geom.Geometry
 import org.locationtech.jts.geom.prep.PreparedGeometry
 import org.locationtech.jts.geom.prep.PreparedGeometryFactory
 
-/**
- * The area a rule runs in: a bbox, optionally refined by a polygon. Geometry is in GeoDesk's
- * Mercator integer space (see [Geo.toMercator]).
- */
 class Scope(val bounds: Box, val polygon: Geometry? = null) {
     val prepared: PreparedGeometry? by lazy { polygon?.let(PreparedGeometryFactory::prepare) }
 }
 
-/** What a rule's lambdas see as `this`: the open GOL as `gol`. */
 class RuleContext(val gol: FeatureLibrary)
 
-/**
- * A rule's proposed fix. `addTags` sets (adds or overwrites), `removeTags` drops keys,
- * `replaceTags` replaces the whole tag set. [confidence] overrides the rule's for this one object
- * (e.g. deprecated-tags is deterministic only for 1:1 mappings).
- */
 data class Fix(
     val addTags: Map<String, String> = emptyMap(),
     val removeTags: List<String> = emptyList(),
@@ -43,7 +33,6 @@ class RuleDef(
     val id: String,
     val title: String,
     val description: String,
-    /** What the fix does, for changeset comments ("add area=yes to closed platforms"). */
     val changesetComment: String,
     val severity: Severity,
     val confidence: Confidence,
@@ -66,16 +55,11 @@ fun rule(
     context: (RuleContext.(Feature) -> Iterable<Feature>)? = null,
 ): RuleDef = RuleDef(id, title, description, changesetComment, severity, confidence, find, fix, context)
 
-/** Restricts a query to the scope: bbox first (index), then the polygon if there is one. */
 fun Features.within(scope: Scope): Features {
     val inBox = `in`(scope.bounds)
     return scope.prepared?.let { inBox.intersecting(it) } ?: inBox
 }
 
-/**
- * Features within [meters] of [feature]. GeoDesk for Java 2.1.0 declares `maxMetersFrom(double,
- * Feature)` but throws "todo"; this does the same with a bbox prefilter and an exact JTS distance.
- */
 fun Features.withinMeters(meters: Double, feature: Feature): List<Feature> {
     val geom = feature.toGeometry()
     return `in`(Box.metersAround(meters, feature.bounds()))

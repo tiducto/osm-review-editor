@@ -37,11 +37,6 @@ import kotlinx.serialization.json.put
 import org.slf4j.LoggerFactory
 import java.util.UUID
 
-/**
- * The draft engine. Every change is built on the live object's current version (fetched from the
- * OSM API at proposal time, never from the mirror), re-checked before upload, and uploaded only when
- * approved. One open change per object across all open drafts.
- */
 class DraftService(
     private val repo: DraftRepo,
     private val account: Account,
@@ -52,8 +47,6 @@ class DraftService(
 ) {
     private val log = LoggerFactory.getLogger(DraftService::class.java)
 
-    // ---- drafts ----
-
     suspend fun createDraft(title: String, description: String, author: String, scope: kotlinx.serialization.json.JsonElement? = null): Draft =
         repo.createDraft(title.ifBlank { "Untitled draft" }, description, author, scope).also { emitUpdated(it.id) }
 
@@ -63,7 +56,6 @@ class DraftService(
         return DraftDetail(draft, repo.changes(uuid))
     }
 
-    /** Builds a draft from a rule run: one proposed change per issue that has a fix. */
     suspend fun draftFromRule(req: DraftFromRuleRequest): DraftDetail {
         val def = rules.definition(req.ruleId)
         val (scope, scopeKey, scopeGeom) = resolveScope(req.area, req.bbox)
@@ -100,7 +92,6 @@ class DraftService(
         return detail(draft.id)
     }
 
-    /** Area name → its admin boundary polygon; else a bbox. Returns the scope, a cache key, its GeoJSON. */
     fun resolveScope(area: String?, bbox: BBox?): Triple<Scope, String, kotlinx.serialization.json.JsonElement?> {
         if (area != null) {
             val (a, scope) = queries.area(area) ?: throw NotFoundException("Unknown area '$area'")
@@ -110,13 +101,6 @@ class DraftService(
         return Triple(Scope(Geo.box(b)), "bbox:${b.west},${b.south},${b.east},${b.north}", bboxPolygon(b))
     }
 
-    // ---- proposing ----
-
-    /**
-     * `core.proposeChanges`: fetch live objects in batches, store base version and tags from the live
-     * response, compute the diff, drop no-ops, and merge a proposal for an object that already has an
-     * open change into that change (recording both reasons).
-     */
     suspend fun proposeChanges(draftId: String, proposals: List<ProposedChange>, near: BBox? = null): List<ProposalResult> {
         val draftUuid = parseId(draftId)
         val draft = repo.getDraft(draftUuid) ?: throw NotFoundException("Draft $draftId not found")
@@ -206,8 +190,6 @@ class DraftService(
         return ProposalResult(ref, ProposalOutcome.ACCEPTED, c.id)
     }
 
-    // ---- review ----
-
     suspend fun review(changeId: String, req: ReviewRequest): Change {
         val id = parseId(changeId)
         val c = repo.change(id) ?: throw NotFoundException("Change $changeId not found")
@@ -235,10 +217,6 @@ class DraftService(
         return repo.change(id)!!
     }
 
-    /**
-     * MCP `update_change`: Claude revises its proposal (an edit applied to the current proposal) or
-     * withdraws it. Any revision goes back to pending for a fresh human review; uploaded changes are final.
-     */
     suspend fun updateProposal(changeId: String, edit: TagEdit?, withdraw: Boolean, reason: String?): Change {
         val id = parseId(changeId)
         val c = repo.change(id) ?: throw NotFoundException("Change $changeId not found")
@@ -260,7 +238,6 @@ class DraftService(
         return repo.change(id)!!
     }
 
-    /** "Approve all remaining from this rule": only changes whose fix is deterministic. */
     suspend fun approveRemaining(draftId: String, ruleId: String?): DraftDetail {
         val d = detail(draftId)
         d.changes.filter {
@@ -273,7 +250,6 @@ class DraftService(
         return detail(draftId)
     }
 
-    /** A manual inspector edit: goes into the open manual draft (created on demand). */
     suspend fun manualEdit(ref: OsmRef, tags: Map<String, String>, reason: String?): Change {
         val draft = repo.findOpenDraft(Authors.USER, MANUAL_TITLE)
             ?: repo.createDraft(MANUAL_TITLE, "Edits made in the inspector", Authors.USER, null)
@@ -285,13 +261,6 @@ class DraftService(
         return repo.change(UUID.fromString(r.changeId))!!
     }
 
-    // ---- conflicts ----
-
-    /**
-     * Refetches live versions. A change whose base moved is auto-rebased when upstream did not touch
-     * any key it changes (back to pending for a fresh review); otherwise it becomes a conflict and
-     * stores the live tags for a three-way pick.
-     */
     suspend fun refresh(draftId: String): DraftDetail {
         val uuid = parseId(draftId)
         val changes = repo.changes(uuid).filter {
@@ -303,7 +272,6 @@ class DraftService(
         return detail(draftId)
     }
 
-    /** Returns true when [c] is still safe to upload against [el]. */
     suspend fun checkConflict(c: Change, el: OsmElement?): Boolean {
         val id = UUID.fromString(c.id)
         val base = c.baseVersion ?: return true
@@ -339,7 +307,6 @@ class DraftService(
         }
     }
 
-    /** Three-way resolution: the user's per-key picks become the new proposal on the live version. */
     suspend fun resolveConflict(changeId: String, tags: Map<String, String>): Change {
         val id = parseId(changeId)
         val c = repo.change(id) ?: throw NotFoundException("Change $changeId not found")
@@ -357,8 +324,6 @@ class DraftService(
         emitUpdated(c.draftId)
         return repo.change(id)!!
     }
-
-    // ---- helpers ----
 
     private fun geometries(refs: List<OsmRef>, near: BBox?): Map<OsmRef, MapFeature> =
         if (refs.isEmpty() || !mirror.isAvailable) emptyMap() else runCatching { queries.mapFeatures(refs, near) }.getOrElse { emptyMap() }

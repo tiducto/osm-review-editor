@@ -2,10 +2,6 @@ package eu.tiducto.osmreview.shared
 
 import kotlinx.serialization.Serializable
 
-/**
- * The difference between two tag sets. JSON shape (spec): `added: {k: v}`, `removed: {k: v}`,
- * `changed: {k: [old, new]}`, `unchanged: string[]`.
- */
 @Serializable
 data class TagDiff(
     val added: Map<String, String> = emptyMap(),
@@ -15,20 +11,14 @@ data class TagDiff(
 ) {
     val isNoOp: Boolean get() = added.isEmpty() && removed.isEmpty() && changed.isEmpty()
 
-    /** Keys this diff writes (adds, removes or changes). Used by auto-rebase. */
     val touchedKeys: Set<String> get() = added.keys + removed.keys + changed.keys
 
-    /** One-line human summary, e.g. `+area=yes −sidewalk ~surface`. */
     fun summary(): String = buildList {
         added.forEach { (k, v) -> add("+$k=$v") }
         changed.forEach { (k, v) -> add("~$k=${v.getOrElse(1) { "" }}") }
         removed.keys.forEach { add("−$it") }
     }.joinToString(" ")
 
-    /**
-     * Applies this diff on top of [base]. Keys the diff removes are dropped, added and changed keys
-     * take their new value; everything else is kept. Used to rebase a change onto a newer live version.
-     */
     fun applyTo(base: Map<String, String>): Map<String, String> {
         val out = LinkedHashMap(base)
         removed.keys.forEach { out.remove(it) }
@@ -57,12 +47,6 @@ data class TagDiff(
     }
 }
 
-/**
- * A tag edit expressed as operations, the shape rules, MCP and remote control propose.
- * Applied in order: start from [replaceAll] if given (else the live tags), drop [remove], then [set].
- * Rules' `addTags` / `removeTags` / `replaceTags` and MCP's `add_tags` / `remove_tags` / `set_tags`
- * map onto these three fields.
- */
 @Serializable
 data class TagEdit(
     val set: Map<String, String> = emptyMap(),
@@ -78,7 +62,6 @@ data class TagEdit(
 
     val isEmpty: Boolean get() = set.isEmpty() && remove.isEmpty() && replaceAll == null
 
-    /** Later edit wins: its sets override earlier removes and vice versa; a later replaceAll resets. */
     operator fun plus(other: TagEdit): TagEdit = if (other.replaceAll != null) {
         other
     } else {
@@ -90,5 +73,4 @@ data class TagEdit(
     }
 }
 
-/** Copy with keys in sorted order, so serialized tags and diffs are stable and readable. */
 fun <V> Map<String, V>.sortedByKey(): Map<String, V> = keys.sorted().associateWith { getValue(it) }

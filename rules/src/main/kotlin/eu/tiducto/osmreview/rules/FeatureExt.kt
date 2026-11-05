@@ -18,7 +18,6 @@ val Feature.ref: OsmRef
         id(),
     )
 
-/** All tags as strings (GeoDesk returns numbers for numeric values). */
 fun Feature.tagMap(): Map<String, String> {
     val out = sortedMapOf<String, String>()
     val t = tags()
@@ -26,14 +25,12 @@ fun Feature.tagMap(): Map<String, String> {
     return out
 }
 
-/** A way whose first node is its last node. */
 fun Feature.isClosedRing(): Boolean {
     if (!isWay) return false
     val xy = toXY()
     return xy.size >= 8 && xy[0] == xy[xy.size - 2] && xy[1] == xy[xy.size - 1]
 }
 
-/** Representative point in WGS84: the node itself, or the bbox centre for ways and relations. */
 fun Feature.centroid(): LngLat = if (isNode) {
     LngLat(lon(), lat())
 } else {

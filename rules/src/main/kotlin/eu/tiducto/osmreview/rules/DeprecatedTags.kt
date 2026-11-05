@@ -3,16 +3,9 @@ package eu.tiducto.osmreview.rules
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/**
- * iD's deprecated-tag upgrades (`deprecated.json` from id-tagging-schema, vendored under
- * resources/id-tagging-schema). `old` values may be `*` (any value); `replace` values may be `$1`
- * (carry the wildcard's value over) or `*` (keep an existing value, else `yes`). No `replace` means
- * the old tags are simply removed. Semantics follow iD's actionUpgradeTags, minus semicolon lists.
- */
 object DeprecatedTags {
     @Serializable
     data class Entry(val old: Map<String, String>, val replace: Map<String, String>? = null) {
-        /** A plain one-tag → concrete-tags rename with no wildcards: safe to approve in bulk. */
         val isOneToOne: Boolean
             get() = old.size == 1 && old.values.none { it == "*" } &&
                 replace != null && replace.size == 1 && replace.values.none { it == "*" || it == "$1" }
@@ -50,17 +43,12 @@ object DeprecatedTags {
         DeprecatedTags::class.java.getResource("/id-tagging-schema/VERSION")?.readText()?.trim() ?: "unknown"
     }
 
-    /** GOQL matching any feature that carries an old tag (prefilter; exact matching is in Kotlin). */
     val goql: String by lazy {
         entries.joinToString(", ") { e ->
             "*" + e.old.entries.joinToString("") { (k, v) -> if (v == "*") "[${q(k)}]" else "[${q(k)}=${q(v)}]" }
         }
     }
 
-    /**
-     * Applies upgrades until none matches (an upgrade can expose another, as in iD), capped to avoid
-     * cycles. Returns the upgraded tags and the entries applied, or null when nothing is deprecated.
-     */
     fun upgrade(tags: Map<String, String>): Pair<Map<String, String>, List<Entry>>? {
         var current = tags
         val applied = mutableListOf<Entry>()

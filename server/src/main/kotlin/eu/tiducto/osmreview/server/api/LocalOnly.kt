@@ -9,13 +9,6 @@ import io.ktor.server.request.host
 import io.ktor.server.request.httpMethod
 import io.ktor.server.response.respond
 
-/**
- * The UI port has no login (single-user, local). Two guards keep other websites out:
- * - Host must be a local name or the configured public host (stops DNS rebinding).
- * - State-changing requests carrying an Origin must come from that same host (stops CSRF, including
- *   body-less POSTs such as /merge that skip the CORS preflight).
- * MCP has its own bearer token; JOSM remote control lives on its own port and only creates drafts.
- */
 class LocalOnlyConfig {
     var allowedHosts: Set<String> = setOf("localhost", "127.0.0.1", "[::1]")
 }

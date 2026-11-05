@@ -10,13 +10,6 @@ import kotlin.math.atan2
 
 enum class Side { LEFT, RIGHT }
 
-/**
- * Side detection for separately mapped sidewalks. For a sidewalk near a road, take the road segment
- * closest to it and the sign of the cross product between that segment's direction and the vector to
- * the sidewalk's closest point: positive = left, negative = right (Mercator y grows northwards, so
- * the usual counter-clockwise convention holds). Sidewalks that are not roughly parallel to the road
- * (crossings, connectors) are ignored.
- */
 object SidewalkSide {
     private const val MAX_ANGLE_DEG = 30.0
 
@@ -52,7 +45,6 @@ object SidewalkSide {
 
     private fun angle(s: LineSegment) = atan2(s.p1.y - s.p0.y, s.p1.x - s.p0.x)
 
-    /** The segment of [g] closest to [p]. */
     private fun segmentAt(g: Geometry, p: Coordinate): LineSegment? {
         val cs = g.coordinates
         if (cs.size < 2) return null

@@ -37,7 +37,6 @@ import java.security.SecureRandom
 import java.util.Base64
 import kotlin.io.path.readText
 
-/** Wires the components; one instance per process. */
 class App(val config: Config) : AutoCloseable {
     private val log = LoggerFactory.getLogger(App::class.java)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -63,7 +62,6 @@ class App(val config: Config) : AutoCloseable {
     val search = Search(queries)
     val imagery: List<ImagerySource> = DEFAULT_IMAGERY
 
-    /** Bearer token for `/mcp`: MCP_TOKEN, else generated once and kept in settings (shown in Settings). */
     val mcpToken: String = config.mcpToken ?: settings.get(MCP_TOKEN_KEY) ?: ByteArray(24)
         .also(SecureRandom()::nextBytes)
         .let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
@@ -71,7 +69,6 @@ class App(val config: Config) : AutoCloseable {
 
     fun start() {
         if (mirror.reloadIfChanged()) log.info("Opened GOL {}", mirror.status().file) else log.warn(mirror.status().message)
-        // Watch `<dataDir>/current` for swaps by the gol sidecar.
         scope.launch {
             while (isActive) {
                 delay(SWAP_POLL_MS)
@@ -110,7 +107,6 @@ class App(val config: Config) : AutoCloseable {
         private const val SWAP_POLL_MS = 15_000L
         private const val MCP_TOKEN_KEY = "mcp.token"
 
-        /** Same sources mappers use in iD/JOSM (osmlab editor-layer-index). Respect their licences. */
         val DEFAULT_IMAGERY = listOf(
             ImagerySource(
                 id = "cuzk-ortofoto",
@@ -142,7 +138,6 @@ class App(val config: Config) : AutoCloseable {
     }
 }
 
-/** Area picker presets: DEFAULT_AREAS names (GeoJSON features with a `name`) plus a few defaults. */
 class AreaPresets(private val config: Config, private val queries: eu.tiducto.osmreview.rules.MirrorQueries) {
     private val names: List<String> by lazy {
         val fromFile = config.defaultAreasFile?.let { f ->
@@ -163,7 +158,6 @@ class AreaPresets(private val config: Config, private val queries: eu.tiducto.os
     }
 }
 
-/** Top-bar search: OSM IDs and URLs, GOQL tag queries, area names, then named objects in view. */
 class Search(private val queries: eu.tiducto.osmreview.rules.MirrorQueries) {
     private val idPatterns = listOf(
         Regex("""^([nwr])\s*(\d+)$""", RegexOption.IGNORE_CASE),

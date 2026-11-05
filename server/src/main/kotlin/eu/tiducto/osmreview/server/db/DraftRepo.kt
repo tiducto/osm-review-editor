@@ -33,7 +33,6 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
 
-/** Wire name of an enum value (its @SerialName), shared with the CHECK constraints in V1__init.sql. */
 inline fun <reified E : Enum<E>> E.wire(serializer: KSerializer<E>): String = serializer.descriptor.getElementName(ordinal)
 
 inline fun <reified E : Enum<E>> wireEnum(serializer: KSerializer<E>, value: String): E {
@@ -50,7 +49,6 @@ val ReviewDecision.wire get() = wire(ReviewDecision.serializer())
 
 private fun now(): OffsetDateTime = OffsetDateTime.now(ZoneOffset.UTC)
 
-/** Fields of a change row that callers set; the rest (ids, timestamps) are managed here. */
 data class NewChange(
     val draftId: UUID,
     val ref: OsmRef,
@@ -66,12 +64,9 @@ data class NewChange(
     val confidence: Confidence,
 )
 
-/** Changes in these states block another open change on the same object. */
 val OPEN_CHANGE_STATES = listOf(ChangeStatus.PENDING, ChangeStatus.APPROVED, ChangeStatus.CONFLICT)
 
 class DraftRepo(private val db: Db) {
-
-    // ---- drafts ----
 
     suspend fun createDraft(title: String, description: String, author: String, scope: JsonElement?): Draft = db.tx {
         val id = UUID.randomUUID()
@@ -101,7 +96,6 @@ class DraftRepo(private val db: Db) {
 
     suspend fun getDraft(id: UUID): Draft? = db.tx { draftRow(id) }
 
-    /** The newest open draft by [author] with [title], used for the rolling manual draft. */
     suspend fun findOpenDraft(author: String, title: String): Draft? = db.tx {
         DraftsTable.selectAll()
             .where { (DraftsTable.author eq author) and (DraftsTable.title eq title) and (DraftsTable.status eq DraftStatus.OPEN.wire) }
@@ -159,8 +153,6 @@ class DraftRepo(private val db: Db) {
         counts = counts,
     )
 
-    // ---- changes ----
-
     suspend fun insertChange(c: NewChange): Change = db.tx {
         val id = UUID.randomUUID()
         val t = now()
@@ -194,7 +186,6 @@ class DraftRepo(private val db: Db) {
 
     suspend fun changesByIds(ids: Collection<UUID>): List<Change> = db.tx { changeRows { ChangesTable.id inList ids } }
 
-    /** The open change on [ref] in any open draft, if one exists (one open change per object). */
     suspend fun openChangeFor(ref: OsmRef): Change? = db.tx {
         val active = listOf(DraftStatus.OPEN, DraftStatus.PARTIALLY_MERGED).map { it.wire }
         val openDrafts = DraftsTable.select(DraftsTable.id).where { DraftsTable.status inList active }.map { it[DraftsTable.id] }
@@ -205,7 +196,6 @@ class DraftRepo(private val db: Db) {
         }.firstOrNull()
     }
 
-    /** Next free negative id for an object this tool creates (OSM convention for new objects). */
     suspend fun nextPlaceholderId(): Long = db.tx {
         val m = ChangesTable.osmId.min()
         val lowest = ChangesTable.select(m).where { ChangesTable.osmId less 0L }.firstOrNull()?.get(m) ?: 0L
@@ -314,8 +304,6 @@ class DraftRepo(private val db: Db) {
         )
     }
 
-    // ---- uploads ----
-
     suspend fun insertUpload(draftId: UUID, comment: String, changeIds: List<UUID>): Long = db.tx {
         UploadsTable.insert {
             it[UploadsTable.draftId] = draftId
@@ -348,8 +336,6 @@ class DraftRepo(private val db: Db) {
             )
         }
     }
-
-    // ---- rule runs and settings ----
 
     suspend fun recordRuleRun(ruleId: String, scopeKey: String, issueCount: Int, tookMs: Long) = db.tx {
         RuleRunsTable.insert {

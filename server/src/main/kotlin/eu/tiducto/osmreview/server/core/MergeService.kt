@@ -27,10 +27,6 @@ import kotlinx.coroutines.sync.withLock
 import org.slf4j.LoggerFactory
 import java.util.UUID
 
-/**
- * Merge = upload approved changes as OSM changesets. Only the human triggers this, from the UI;
- * MCP and remote control have no path here. One upload at a time, sequential changesets.
- */
 class MergeService(
     private val config: Config,
     private val repo: DraftRepo,
@@ -54,10 +50,6 @@ class MergeService(
         )
     }
 
-    /**
-     * Group approved changes into changesets by rule, at most [MAX_PER_CHANGESET] each (OSM allows
-     * 10,000; smaller is easier to review and revert), with a generated comment per group.
-     */
     fun groups(draft: Draft, approved: List<Change>): List<ChangesetGroup> {
         val area = draft.title.substringAfter(" · ", "").ifBlank { null }
         return approved.groupBy { it.ruleId ?: "manual" }.flatMap { (ruleId, changes) ->
@@ -69,7 +61,6 @@ class MergeService(
                     val verb = runCatching { rules.definition(ruleId).changesetComment }.getOrDefault(ruleId)
                     "$verb (rule $ruleId)"
                 }
-                // e.g. "Opava: add area=yes to closed platforms (rule platform-area), reviewed individually"
                 val comment = (area?.let { "$it: " } ?: "") + what + ", reviewed individually"
                 ChangesetGroup(
                     key = if (chunks.size > 1) "$ruleId#${i + 1}" else ruleId,
@@ -84,14 +75,12 @@ class MergeService(
         }
     }
 
-    /** Uploads every approved change of the draft. Progress goes out as `merge_progress` events. */
     suspend fun merge(draftId: String) = lock.withLock {
         val token = account.requireToken()
         val api = account.api()
         val start = drafts.detail(draftId)
         if (start.draft.status !in DraftService.ACTIVE) throw StateException("Draft is ${start.draft.status.name.lowercase()}")
 
-        // Conflict check immediately before upload, with the elements we will build on.
         val approved = start.changes.filter { it.status == ChangeStatus.APPROVED }
         if (approved.isEmpty()) throw StateException("Nothing approved to merge")
         val live = api.fetch(approved.filter { it.action != ChangeAction.CREATE }.map { it.ref })
@@ -119,7 +108,6 @@ class MergeService(
                 log.warn("Upload of group {} failed: {}", g.key, e.message)
                 repo.finishUpload(uploadId, if (conflict) "conflict" else "failed", changesetId, e.message)
                 if (conflict) {
-                    // Nothing from this group went up (osmChange uploads are atomic). Mark what moved.
                     val fresh = api.fetch(changes.filter { it.action != ChangeAction.CREATE }.map { it.ref })
                     changes.filter { it.action != ChangeAction.CREATE }.forEach { drafts.checkConflict(it, fresh[it.ref]) }
                 }
@@ -140,10 +128,6 @@ class MergeService(
         events.emit(UiEvent.DraftUpdated(draftId))
     }
 
-    /**
-     * osmChange with complete elements: a modify carries all tags, the version and, for ways the full
-     * node list, for relations all members; built from the freshly fetched live element.
-     */
     fun osmChange(changes: List<Change>, live: Map<eu.tiducto.osmreview.shared.OsmRef, OsmElement>, changesetId: Long): String {
         fun block(cs: List<Change>, build: (Change) -> OsmElement): XBlock? {
             if (cs.isEmpty()) return null

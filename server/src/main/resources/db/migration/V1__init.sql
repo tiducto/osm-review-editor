@@ -1,11 +1,9 @@
--- App state only; OSM data lives in the GOL file. Plain Postgres, no PostGIS: geometries are GeoJSON.
 CREATE SCHEMA IF NOT EXISTS app;
 
 CREATE TABLE app.drafts (
     id          uuid PRIMARY KEY,
     title       text        NOT NULL,
     description text        NOT NULL DEFAULT '',
-    -- user / claude / rule:<id> / remote
     author      text        NOT NULL,
     scope_geom  jsonb,
     status      text        NOT NULL DEFAULT 'open'
@@ -19,7 +17,6 @@ CREATE TABLE app.changes (
     id            uuid PRIMARY KEY,
     draft_id      uuid        NOT NULL REFERENCES app.drafts (id) ON DELETE CASCADE,
     osm_type      text        NOT NULL CHECK (osm_type IN ('node', 'way', 'relation')),
-    -- negative for objects created by this tool
     osm_id        bigint      NOT NULL,
     action        text        NOT NULL CHECK (action IN ('create', 'modify', 'delete')),
     base_version  integer,
@@ -76,7 +73,6 @@ CREATE TABLE app.rule_runs (
     ran_at      timestamptz NOT NULL DEFAULT now()
 );
 
--- key/value: API target, OAuth tokens (encrypted at rest), MCP token, imagery list
 CREATE TABLE app.settings (
     key        text PRIMARY KEY,
     value      text        NOT NULL,

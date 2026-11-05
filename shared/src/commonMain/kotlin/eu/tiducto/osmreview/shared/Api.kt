@@ -4,9 +4,6 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
-// Request/response bodies of the REST API and the WebSocket events. Shared with MCP where shapes match.
-
-/** One proposed change as callers submit it to `core.proposeChanges`. */
 @Serializable
 data class ProposedChange(
     val ref: OsmRef,
@@ -14,7 +11,6 @@ data class ProposedChange(
     val reason: String? = null,
     val ruleId: String? = null,
     val confidence: Confidence = Confidence.NEEDS_REVIEW,
-    /** Creation only: where the new node goes. */
     val location: LngLat? = null,
     val action: ChangeAction = ChangeAction.MODIFY,
 )
@@ -24,11 +20,9 @@ enum class ProposalOutcome {
     @SerialName("accepted")
     ACCEPTED,
 
-    /** The edit leaves the live tags unchanged. */
     @SerialName("no_op")
     NO_OP,
 
-    /** Another open change already covers the object; the edit was merged into it. */
     @SerialName("duplicate")
     DUPLICATE,
 
@@ -54,7 +48,6 @@ data class CreateDraftRequest(
 @Serializable
 data class DraftFromRuleRequest(
     val ruleId: String,
-    /** Area name from the area list, or omitted when [bbox] is used. */
     val area: String? = null,
     val bbox: BBox? = null,
     val title: String? = null,
@@ -68,11 +61,9 @@ data class ProposeChangesRequest(val changes: List<ProposedChange>)
 data class ReviewRequest(
     val decision: ReviewDecision,
     val comment: String? = null,
-    /** For `edit`: the complete tag set the user wants instead of the proposal. */
     val tags: Map<String, String>? = null,
 )
 
-/** Resolves a conflict: per-key choice of the final value (null value = drop the key). */
 @Serializable
 data class ResolveConflictRequest(val tags: Map<String, String>)
 
@@ -141,7 +132,6 @@ data class MirrorStatus(
     val available: Boolean,
     val file: String? = null,
     val openedAt: String? = null,
-    /** Replication timestamp the GOL reports, when known. */
     val dataTimestamp: String? = null,
     val message: String? = null,
 )
@@ -159,17 +149,14 @@ data class AppStatus(
 data class ImagerySource(
     val id: String,
     val name: String,
-    /** `tms` uses {z}/{x}/{y}; `wms` uses {bbox-epsg-3857}. */
     val type: String,
     val url: String,
     val attribution: String = "",
     val maxZoom: Int = 20,
 )
 
-/** Server → UI push over WebSocket `/api/events`. */
 @Serializable
 sealed interface UiEvent {
-    /** A JOSM remote-control request for the open tab: fly there, select, maybe open a draft. */
     @Serializable
     @SerialName("remote_command")
     data class RemoteCommand(
@@ -200,7 +187,6 @@ data class ApiError(val error: String, val detail: String? = null)
 data class UpdateDraftRequest(
     val title: String? = null,
     val description: String? = null,
-    /** Only `open` and `closed` can be set by hand; merge sets the others. */
     val status: DraftStatus? = null,
 )
 
@@ -219,7 +205,6 @@ enum class SearchHitKind {
     QUERY,
 }
 
-/** One search result: a named area, one OSM object (by ID or name), or a tag-query result set. */
 @Serializable
 data class SearchHit(
     val kind: SearchHitKind,
@@ -228,14 +213,11 @@ data class SearchHit(
     val ref: OsmRef? = null,
     val bbox: BBox? = null,
     val center: LngLat? = null,
-    /** For `query` hits: the matching objects (capped). */
     val refs: List<OsmRef> = emptyList(),
 )
 
-/** Deep links for handing an object off to other editors. */
 @Serializable
 data class EditorLinks(val iD: String, val osm: String, val history: String)
 
-/** How to connect Claude: shown in Settings. */
 @Serializable
 data class McpInfo(val url: String, val token: String, val claudeCodeCommand: String)

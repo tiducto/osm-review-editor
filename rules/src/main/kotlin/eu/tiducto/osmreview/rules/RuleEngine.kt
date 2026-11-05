@@ -7,10 +7,6 @@ import eu.tiducto.osmreview.shared.RuleRunResult
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.measureTimedValue
 
-/**
- * Runs rules over the mirror. Results are cached per (rule, scope key) and dropped when the GOL is
- * swapped, since [GolMirror.generation] is part of the key.
- */
 class RuleEngine(private val mirror: GolMirror, rules: List<RuleDef> = BuiltInRules.all) {
     private val byId: Map<String, RuleDef> = rules.associateBy { it.id }
     private val cache = ConcurrentHashMap<CacheKey, List<Issue>>()
@@ -21,10 +17,6 @@ class RuleEngine(private val mirror: GolMirror, rules: List<RuleDef> = BuiltInRu
 
     fun definition(id: String): RuleDef = byId[id] ?: throw UnknownRuleException(id)
 
-    /**
-     * Issues for [ruleId] within [scope]. [scopeKey] identifies the scope for caching (area name or
-     * bbox string). At most [limit] issues are returned, with `truncated` set if more exist.
-     */
     fun run(ruleId: String, scope: Scope, scopeKey: String, limit: Int? = null): RuleRunResult {
         val def = definition(ruleId)
         val (issues, took) = measureTimedValue {
@@ -38,7 +30,6 @@ class RuleEngine(private val mirror: GolMirror, rules: List<RuleDef> = BuiltInRu
         return RuleRunResult(ruleId, issues.size, capped, capped.size < issues.size, took.inWholeMilliseconds)
     }
 
-    /** The fix for one feature, recomputed against the current mirror (used when building drafts). */
     fun issueFor(ruleId: String, feature: Feature, ctx: RuleContext): Issue = toIssue(definition(ruleId), ctx, feature)
 
     private fun evaluate(def: RuleDef, ctx: RuleContext, scope: Scope): List<Issue> =

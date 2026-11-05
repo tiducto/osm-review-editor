@@ -10,7 +10,6 @@ class SidewalkSideTest {
     private val gf = GeometryFactory()
     private fun line(vararg xy: Double) = gf.createLineString(xy.toList().chunked(2).map { Coordinate(it[0], it[1]) }.toTypedArray())
 
-    // Road runs east (+x). Mercator y grows northwards, so north of an eastbound road is its left.
     private val road = line(0.0, 0.0, 100.0, 0.0)
 
     @Test

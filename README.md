@@ -40,6 +40,30 @@ Put the client IDs and secrets into `.env`, then use Settings → Connect OSM ac
 always holds production data, so on the dev target live fetches of production IDs fail; test
 uploads on dev with objects created on dev.
 
+### Configuration (`.env`)
+
+| Variable | Purpose |
+| --- | --- |
+| `DB_PASSWORD` | Postgres password (required) |
+| `OSM_TARGET` | API target at first start: `dev` (default) or `prod`; later switched in Settings |
+| `OSM_CLIENT_ID_DEV`, `OSM_CLIENT_SECRET_DEV` | OAuth app on the dev server |
+| `OSM_CLIENT_ID_PROD`, `OSM_CLIENT_SECRET_PROD` | OAuth app on osm.org |
+| `TOKEN_ENCRYPTION_KEY` | Encrypts stored OAuth tokens (`openssl rand -base64 32`); without it tokens live in memory only |
+| `MCP_TOKEN` | Bearer token for `/mcp`; generated and shown in Settings when empty |
+| `OVERPASS_URL` | Overpass endpoint for `query_osm` (default `overpass-api.de`) |
+| `DEFAULT_AREAS` | GeoJSON FeatureCollection whose features' `properties.name` become area presets |
+| `EXTRACT_URL` | Geofabrik extract the gol sidecar mirrors (default Czechia) |
+| `CONTACT` | Contact for the User-Agent sent to the OSM API |
+
+### How the mirror stays current
+
+The `gol` sidecar keeps two GOL files, `a.gol` and `b.gol`, in the shared volume; `/data/current`
+names the one the app reads. Each day it copies the current file under a temporary name, runs
+`gol update` and `gol check` on the copy, renames it to the idle name and rewrites `/data/current`
+atomically. The app notices within 15 seconds, opens the new file, swaps it in under a write lock,
+drops rule caches and closes the old one; the UI refreshes its layers. Because `gol update` is
+marked experimental, a full rebuild from a fresh extract runs every 7 days (`REBUILD_DAYS`).
+
 ## Claude over MCP
 
 The server exposes MCP (Streamable HTTP) at `http://localhost:3000/mcp`, protected by a bearer token
@@ -141,9 +165,9 @@ docs/     API reference
 | --- | --- | --- |
 | 0 | GOL spike | Reads verified on a Czechia GOL (GOQL, `parents()`, distance queries, all rules < 1.2 s). `gol update` half: run `infra/gol/spike.sh`. |
 | 1 | Skeleton and data | Monorepo, compose, Postgres, gol sidecar with update, rebuild and swap |
-| 2 | Map explorer | UI in progress |
-| 3 | Rules engine | Seven rules, issue API with counts |
-| 4 | Drafts and review | Server done; review UI in progress |
+| 2 | Map explorer | Done |
+| 3 | Rules engine | Seven rules, issue layers with counts and filters |
+| 4 | Drafts and review | Done: keyboard review, tag diff, before/after, conflicts |
 | 5 | OAuth and merge on dev | Done in code and tests; needs a dev OAuth app for a real upload |
 | 6 | MCP server | Done |
 | 7 | JOSM remote control | Done |

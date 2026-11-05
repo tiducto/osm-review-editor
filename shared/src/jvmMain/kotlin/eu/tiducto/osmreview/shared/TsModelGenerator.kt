@@ -12,13 +12,6 @@ import kotlinx.serialization.descriptors.nonNullOriginal
 import kotlinx.serialization.serializer
 import java.io.File
 
-/**
- * Emits TypeScript interfaces for the wire models from their serial descriptors, so the Vue app
- * shares one source of truth with the server. Run with `./gradlew :shared:generateTsModels`.
- *
- * The server encodes defaults ([WireJson]), so response fields are required. Types reachable from a
- * request body ([addRequest]) mark defaulted fields optional, since the UI may omit them.
- */
 @OptIn(ExperimentalSerializationApi::class)
 class TsModelGenerator {
     private val roots = mutableListOf<Pair<SerialDescriptor, Boolean>>()
@@ -34,7 +27,6 @@ class TsModelGenerator {
     }
 
     fun render(): String {
-        // Pass 1: collect every named type and whether any request body reaches it.
         val queue = ArrayDeque(roots)
         while (queue.isNotEmpty()) {
             val (d, input) = queue.removeFirst()
@@ -45,7 +37,6 @@ class TsModelGenerator {
             if (input) inputTypes += name
             children(d).forEach { queue += it to input }
         }
-        // Pass 2: render.
         val out = LinkedHashMap<String, String>()
         descriptors.forEach { (name, d) ->
             when (d.kind) {
@@ -56,7 +47,7 @@ class TsModelGenerator {
                     subs.forEach { sub -> out[name + tsName(sub)] = renderClass(sub, name + tsName(sub), sub.serialName, false) }
                     out[name] = "export type $name = ${subs.joinToString(" | ") { name + tsName(it) }}"
                 }
-                else -> if (!isSealedSubclass(name)) out[name] = renderClass(d, name, null, name in inputTypes)
+                else -> if (!isSealedSubclass(d)) out[name] = renderClass(d, name, null, name in inputTypes)
             }
         }
         return buildString {
@@ -68,14 +59,13 @@ class TsModelGenerator {
         }
     }
 
-    private fun isSealedSubclass(name: String): Boolean = descriptors.values.any { d ->
-        d.kind is PolymorphicKind && sealedSubclasses(d).any { tsName(it) == name }
+    private fun isSealedSubclass(d: SerialDescriptor): Boolean = descriptors.values.any { parent ->
+        parent.kind is PolymorphicKind && sealedSubclasses(parent).any { it.serialName == d.serialName }
     }
 
     private fun sealedSubclasses(d: SerialDescriptor): List<SerialDescriptor> =
         d.getElementDescriptor(1).elementDescriptors.toList()
 
-    /** Named types an element refers to (classes, enums, sealed hierarchies), unwrapped from lists/maps. */
     private fun children(d: SerialDescriptor): List<SerialDescriptor> = when (d.kind) {
         is PolymorphicKind -> sealedSubclasses(d).flatMap { sub -> (0 until sub.elementsCount).flatMap { named(sub.getElementDescriptor(it)) } }
         SerialKind.ENUM -> emptyList()
@@ -114,7 +104,6 @@ class TsModelGenerator {
 
     private fun tsName(d: SerialDescriptor): String =
         d.serialName.removeSuffix("?").substringAfterLast('.').let {
-            // @SerialName on sealed subclasses ("remote_command") → RemoteCommand
             if ('_' in it) it.split('_').joinToString("") { p -> p.replaceFirstChar(Char::uppercase) } else it
         }
 }

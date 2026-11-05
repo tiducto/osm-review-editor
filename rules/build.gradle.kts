@@ -19,6 +19,5 @@ dependencies {
 }
 
 tasks.test {
-    // Integration tests against a real GOL run only when OSM_REVIEW_TEST_GOL points at one.
     environment("OSM_REVIEW_TEST_GOL", System.getenv("OSM_REVIEW_TEST_GOL") ?: "")
 }

@@ -7,7 +7,6 @@ import org.jetbrains.exposed.v1.jdbc.upsert
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
-/** app.settings key/value store: API target, OAuth tokens (encrypted by the caller), MCP token. */
 class SettingsRepo(private val db: Db) {
     fun get(key: String): String? = db.txBlocking {
         SettingsTable.selectAll().where { SettingsTable.key eq key }.firstOrNull()?.get(SettingsTable.value)

@@ -52,7 +52,6 @@ dependencies {
     testImplementation(libs.testcontainers.postgresql)
 }
 
-// The Vue build is bundled into the app and served as static files from the same port.
 val webDist = rootProject.layout.projectDirectory.dir("web/dist")
 tasks.processResources {
     from(webDist) { into("static") }
@@ -63,6 +62,5 @@ tasks.processResources {
 }
 
 tasks.named<JavaExec>("run") {
-    // Relative DATA_DIR (default "data") and GOL_FILE resolve against the repo root in dev.
     workingDir = rootProject.projectDir
 }

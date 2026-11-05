@@ -8,15 +8,9 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.time.measureTimedValue
 
-/**
- * Milestone 0 (GOL spike), read half: GOQL selects, parents() on platforms and a max-distance
- * sidewalk query from Kotlin. Runs only when OSM_REVIEW_TEST_GOL points at a Czechia GOL.
- * The update half (`gol update`, reopen, changed objects visible) is scripted in infra/gol/spike.sh.
- */
 class GolSpikeTest {
     private val golPath = System.getenv("OSM_REVIEW_TEST_GOL")?.takeIf { it.isNotBlank() }?.let(Path::of)
 
-    // Opava city centre and Brno-střed, generous boxes.
     private val opava = Box.ofWSEN(17.85, 49.90, 17.98, 49.97)
     private val brno = Box.ofWSEN(16.56, 49.17, 16.65, 49.22)
 

@@ -7,9 +7,6 @@ import nl.adaptivity.xmlutil.serialization.XML
 import nl.adaptivity.xmlutil.serialization.XmlElement
 import nl.adaptivity.xmlutil.serialization.XmlSerialName
 
-// OSM API v0.6 XML: element reads, osmChange uploads and diffResult responses.
-// Coordinates stay strings so values round-trip exactly as the API sent them.
-
 @Serializable
 @XmlSerialName("tag")
 data class XTag(val k: String, val v: String)
@@ -111,7 +108,6 @@ data class XChangesetCreate(@XmlElement(true) val changeset: XChangeset)
 @XmlSerialName("changeset")
 data class XChangeset(@XmlElement(true) val tags: List<XTag>)
 
-/** A live OSM element as fetched from the API: full tags, version, node list or members. */
 data class OsmElement(
     val type: OsmType,
     val id: Long,
@@ -156,7 +152,6 @@ object OsmXml {
 
     fun osmChange(doc: XOsmChange): String = xml.encodeToString(XOsmChange.serializer(), doc)
 
-    /** The element as it goes into an osmChange `<modify>`/`<create>`: complete, with the changeset id. */
     fun toXml(e: OsmElement, changeset: Long): Any = when (e.type) {
         OsmType.NODE -> XNode(e.id, e.version, changeset, null, e.lat, e.lon, e.tags.toXTags())
         OsmType.WAY -> XWay(e.id, e.version, changeset, null, e.nodeIds.map(::XNd), e.tags.toXTags())

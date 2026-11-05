@@ -13,13 +13,8 @@ import eu.tiducto.osmreview.shared.OsmType
 import java.text.Normalizer
 import java.util.concurrent.atomic.AtomicReference
 
-/** Read queries over the mirror for the map, lookups by ID and named areas. */
 class MirrorQueries(private val mirror: GolMirror) {
 
-    /**
-     * Mirror objects in [bbox] for the map: tagged nodes, ways, and area relations. Relations much
-     * larger than the view (boundaries, regions) are skipped: at street zoom they are noise and megabytes.
-     */
     fun features(bbox: BBox, limit: Int): FeatureCollection = mirror.query { gol ->
         val out = ArrayList<MapFeature>()
         var truncated = false
@@ -40,11 +35,6 @@ class MirrorQueries(private val mirror: GolMirror) {
         FeatureCollection(out, truncated)
     }
 
-    /**
-     * Looks up [refs] in an open GOL (call inside [GolMirror.query]; features are only valid there).
-     * One pass with an ID-set filter, about 0.5 s over a whole-country GOL; pass [near] to restrict
-     * the pass to a bbox when the location is known.
-     */
     fun findIn(gol: FeatureLibrary, refs: Collection<OsmRef>, near: BBox? = null): Map<OsmRef, Feature> {
         if (refs.isEmpty()) return emptyMap()
         val wanted = refs.filter { it.id > 0 }.toHashSet()
@@ -55,11 +45,9 @@ class MirrorQueries(private val mirror: GolMirror) {
     fun mapFeature(ref: OsmRef, near: BBox? = null): MapFeature? =
         mirror.query { gol -> findIn(gol, listOf(ref), near)[ref]?.toMapFeature() }
 
-    /** Map features for many refs at once (context objects in review, change geometries). */
     fun mapFeatures(refs: Collection<OsmRef>, near: BBox? = null): Map<OsmRef, MapFeature> =
         mirror.query { gol -> findIn(gol, refs, near).mapValues { it.value.toMapFeature() } }
 
-    /** One object with its parents (ways and relations it belongs to), for MCP `get_object`. */
     fun objectInfo(ref: OsmRef): ObjectInfo? = mirror.query { gol ->
         val f = findIn(gol, listOf(ref))[ref] ?: return@query null
         ObjectInfo(
@@ -69,9 +57,6 @@ class MirrorQueries(private val mirror: GolMirror) {
         )
     }
 
-    // ---- areas ----
-
-    /** An admin boundary, or a place node (suburb, village...) standing in as a bbox around it. */
     private data class AreaEntry(
         val name: String,
         val key: String,
@@ -90,7 +75,6 @@ class MirrorQueries(private val mirror: GolMirror) {
             val boundaries = gol.select("a[boundary=administrative][name]").map { f ->
                 AreaEntry(f.tag("name"), fold(f.tag("name")), f.tag("admin_level").toIntOrNull() ?: 99, f.ref, Geo.bbox(f.bounds()))
             }
-            // Parts of towns are often only place nodes ("Kateřinky" in Opava): a bbox by place type.
             val places = gol.select("n[place=suburb,quarter,neighbourhood,village,hamlet][name]").map { f ->
                 val radius = PLACE_RADIUS_M[f.tag("place")] ?: 500.0
                 AreaEntry(f.tag("name"), fold(f.tag("name")), PLACE_LEVEL, f.ref, Geo.bbox(Box.metersAroundLonLat(radius, f.lon(), f.lat())), true)
@@ -101,7 +85,6 @@ class MirrorQueries(private val mirror: GolMirror) {
         return list
     }
 
-    /** Administrative areas whose name matches [q] (diacritics- and case-insensitive), best first. */
     fun searchAreas(q: String, limit: Int = 10): List<Area> {
         val k = fold(q)
         if (k.isBlank()) return emptyList()
@@ -114,10 +97,6 @@ class MirrorQueries(private val mirror: GolMirror) {
             .toList()
     }
 
-    /**
-     * The polygon of a named area: exact name match, lowest admin level first. Ambiguous names can be
-     * qualified by their parent, "Opava-Kateřinky" or "Kateřinky, Opava": the child inside the parent.
-     */
     fun area(name: String): Pair<Area, Scope>? {
         val entry = resolveArea(name) ?: return null
         if (entry.isPlaceNode) {
@@ -150,7 +129,6 @@ class MirrorQueries(private val mirror: GolMirror) {
         return x in o.west..o.east && y in o.south..o.north
     }
 
-    /** Named features in [bbox] whose name contains [q]. */
     fun searchNamed(q: String, bbox: BBox, limit: Int = 10): List<MapFeature> = mirror.query { gol ->
         val k = fold(q)
         gol.select("*[name]").`in`(Geo.box(bbox)).asSequence()
@@ -160,7 +138,6 @@ class MirrorQueries(private val mirror: GolMirror) {
             .toList()
     }
 
-    /** A GOQL query in [bbox], capped at [limit]. */
     fun goql(query: String, bbox: BBox?, limit: Int): Pair<List<MapFeature>, Boolean> = mirror.query { gol ->
         val sel = gol.select(query).let { s -> bbox?.let { s.`in`(Geo.box(it)) } ?: s }
         val out = ArrayList<MapFeature>()
@@ -177,7 +154,6 @@ class MirrorQueries(private val mirror: GolMirror) {
     companion object {
         private val DIACRITICS = Regex("\\p{M}+")
 
-        /** Place nodes rank after every admin level when names collide. */
         private const val PLACE_LEVEL = 50
         private val PLACE_RADIUS_M = mapOf(
             "suburb" to 1200.0, "quarter" to 800.0, "neighbourhood" to 400.0, "village" to 1000.0, "hamlet" to 400.0,
@@ -195,7 +171,6 @@ private const val MAX_PARENTS = 50
 
 fun Feature.toMapFeature(): MapFeature = MapFeature(ref, tagMap(), Geo.featureGeoJson(this))
 
-/** Accepts features whose (type, id) is in the set: one scan for many lookups. */
 private class IdSetFilter(private val refs: Set<OsmRef>) : Filter {
     private val types = refs.map { it.type }.toSet()
 
@@ -210,7 +185,6 @@ private class IdSetFilter(private val refs: Set<OsmRef>) : Filter {
     override fun accept(f: Feature): Boolean = f.ref in refs
 
     companion object {
-        // Type masks GeoDesk's own IdFilter uses for node(id), way(id), relation(id).
         private const val NODES = 327685
         private const val WAYS = 15728880
         private const val RELATIONS = 251662080

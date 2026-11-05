@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Milestone 0, update half: build an updatable GOL, apply replication diffs, and check from Kotlin that
-# changed objects appear. Usage: infra/gol/spike.sh <path-to-gol-binary> <extract.osm.pbf> [workdir]
 set -euo pipefail
 GOL=${1:?path to the gol binary (GOL Tool 2.5+)}
 PBF=${2:?a Geofabrik .osm.pbf extract, e.g. czech-republic-latest.osm.pbf}

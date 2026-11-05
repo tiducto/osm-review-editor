@@ -9,7 +9,6 @@ import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.JdbcTransaction
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 
-/** Hikari pool + Flyway migrations (classpath:db/migration) + Exposed. */
 class Db(url: String, user: String, password: String) : AutoCloseable {
     private val dataSource = HikariDataSource(
         HikariConfig().apply {
@@ -34,7 +33,6 @@ class Db(url: String, user: String, password: String) : AutoCloseable {
         database = Database.connect(dataSource)
     }
 
-    /** Blocking transaction on the IO dispatcher, for suspend callers. */
     suspend fun <T> tx(block: JdbcTransaction.() -> T): T = withContext(Dispatchers.IO) {
         transaction(database) { block() }
     }

@@ -27,7 +27,6 @@ import org.locationtech.jts.geom.Point
 import org.locationtech.jts.geom.Polygon
 import kotlin.math.round
 
-/** Conversions between GeoDesk's Mercator integer space, WGS84 and GeoJSON. */
 object Geo {
     private val factory = GeometryFactory()
 
@@ -38,10 +37,8 @@ object Geo {
         Mercator.lonFromX(b.maxX().toDouble()), Mercator.latFromY(b.maxY().toDouble()),
     )
 
-    /** WGS84 GeoJSON geometry for a feature (relations other than areas become a collection). */
     fun featureGeoJson(f: Feature): JsonElement = toGeoJson(f.toGeometry())
 
-    /** Mercator JTS geometry → WGS84 GeoJSON, coordinates rounded to 7 decimals (OSM precision). */
     fun toGeoJson(g: Geometry): JsonElement = when (g) {
         is Point -> obj("Point", pos(g.coordinate))
         is LineString -> obj("LineString", line(g.coordinates))
@@ -56,7 +53,6 @@ object Geo {
         else -> error("Unsupported geometry ${g.geometryType}")
     }
 
-    /** WGS84 GeoJSON Polygon/MultiPolygon → Mercator JTS geometry, for scope filters. */
     fun fromGeoJson(json: JsonElement): Geometry {
         val o = json.jsonObject
         val type = o["type"]!!.jsonPrimitive.content
@@ -74,7 +70,6 @@ object Geo {
 
     fun boundsOf(g: Geometry): Box = Box.of(g)
 
-    /** A Mercator box as a JTS polygon (for GeoJSON output). */
     fun boxPolygon(b: Box): Polygon = factory.toGeometry(b.toEnvelope()) as Polygon
 
     private fun polygon(rings: JsonArray): Polygon {

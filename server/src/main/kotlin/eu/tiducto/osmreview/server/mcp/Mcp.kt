@@ -57,11 +57,6 @@ import java.security.MessageDigest
 
 private const val SESSION_HEADER = "mcp-session-id"
 
-/**
- * MCP over Streamable HTTP at `/mcp`, behind a local bearer token. Claude gets read access to the
- * mirror and rules and write access to drafts only: there is no upload tool and no OSM credential
- * on this side. Every proposal goes through `core.proposeChanges` (live refetch, base version, dedupe).
- */
 fun Route.mcpRoutes(app: App) {
     val transports = ConcurrentMap<String, StreamableHttpServerTransport>()
 
@@ -84,7 +79,6 @@ fun Route.mcpRoutes(app: App) {
             transport.handleRequest(null, call)
         }
         get {
-            // No server-initiated stream: every response is returned inline (enableJsonResponse).
             if (!call.authorized(app)) return@get
             call.respond(HttpStatusCode.MethodNotAllowed, "Use POST")
         }
@@ -332,8 +326,6 @@ private fun buildServer(app: App): Server {
     return server
 }
 
-// ---- area arguments: name, bbox [w,s,e,n] or "w,s,e,n", or a GeoJSON polygon ----
-
 private fun JsonElement.asAreaName(): String? = (this as? JsonPrimitive)?.contentOrNull?.takeIf { s -> s.count { it == ',' } != 3 }
 
 private fun JsonElement.asBBox(): BBox? {
@@ -395,8 +387,6 @@ private fun JsonObject.toTagEdit() = TagEdit(
     remove = (this["remove_tags"] as? JsonArray)?.map { it.jsonPrimitive.content }.orEmpty(),
     replaceAll = (this["set_tags"] as? JsonObject)?.mapValues { it.value.jsonPrimitive.content },
 )
-
-// ---- tiny helpers ----
 
 private fun Server.tool(
     name: String,

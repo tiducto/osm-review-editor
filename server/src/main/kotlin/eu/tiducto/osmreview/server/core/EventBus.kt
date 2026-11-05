@@ -6,11 +6,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 
-/**
- * Server → UI events over the `/api/events` WebSocket. Remote-control commands that arrive while no
- * tab is connected are queued and replayed to the next tab that connects (the container cannot
- * launch a browser).
- */
 class EventBus {
     private val flow = MutableSharedFlow<UiEvent>(extraBufferCapacity = 256)
     private val queued = ConcurrentLinkedQueue<UiEvent.RemoteCommand>()
@@ -29,7 +24,6 @@ class EventBus {
         }
     }
 
-    /** Registers a tab; returns the remote commands queued while none was connected. */
     fun connect(): List<UiEvent> {
         subscribers.incrementAndGet()
         return generateSequence { queued.poll() }.toList()

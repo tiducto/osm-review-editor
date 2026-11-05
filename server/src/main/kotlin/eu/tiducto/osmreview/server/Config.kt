@@ -3,12 +3,9 @@ package eu.tiducto.osmreview.server
 import eu.tiducto.osmreview.shared.OsmTarget
 import java.nio.file.Path
 
-/** One OSM API target: base URLs and the OAuth app registered on it. */
 data class OsmTargetConfig(
     val target: OsmTarget,
-    /** Website root, e.g. https://www.openstreetmap.org (OAuth endpoints, iD and history links). */
     val webUrl: String,
-    /** API v0.6 base, e.g. https://api.openstreetmap.org/api/0.6 */
     val apiUrl: String,
     val clientId: String?,
     val clientSecret: String?,
@@ -16,19 +13,15 @@ data class OsmTargetConfig(
     val isConfigured: Boolean get() = !clientId.isNullOrBlank()
 }
 
-/** Everything comes from the environment (`.env` via docker compose), with local-dev defaults. */
 data class Config(
     val version: String,
     val port: Int,
     val remoteControlPort: Int,
-    /** Where the UI is reached; used for the OAuth redirect URI and the MCP URL shown in Settings. */
     val publicUrl: String,
     val dbUrl: String,
     val dbUser: String,
     val dbPassword: String,
-    /** The gol sidecar's volume: two GOL files and a `current` pointer. */
     val dataDir: Path,
-    /** A GOL to use when `dataDir/current` is absent (local dev without the sidecar). */
     val golFile: Path?,
     val initialTarget: OsmTarget,
     val dev: OsmTargetConfig,
