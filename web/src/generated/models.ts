@@ -195,7 +195,14 @@ export interface UiEventRulesChanged {
   removed: string[]
 }
 
-export type UiEvent = UiEventDraftUpdated | UiEventMergeProgress | UiEventMirrorSwapped | UiEventRemoteCommand | UiEventRulesChanged
+export interface UiEventScanFinished {
+  type: 'scan_finished'
+  scanId: string
+  scope: string
+  issueCount: number
+}
+
+export type UiEvent = UiEventDraftUpdated | UiEventMergeProgress | UiEventMirrorSwapped | UiEventRemoteCommand | UiEventRulesChanged | UiEventScanFinished
 
 export interface ApiError {
   error: string
@@ -350,6 +357,94 @@ export interface Preset {
   apply: PresetApplyMode | null
 }
 
+export interface HighlightList {
+  tileProperties: TileProperties
+  files: HighlightFile[]
+}
+
+export interface HighlightEvaluation {
+  path: string
+  hash: string
+  bbox: BBox
+  tile: string | null
+  features: HighlightFeature[]
+  truncated: boolean
+  candidates: number
+  tookMs: number
+  cached: boolean
+}
+
+export interface CoverageStats {
+  path: string
+  title: string
+  stats: string
+  scope: string
+  areaName: string | null
+  scopeAreaKm2: number
+  entries: CoverageEntry[]
+  total: CoverageEntry
+  candidates: number
+  tookMs: number
+}
+
+export interface Scan {
+  id: string
+  scope: string
+  areaName: string | null
+  geometry: JsonValue | null
+  ruleSet: string[]
+  ruleSetKey: string
+  status: ScanStatus
+  trigger: ScanTrigger
+  issueCount: number
+  errors: number
+  warnings: number
+  infos: number
+  tookMs: number | null
+  startedAt: string
+  finishedAt: string | null
+  mirrorFile: string | null
+  error: string | null
+}
+
+export interface ScanReport {
+  scan: Scan
+  counts: ScanCount[]
+  issues: ScanIssue[]
+  truncated: boolean
+}
+
+export interface ScanDiff {
+  scan: string
+  against: string | null
+  newCount: number
+  resolvedCount: number
+  unchangedCount: number
+  new: ScanIssue[]
+  resolved: ScanIssue[]
+  truncated: boolean
+}
+
+export interface ScanIssue {
+  id: number
+  rule: string
+  file: string | null
+  line: number | null
+  severity: Severity
+  group: string | null
+  message: string
+  ref: OsmRef
+  centroid: LngLat
+  fix: TagEdit | null
+  deleteObject: boolean
+}
+
+export interface ScanDraftResult {
+  draft: DraftDetail
+  results: ProposalResult[]
+  skipped: number
+}
+
 export interface CreateDraftRequest {
   title: string
   description?: string
@@ -469,6 +564,29 @@ export interface ImportPresetRequest {
 export interface DetachPresetRequest {
   id?: string | null
   path?: string | null
+}
+
+export interface RunScanRequest {
+  area?: string | null
+  bbox?: BBox | null
+  polygon?: JsonValue | null
+  files?: string[] | null
+  builtIn?: string[] | null
+}
+
+export interface ScanDraftRequest {
+  issueIds?: number[] | null
+  group?: string | null
+  rule?: string | null
+  title?: string | null
+  draftId?: string | null
+}
+
+export interface HighlightStatsRequest {
+  path: string
+  area?: string | null
+  bbox?: BBox | null
+  polygon?: JsonValue | null
 }
 
 export type DraftStatus = 'open' | 'merged' | 'partially_merged' | 'closed'
@@ -615,6 +733,54 @@ export interface SmartParam {
   label: string | null
 }
 
+export interface TileProperties {
+  tagPrefix: string
+  typeProperty: string
+  closedProperty: string
+  idProperty: string
+}
+
+export interface HighlightFile {
+  path: string
+  hash: string
+  title: string
+  description: string | null
+  dimOthers: boolean
+  stats: string | null
+  legend: LegendEntry[]
+  rules: HighlightRule[]
+  allCompiled: boolean
+  goql: string | null
+  valid: boolean
+  readOnly: boolean
+  diagnostics: RuleDiagnostic[]
+}
+
+export interface HighlightFeature {
+  ref: OsmRef
+  style: StyleResult
+}
+
+export interface CoverageEntry {
+  label: string
+  color: string | null
+  rule: number
+  count: number
+  lengthKm: number
+  areaKm2: number
+  percent: number
+}
+
+export type ScanStatus = 'running' | 'done' | 'failed'
+
+export type ScanTrigger = 'manual' | 'mirror_swap'
+
+export interface ScanCount {
+  group: string
+  severity: Severity
+  count: number
+}
+
 export interface ProposedChange {
   ref: OsmRef
   edit: TagEdit
@@ -656,3 +822,25 @@ export interface RuleOrigin {
 export type DiagnosticSeverity = 'error' | 'warning' | 'info'
 
 export type SmartParamType = 'combo' | 'text' | 'number' | 'check'
+
+export interface LegendEntry {
+  label: string
+  color: string | null
+  rule: number
+}
+
+export interface HighlightRule {
+  index: number
+  line: number
+  selectors: string[]
+  legend: string | null
+  color: string | null
+  compiled: boolean
+  filter: JsonValue | null
+}
+
+export interface StyleResult {
+  properties: Record<string, JsonValue>
+  classes: string[]
+  rules: number[]
+}

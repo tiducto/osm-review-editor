@@ -70,7 +70,7 @@ class RulesFolder(
         val diagnostics: List<RuleDiagnostic>,
         val origin: RuleOrigin? = null,
     ) {
-        fun loaded() = LoadedRuleFile(path, kind, source, value, diagnostics, origin != null)
+        fun loaded() = LoadedRuleFile(path, kind, source, value, diagnostics, origin != null, hash)
     }
 
     @Volatile private var local: Map<String, Entry> = emptyMap()

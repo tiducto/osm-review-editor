@@ -1,12 +1,35 @@
-node[highway=crossing][!crossing] {
-  throwWarning: tr("Crossing without crossing=*");
-  group: tr("Crossings");
+meta {
+  title: "Crossings";
+  description: "Crossings without a crossing type, with the type taken from crossing_ref when it implies one.";
+}
+
+node[highway=crossing][!crossing][crossing_ref=zebra] {
+  throwOther: "Crossing without crossing=*; crossing_ref=zebra implies crossing=uncontrolled";
+  group: "Crossings";
+  fixAdd: "crossing=uncontrolled";
+  assertMatch: "node highway=crossing crossing_ref=zebra";
+  assertNoMatch: "node highway=crossing crossing=uncontrolled crossing_ref=zebra";
+}
+
+node[highway=crossing][!crossing][crossing_ref=~/^(pelican|toucan|pegasus|puffin|tiger)$/] {
+  throwOther: concat("Crossing without crossing=*; crossing_ref=", tag("crossing_ref"), " implies crossing=traffic_signals");
+  group: "Crossings";
+  fixAdd: "crossing=traffic_signals";
+  assertMatch: "node highway=crossing crossing_ref=toucan";
+}
+
+node[highway=crossing][!crossing][crossing_ref!~/^(zebra|pelican|toucan|pegasus|puffin|tiger)$/] {
+  throwOther: "Crossing without crossing=*";
+  group: "Crossings";
+  assertMatch: "node highway=crossing";
+  assertNoMatch: "node highway=crossing crossing_ref=zebra";
 }
 
 node[highway=crossing][crossing=zebra] {
   throwWarning: tr("{0} is deprecated", "{1.tag}");
-  group: tr("Crossings");
+  group: "Crossings";
   fixRemove: "crossing";
   fixAdd: "crossing=uncontrolled";
   fixAdd: "crossing:markings=zebra";
+  assertMatch: "node highway=crossing crossing=zebra";
 }

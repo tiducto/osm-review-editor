@@ -88,6 +88,9 @@ class McpTest {
             put("DEFAULT_AREAS", presets.toString())
         }
         app = App(Config.fromEnv(env), HttpClient(MockEngine { req -> osm.handle(this, req) }))
+        val example = listOf(Path.of("../user-rules.example"), Path.of("user-rules.example")).first { Files.isDirectory(it) }
+        Files.copy(example.resolve(SURFACES), app.ruleFiles.root.resolve(SURFACES))
+        app.ruleFiles.rescan()
         if (gol != null) app.mirror.reloadIfChanged()
     }
 
@@ -200,6 +203,7 @@ class McpTest {
                 "list_rules", "run_rule", "query_osm", "get_object", "create_draft", "propose_changes", "propose_geometry", "update_change", "list_drafts", "get_draft",
                 "list_rule_files", "read_rule_file", "validate_rule_file", "write_rule_file", "delete_rule_file",
                 "search_presets", "get_preset", "match_preset", "import_preset", "detach_preset",
+                "run_scan", "get_scan", "diff_scans", "draft_from_scan", "list_highlights", "highlight_stats", "evaluate_highlight",
             ),
             tools,
         )
@@ -360,9 +364,9 @@ class McpTest {
         assertTrue(PRESET in encoded["result"]!!.jsonObject["contents"]!!.jsonArray.single().jsonObject["text"]!!.jsonPrimitive.content)
 
         if (gol == null) return@mcpTest println("OSM_REVIEW_TEST_GOL not set, skipping the rule run")
-        val run = call(session, "run_rule", args("rule_id" to "footway-missing-surface", "area" to PRESET, "limit" to 2000))
+        val run = call(session, "run_rule", args("rule_id" to SURFACES, "area" to PRESET, "limit" to 2000))
         assertFalse(run.isError, run.text)
-        val polygonRun = call(session, "run_rule", args("rule_id" to "footway-missing-surface", "area" to polygon(opavaTriangle), "limit" to 2000))
+        val polygonRun = call(session, "run_rule", args("rule_id" to SURFACES, "area" to polygon(opavaTriangle), "limit" to 2000))
         assertEquals(
             polygonRun.json.jsonObject["issueCount"]!!.jsonPrimitive.content,
             run.json.jsonObject["issueCount"]!!.jsonPrimitive.content,
@@ -373,12 +377,12 @@ class McpTest {
     fun runRuleWithPolygonArea() = mcpTest {
         if (gol == null) return@mcpTest println("OSM_REVIEW_TEST_GOL not set, skipping")
         val session = initialize()
-        val r = call(session, "run_rule", args("rule_id" to "footway-missing-surface", "area" to polygon(opavaTriangle), "limit" to 2000))
+        val r = call(session, "run_rule", args("rule_id" to SURFACES, "area" to polygon(opavaTriangle), "limit" to 2000))
         assertFalse(r.isError, r.text)
         val o = r.json.jsonObject
         val issues = o["issues"]!!.jsonArray.map { it.jsonObject }
         assertTrue(issues.isNotEmpty())
-        val box = call(session, "run_rule", args("rule_id" to "footway-missing-surface", "area" to "17.895,49.935,17.915,49.95", "limit" to 2000))
+        val box = call(session, "run_rule", args("rule_id" to SURFACES, "area" to "17.895,49.935,17.915,49.95", "limit" to 2000))
         assertTrue(box.json.jsonObject["issueCount"]!!.jsonPrimitive.content.toInt() > issues.size)
 
         val scope = PolygonScopes.parse(opavaTriangle).scope
@@ -388,9 +392,9 @@ class McpTest {
         }
         assertTrue(inside >= issues.size * 0.8, "$inside of ${issues.size} inside")
 
-        val named = call(session, "run_rule", args("rule_id" to "footway-missing-surface", "area" to "Opava"))
+        val named = call(session, "run_rule", args("rule_id" to SURFACES, "area" to "Opava"))
         assertFalse(named.isError, named.text)
-        val unknown = call(session, "run_rule", args("rule_id" to "footway-missing-surface", "area" to "Nowhere-at-all-xyz"))
+        val unknown = call(session, "run_rule", args("rule_id" to SURFACES, "area" to "Nowhere-at-all-xyz"))
         assertTrue(unknown.isError)
         assertTrue("Unknown area" in unknown.text, unknown.text)
 
@@ -461,5 +465,6 @@ class McpTest {
     private companion object {
         const val TOKEN = "test-token"
         const val PRESET = "Kateřinky Triangle"
+        const val SURFACES = "checks/surfaces.validator.mapcss"
     }
 }

@@ -40,7 +40,7 @@ internal object Vocabulary {
     )
 
     val HOST = setOf(
-        "waylength", "areasize", "odd_segment", "network_island_size", "half_width", "inside", "outside",
+        "waylength", "areasize", "odd_segment", "network_island_size", "half_width", "connected_value", "inside", "outside",
         "is_right_hand_traffic", "at", "gpx_distance", "heading",
     )
 

@@ -1,0 +1,15 @@
+meta {
+  title: "Footway surfaces";
+  description: "Footways, paths and cycleways without surface; the surface of connected paths is proposed when they all agree.";
+}
+
+way[highway=~/^(footway|path|cycleway)$/][!surface][connected_value("surface", "footway;path;cycleway;pedestrian;steps") != ""] {
+  throwOther: concat("No surface; connected ways all have surface=", connected_value("surface", "footway;path;cycleway;pedestrian;steps"));
+  group: "Surface";
+  fixAdd: concat("surface=", connected_value("surface", "footway;path;cycleway;pedestrian;steps"));
+}
+
+way[highway=~/^(footway|path|cycleway)$/][!surface][connected_value("surface", "footway;path;cycleway;pedestrian;steps") == ""] {
+  throwOther: "Footway, path or cycleway without surface";
+  group: "Surface";
+}

@@ -28,6 +28,7 @@ data class LoadedRuleFile(
     val value: Any?,
     val diagnostics: List<RuleDiagnostic>,
     val remote: Boolean,
+    val hash: String = "",
 )
 
 interface RuleLoader<T : Any> {

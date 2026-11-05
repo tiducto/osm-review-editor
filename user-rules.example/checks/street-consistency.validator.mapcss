@@ -1,0 +1,14 @@
+meta {
+  title: "Street consistency";
+  description: "Segments that differ from both neighbours of the same street, and footways cut off from the network.";
+}
+
+way[highway=~/^(primary|secondary|tertiary|unclassified|residential|living_street)$/][name][odd_segment("maxspeed;surface;sidewalk;lit;lanes") != ""] {
+  throwWarning: concat("Differs from both neighbouring segments of ", tag("name"), ": ", odd_segment("maxspeed;surface;sidewalk;lit;lanes"));
+  group: "Street consistency";
+}
+
+way[highway=~/^(footway|path|steps|pedestrian|cycleway)$/][!indoor][network_island_size() < 3] {
+  throwOther: concat("Footway connected to only ", network_island_size(), " highway ways in total");
+  group: "Connectivity";
+}

@@ -57,6 +57,7 @@ uploads on dev with objects created on dev.
 | `DEFAULT_AREAS` | Path to a GeoJSON FeatureCollection of area presets (see below); compose mounts `./config` at `/config` |
 | `BING_KEY` | Optional Bing Maps key; when set, Bing aerial imagery is offered (see Imagery) |
 | `RULES_DIR` | Your rules folder (see below); default `user-rules`, compose mounts `./user-rules` at `/rules` and sets `RULES_DIR=/rules` |
+| `SCAN_RERUN_DAYS` | After a mirror swap, re-run validation scans started in this many days (default 7, 0 turns it off) |
 | `EXTRACT_URL` | Geofabrik extract the gol sidecar mirrors (default Czechia) |
 | `CONTACT` | Contact for the User-Agent sent to the OSM API |
 
@@ -120,8 +121,34 @@ source at one, for example
 `https://josm.openstreetmap.de/export/HEAD/josm/trunk/resources/data/validator/unnecessary.mapcss`.
 
 Each file kind has a pluggable loader that parses it and reports diagnostics with line and column.
-Presets and smart presets are checked fully; MapCSS files are indexed as text until the MapCSS engine
-plugs in its loader.
+MapCSS highlights and checks are parsed by the shared MapCSS engine, and their `assertMatch` /
+`assertNoMatch` lines run as self-tests on every load; a failing assertion is an error at its line.
+Smart preset selectors are checked with the same parser.
+
+### Highlights and validation scans
+
+A highlight file (`highlights/*.mapcss`) styles objects on the map and can carry a legend
+(`-ore-legend`) and a coverage measure (`-ore-stats: length|count|area`). Most rules compile to
+MapLibre filters over the vector tiles; the rest (host functions like `odd_segment()`, linked
+selectors) are evaluated on the server per bbox or tile and cached per mirror generation and file
+hash. Coverage numbers give, per legend entry, kilometres, count or area and its share over an area,
+e.g. how much of Opava's street length has sidewalks tagged.
+
+A validation scan runs every check file (your own and remote sources) and the built-in Kotlin rules
+over an area, stores the issues, reports counts per group and severity, serves them as GeoJSON
+markers, and diffs against the previous scan of the same area and rule set (new, resolved,
+unchanged). After the mirror is updated, areas scanned in the last `SCAN_RERUN_DAYS` days are scanned
+again. Fixes of selected issues become a draft for review, deletes included. See the
+[API](docs/api.md#highlights).
+
+MapCSS checks can use these host functions on top of JOSM's: `odd_segment("k1;k2")` (keys in which a
+street segment differs from the same-named segments joined at both of its ends, while those agree),
+`network_island_size()` (highway ways in the connected network of a way, capped at 100),
+`half_width()` (metres, from `width`, `lanes` or a default per `highway` class),
+`connected_value("key", "footway;path")` (the value of `key` shared by all connected highway ways of
+those classes, `""` otherwise), `inside("CZ,CZ-80")` / `outside(...)` (ISO 3166 codes of the mirror's
+admin boundaries), `waylength()` and `areasize()` (metres, m²), and the `⧉` (crossing) and `∈`
+(inside) links. Czechia and the rest of continental Europe count as right-hand traffic.
 
 ### iD presets
 
@@ -192,8 +219,11 @@ queries, creates a draft with a reason per change, and reads your rejection comm
 
 | Tool | What it does |
 | --- | --- |
-| `list_rules` | Rule ids, titles, severity, confidence |
-| `run_rule` | Issues for a rule in an area, with proposed fixes |
+| `list_rules` | Built-in rule ids and MapCSS check files, with titles, severity, confidence |
+| `run_rule` | Issues for a built-in rule or a check file in an area, with proposed fixes |
+| `run_scan`, `get_scan`, `diff_scans` | Validation scan of an area with every check and built-in rule; stored issues by group and severity; new and resolved issues against the previous scan |
+| `draft_from_scan` | Turn the fixes of a scan's issues into a draft |
+| `list_highlights`, `highlight_stats`, `evaluate_highlight` | Highlight files with legend; coverage per legend entry over an area; matching object ids with their style |
 | `query_osm` | GOQL over the local mirror, or Overpass QL; confined to `area`; at most 500 objects |
 | `get_object` | One object with its neighbours (`parents` with member roles, `connected_ways` for nodes and ways), from the mirror or live from the API (with version) |
 | `create_draft` | A draft authored by Claude, optionally scoped to an area |
@@ -243,19 +273,27 @@ run at the same time (same port).
 
 ## QA rules
 
-Rules are plain Kotlin over GOQL in [`rules/`](rules/src/main/kotlin/eu/tiducto/osmreview/rules/BuiltInRules.kt):
+Checks are MapCSS files in the rules folder. The example folder ships these (Apache-2.0), four of
+which replace earlier Kotlin rules:
+
+| File | Finds | Fix |
+| --- | --- | --- |
+| `checks/platforms.validator.mapcss` | Closed platform ways without `area=yes` (was `platform-area`); platforms missing `shelter`, `bench`, `tactile_paving` (was `platform-details`) | Add `area=yes`; issue only |
+| `checks/crossings.validator.mapcss` | `highway=crossing` without `crossing=*` (was `crossing-missing-type`); deprecated `crossing=zebra` | `crossing` from `crossing_ref` when it implies one; upgrade to `crossing=uncontrolled` + `crossing:markings=zebra` |
+| `checks/surfaces.validator.mapcss` | Footways, paths, cycleways without `surface` (was `footway-missing-surface`) | Surface of connected paths when they all agree (`connected_value`) |
+| `checks/street-consistency.validator.mapcss` | Street segments that differ from both same-named neighbours (`odd_segment`); footways cut off from the network | Issue only |
+
+Three rules stay in Kotlin ([`rules/`](rules/src/main/kotlin/eu/tiducto/osmreview/rules/BuiltInRules.kt))
+because MapCSS cannot express them:
 
 | Rule | Finds | Fix | Confidence |
 | --- | --- | --- | --- |
 | `deprecated-tags` | Tags in iD's `deprecated.json` | Replacement from that file | Deterministic for 1:1 renames |
-| `platform-area` | Closed platform ways without `area=yes` | Add `area=yes` | Deterministic |
-| `platform-node-only` | Platform nodes with no platform way within 15 m | Issue only | — |
+| `platform-node-only` | Platform nodes with no platform way within 15 m (needs a distance search) | Issue only | — |
 | `sidewalk-separate` | Roads with `sidewalk=*` and a parallel `footway=sidewalk` within 10 m | `sidewalk:<side>=separate`, side from geometry | Needs review |
-| `crossing-missing-type` | `highway=crossing` without `crossing=*` | From `crossing_ref` when it implies one | Needs review |
-| `footway-missing-surface` | Footways, paths, cycleways without `surface` | Surface of connected ways when they agree | Needs review |
-| `platform-details` | Platforms missing `shelter`, `bench`, `tactile_paving` | Issue only | — |
 
-Only deterministic fixes can be approved in bulk.
+`deprecated-tags` is a table of hundreds of iD upgrades applied together, which would be one generated
+MapCSS rule per entry. Only deterministic fixes can be approved in bulk.
 
 ## Development
 
@@ -276,8 +314,9 @@ npm run dev
 
 Tests: `./gradlew :shared:allTests :rules:test :server:test` (after `npm install`: the server build
 copies the iD tagging schema from `node_modules`). Rule tests against a real GOL run when
-`OSM_REVIEW_TEST_GOL` points at one; `DraftFlowTest`, `McpTest` and `RemoteControlTest` use
-Testcontainers and skip without Docker.
+`OSM_REVIEW_TEST_GOL` points at one (the MapCSS host tests also check that every GOQL prefilter the
+compiler emits is accepted by GeoDesk and selects a superset of the matches); `DraftFlowTest`,
+`McpTest`, `ScansMcpTest` and `RemoteControlTest` use Testcontainers and skip without Docker.
 
 After changing a `@Serializable` model in `shared/`, run `./gradlew :shared:generateTsModels`; CI
 fails when `web/src/generated/models.ts` is stale.
@@ -298,7 +337,7 @@ layers are inserted before it.
 ```
 server/   Ktor app: REST, WebSocket, MCP, JOSM remote control, core (drafts, merge, OSM API)
 shared/   KMP module (jvm + js): wire models, TagDiff logic, presets (resolve, match, apply), TS model generator
-rules/    rule(...) DSL, GOL mirror with hot swap, rule engine, built-in rules
+rules/    rule(...) DSL, GOL mirror with hot swap, rule engine, built-in rules, MapCSS host over GeoDesk
 web/      Vue 3 app (MapLibre, Pinia, Tailwind), consumes the shared JS build and generated types
 user-rules.example/  Example rules folder (highlights, checks, presets, smart presets, sources.json)
 infra/    gol sidecar: build, update, check, swap

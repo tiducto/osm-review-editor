@@ -1,0 +1,24 @@
+meta {
+  title: "Missing surface";
+  description: "Streets and paths without surface, and segments whose surface differs from both neighbours.";
+  -ore-dim-others: true;
+  -ore-stats: length;
+}
+
+way[highway=~/^(primary|secondary|tertiary|unclassified|residential|living_street|service)$/][!surface] {
+  color: #d73027;
+  width: 5;
+  -ore-legend: "street";
+}
+
+way[highway=~/^(footway|path|cycleway)$/][!surface] {
+  color: #fc8d59;
+  width: 3;
+  -ore-legend: "path";
+}
+
+way[highway][surface][odd_segment("surface") != ""] {
+  color: #7b3294;
+  width: 6;
+  -ore-legend: "differs from neighbours";
+}

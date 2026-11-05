@@ -7,21 +7,6 @@ import eu.tiducto.osmreview.shared.Severity
 object BuiltInRules {
     private const val PLATFORM_WAYS = "w[public_transport=platform], w[highway=platform], w[railway=platform]"
 
-    val platformArea = rule(
-        id = "platform-area",
-        title = "Closed platform way without area=yes",
-        description = "A closed platform way is drawn as an outline; area=yes makes renderers and routers treat it as a surface.",
-        changesetComment = "add area=yes to closed platforms",
-        severity = Severity.WARNING,
-        confidence = Confidence.DETERMINISTIC,
-        find = { scope ->
-            gol.select("w[public_transport=platform][!area], w[highway=platform][!area], w[railway=platform][!area]")
-                .within(scope)
-                .filter { it.isClosedRing() }
-        },
-        fix = { Fix(addTags = mapOf("area" to "yes")) },
-    )
-
     val deprecatedTags = rule(
         id = "deprecated-tags",
         title = "Deprecated tags",
@@ -80,63 +65,9 @@ object BuiltInRules {
         context = { road -> gol.select("w[footway=sidewalk]").withinMeters(10.0, road) },
     )
 
-    val crossingMissingType = rule(
-        id = "crossing-missing-type",
-        title = "Crossing without crossing=*",
-        description = "highway=crossing without crossing=*. A type is suggested only when crossing_ref implies it.",
-        changesetComment = "add crossing type from crossing_ref",
-        severity = Severity.INFO,
-        confidence = Confidence.NEEDS_REVIEW,
-        find = { scope -> gol.select("n[highway=crossing][!crossing]").within(scope) },
-        fix = { node ->
-            when (node.tag("crossing_ref")) {
-                "zebra" -> Fix(addTags = mapOf("crossing" to "uncontrolled"))
-                "pelican", "toucan", "pegasus", "puffin", "tiger" -> Fix(addTags = mapOf("crossing" to "traffic_signals"))
-                else -> null
-            }
-        },
-    )
-
-    val footwayMissingSurface = rule(
-        id = "footway-missing-surface",
-        title = "Footway, path or cycleway without surface",
-        description = "Suggests the surface of connected footways, paths and cycleways when they all agree.",
-        changesetComment = "add surface from connected ways",
-        severity = Severity.INFO,
-        confidence = Confidence.NEEDS_REVIEW,
-        find = { scope -> gol.select("w[highway=footway,path,cycleway][!surface]").within(scope) },
-        fix = { way ->
-            val surfaces = gol.select("w[highway=footway,path,cycleway,pedestrian,steps][surface]")
-                .connectedTo(way)
-                .filter { it.id() != way.id() }
-                .map { it.tag("surface") }
-                .toSet()
-            surfaces.singleOrNull()?.let { Fix(addTags = mapOf("surface" to it), note = "connected ways all have surface=$it") }
-        },
-    )
-
-    val platformDetails = rule(
-        id = "platform-details",
-        title = "Platform missing shelter, bench or tactile_paving",
-        description = "Platforms without shelter, bench or tactile_paving. Issue only: these need a survey or street-level imagery.",
-        severity = Severity.INFO,
-        confidence = Confidence.NEEDS_REVIEW,
-        find = { scope ->
-            gol.select("n[public_transport=platform], $PLATFORM_WAYS").within(scope)
-                .filter { p -> DETAIL_KEYS.any { p.tag(it).isEmpty() } }
-        },
-        fix = null,
-    )
-
-    private val DETAIL_KEYS = listOf("shelter", "bench", "tactile_paving")
-
-    val all: List<RuleDef> = listOf(
-        deprecatedTags, platformArea, platformNodeOnly, sidewalkSeparate,
-        crossingMissingType, footwayMissingSurface, platformDetails,
-    )
+    val all: List<RuleDef> = listOf(deprecatedTags, platformNodeOnly, sidewalkSeparate)
 
     fun noteFor(rule: RuleDef, f: Feature): String? = when (rule.id) {
-        platformDetails.id -> "missing: " + DETAIL_KEYS.filter { f.tag(it).isEmpty() }.joinToString(", ")
         platformNodeOnly.id -> "no platform way within 15 m"
         else -> null
     }

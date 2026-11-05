@@ -1,15 +1,41 @@
-way[highway=footway][footway=sidewalk] {
-  color: #2563eb;
-  width: 3;
+meta {
+  title: "Sidewalks";
+  description: "How sidewalks are tagged on streets.";
+  -ore-dim-others: true;
+  -ore-stats: length;
 }
 
-way[highway=footway][footway=sidewalk][!surface] {
-  color: #dc2626;
-  dashes: 6, 4;
+way[highway=~/^(primary|secondary|tertiary|unclassified|residential|living_street)$/] {
+  set .street;
 }
 
-node[highway=crossing][!crossing] {
-  symbol-shape: circle;
-  symbol-size: 10;
-  symbol-fill-color: #f59e0b;
+way.street[sidewalk=both], way.street[sidewalk:both=yes] {
+  color: #1a9850;
+  width: 5;
+  -ore-legend: "both sides";
+}
+
+way.street[sidewalk=~/^(left|right)$/] {
+  color: #fee08b;
+  width: 5;
+  -ore-legend: "one side";
+}
+
+way.street[sidewalk=separate], way.street[sidewalk:both=separate] {
+  color: #4575b4;
+  width: 5;
+  -ore-legend: "mapped separately";
+}
+
+way.street[sidewalk=no], way.street[sidewalk=none], way.street[sidewalk:both=no] {
+  color: #777777;
+  width: 4;
+  dashes: 4, 4;
+  -ore-legend: "none";
+}
+
+way.street[!sidewalk][!sidewalk:both][!sidewalk:left][!sidewalk:right] {
+  color: #d73027;
+  width: 5;
+  -ore-legend: "missing";
 }

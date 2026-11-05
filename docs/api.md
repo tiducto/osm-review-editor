@@ -102,6 +102,10 @@ node, so a node's parent count is exact for nodes inside the tile.
 | GET | `/api/rules/{id}/issues?area=` or `?bbox=` or `?polygon=` `&limit=` | `RuleRunResult` |
 | POST | `/api/rules/{id}/issues` with `RuleIssuesRequest` `{area?, bbox?, polygon?, limit?}` | `RuleRunResult` |
 
+These are the built-in Kotlin rules (`deprecated-tags`, `platform-node-only`, `sidewalk-separate`).
+MapCSS check files run through [validation scans](#validation-scans), and over MCP with `run_rule`
+and the file path as the rule id.
+
 ## Drafts and review
 
 | Method | Path | Body | Returns |
@@ -326,6 +330,13 @@ SHA-256 of the file's bytes, `origin` is `null` for local files and `{source, ur
 fetchedAt, error}` for remote ones. A diagnostic is `{file, line, column, severity, message}` with
 `severity` `error`, `warning` or `info`; lines and columns start at 1.
 
+MapCSS files (`highlights/*.mapcss`, `checks/*.validator.mapcss`) are parsed by the shared MapCSS
+engine: syntax errors, unknown functions and bad regexes are errors at their line and column,
+unsupported JOSM features are warnings. After parsing, every `assertMatch` / `assertNoMatch` runs
+(`selfTest`) and a failing one is an error at the assertion. A check file without `throw*` rules
+and a highlight without style rules get a warning. Smart preset selectors (`match`, `with`) are
+checked with the same parser.
+
 Writes validate the content with the loader for the path's kind, including checks across files (a
 preset's `extends` and `{presetId}` references, duplicate ids). With an `error` diagnostic the file is
 not written and the answer is 422 with `WriteRuleFileResult` `{saved: false, file: null,
@@ -337,6 +348,98 @@ fetched with the server's User-Agent into `DATA_DIR/rule-cache/<name>.<ext>` whe
 or kind changed, or `refreshHours` passed (checked every 15 minutes and whenever `sources.json`
 changes). A failed fetch keeps the last good copy and reports `origin.error`. Without a `licence`,
 `origin.licence` is a note that the file is third-party, read-only and not redistributed.
+
+## Highlights
+
+Highlights are the MapCSS files in `highlights/` (and remote `highlight` sources). The web map draws
+them on the vector tiles with MapLibre filters compiled from each rule; rules that cannot be compiled
+(linked selectors, host functions such as `odd_segment()`, non-literal regexes, `;`-list tests) are
+evaluated on the server instead.
+
+Tile property convention (`TileProperties` in every `HighlightList`): every OSM tag is a plain
+feature property under its own key (`highway`, `sidewalk:both`, ...; `tagPrefix` is empty), plus
+`$type` (`node`, `way` or `relation`), `$closed` (boolean, closed ring or area relation) and `$id`
+(the OSM id). Compiled filters read exactly these, e.g. `way.street[!sidewalk]` becomes
+`["all", ["==", ["get", "$type"], "way"], ..., ["!", ["has", "sidewalk"]]]`. Tiles must carry them for
+the filters to match.
+
+| Method | Path | Returns |
+| --- | --- | --- |
+| GET | `/api/highlights` | `HighlightList` `{tileProperties, files: HighlightFile[]}` |
+| GET | `/api/highlights/file?path=` | `HighlightFile` |
+| GET | `/api/highlights/evaluate?path=&bbox=` or `&tile=z/x/y` `&limit=` | `HighlightEvaluation` |
+| GET | `/api/highlights/stats?path=&area=` or `&bbox=` or `&polygon=` | `CoverageStats` |
+| POST | `/api/highlights/stats` with `HighlightStatsRequest` `{path, area?, bbox?, polygon?}` | `CoverageStats` |
+
+`HighlightFile` is `{path, hash, title, description, dimOthers, stats, legend, rules, allCompiled,
+goql, valid, readOnly, diagnostics}`: `title`, `description`, `dimOthers` (`-ore-dim-others`) and
+`stats` (`-ore-stats`) come from the `meta` block, `legend` is `[{label, color, rule}]` from
+`-ore-legend`, and each of `rules` (only rules with style properties) is `{index, line, selectors,
+legend, color, compiled, filter}` with the MapLibre `filter` when `compiled`. `goql` is the GeoDesk
+prefilter the server uses. A file with errors is listed with `valid: false` and only its diagnostics.
+
+`evaluate` runs the whole stylesheet on the mirror objects in a bbox (at most about 0.1° × 0.06°,
+i.e. zoom 13 or closer) or one slippy-map tile: `HighlightEvaluation` `{path, hash, bbox, tile,
+features: [{ref, style}], truncated, candidates, tookMs, cached}`, where `style` is the cascaded
+`StyleResult` `{properties, classes, rules}` (`properties` holds `color`, `width`, `-ore-legend` and the
+other style properties; `rules` the indexes of the matching style rules). Objects matching no style
+rule are left out. Results are cached per file, file hash, mirror generation, area and limit (512
+entries; a mirror swap or a rules change empties the cache). Default limit 20,000.
+
+Coverage (`stats`) evaluates the file over a [scope](#scopes) and sums per legend entry, using the
+measure the file names in `-ore-stats` (`length`, `area` or `count`, default `count`). Each object
+counts once, under the legend of the last matching rule. `CoverageStats` is `{path, title, stats,
+scope, areaName, scopeAreaKm2, entries, total, candidates, tookMs}` with entries `{label, color,
+rule, count, lengthKm, areaKm2, percent}`; lengths and areas are clipped to the scope's polygon (or
+bbox), and `percent` is the entry's share of the measure over all entries.
+
+## Validation scans
+
+A scan runs check files and built-in rules over a [scope](#scopes) and stores the issues
+(`app.scans`, `app.scan_issues`). Scans run one at a time.
+
+| Method | Path | Body | Returns |
+| --- | --- | --- | --- |
+| POST | `/api/scans` | `RunScanRequest` `{area?, bbox?, polygon?, files?, builtIn?}` | 201 `Scan` when finished; 503 without a GOL |
+| GET | `/api/scans?scope=&limit=` | | `Scan[]`, newest first |
+| GET | `/api/scans/{id}?severity=&group=&rule=&limit=&offset=` | | `ScanReport` `{scan, counts, issues, truncated}` |
+| GET | `/api/scans/{id}/geojson?severity=&group=&rule=&limit=` | | GeoJSON `FeatureCollection` of issue markers (`application/geo+json`) |
+| GET | `/api/scans/{id}/diff?against=&limit=` | | `ScanDiff` |
+| POST | `/api/scans/{id}/draft` | `ScanDraftRequest` `{issueIds?, group?, rule?, title?, draftId?}` | 201 `ScanDraftResult` `{draft, results, skipped}` |
+
+`files` lists check file paths (default: every check file without errors, local and remote) and
+`builtIn` built-in rule ids (default all, `[]` for none). `Scan` is `{id, scope, areaName, geometry,
+ruleSet, ruleSetKey, status, trigger, issueCount, errors, warnings, infos, tookMs, startedAt,
+finishedAt, mirrorFile, error}`; `ruleSet` is the sorted list of check paths and `builtin:<id>`
+entries and `ruleSetKey` a hash of it. `status` is `running`, `done` or `failed`; `trigger` is
+`manual` or `mirror_swap`.
+
+`ScanIssue` is `{id, rule, file, line, severity, group, message, ref, centroid, fix, deleteObject}`.
+For MapCSS checks `rule` is `<file>:<line>` of the rule, `group` its `group:` and `fix` the `TagEdit`
+from `fixAdd`, `fixRemove` and `fixChangeKey`; `deleteObject` is `fixDeleteObject`. For built-in rules
+`rule` is `builtin:<id>`, `group` the rule title and `message` the title with the rule's note.
+`counts` in the report are `[{group, severity, count}]`, errors first.
+
+The GeoJSON has one `Point` per issue at its centroid with properties `{id, rule, file, line,
+severity, group, message, ref, osmType, osmId, hasFix, deleteObject}`.
+
+`diff` compares with `against` or, by default, the previous finished scan with the same scope key and
+rule set key. Issues are matched by rule source (file or built-in id, not the line), object and
+message: `ScanDiff` is `{scan, against, newCount, resolvedCount, unchangedCount, new, resolved,
+truncated}` with up to `limit` (default 500) issues per list. Without an earlier scan every issue is
+new.
+
+After a mirror swap the server re-runs, once per scope and rule set, the scans started in the last
+`SCAN_RERUN_DAYS` days (default 7, 0 turns it off) with their original request, as `trigger:
+mirror_swap`, and sends `scan_finished` for each. Scans still `running` at a restart are marked
+failed.
+
+`draft` turns the fixes of the selected issues (default every issue with a fix) into proposals: tag
+fixes go through the normal proposal flow (several fixes for one object are merged into one change,
+reasons joined), `deleteObject` issues become geometry-draft deletes with `if-unused`; for a way its
+untagged nodes are deleted too (`if-unused`, so shared nodes stay). Relations cannot be deleted
+here. A new draft is created by the user (title `Scan fixes · <area>`) unless `draftId` names an open
+one; `skipped` counts selected issues without a fix.
 
 ## Presets
 
@@ -402,3 +505,5 @@ Server → UI messages, one `UiEvent` JSON per frame, discriminated by `type`:
 - `mirror_swapped`: the GOL was updated and swapped; refetch rule layers.
 - `rules_changed`: files in the rules folder or remote sources changed; `changed` and `removed` list
   their paths. Refetch `/api/rule-files` and presets.
+- `scan_finished`: a validation scan finished (`scanId`, `scope`, `issueCount`), for example the
+  automatic re-run after a mirror swap.

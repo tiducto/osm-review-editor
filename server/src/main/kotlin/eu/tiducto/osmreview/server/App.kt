@@ -12,7 +12,14 @@ import eu.tiducto.osmreview.server.db.DraftRepo
 import eu.tiducto.osmreview.server.db.SettingsRepo
 import eu.tiducto.osmreview.server.presets.IdPresetData
 import eu.tiducto.osmreview.server.presets.PresetService
+import eu.tiducto.osmreview.rules.mapcss.MapCssEngine
+import eu.tiducto.osmreview.server.db.ScanRepo
+import eu.tiducto.osmreview.server.mapcss.HighlightService
+import eu.tiducto.osmreview.server.mapcss.ScanService
+import eu.tiducto.osmreview.server.rulesfolder.MapCssLoader
+import eu.tiducto.osmreview.server.rulesfolder.MapCssSelectorValidator
 import eu.tiducto.osmreview.server.rulesfolder.PresetFileLoader
+import eu.tiducto.osmreview.shared.RuleKind
 import eu.tiducto.osmreview.server.rulesfolder.RemoteRuleSources
 import eu.tiducto.osmreview.server.rulesfolder.RulesFolder
 import eu.tiducto.osmreview.server.rulesfolder.SmartPresetLoader
@@ -60,8 +67,17 @@ class App(val config: Config, val http: HttpClient = defaultHttpClient()) : Auto
     val ruleFiles = RulesFolder(
         config.rulesDir,
         events,
-        listOf(PresetFileLoader { idPresets.index }, SmartPresetLoader()),
+        listOf(
+            PresetFileLoader { idPresets.index },
+            SmartPresetLoader(MapCssSelectorValidator),
+            MapCssLoader(RuleKind.HIGHLIGHT),
+            MapCssLoader(RuleKind.CHECK),
+        ),
     )
+    val mapCss = MapCssEngine(mirror)
+    val highlights = HighlightService(ruleFiles, mapCss)
+    val scanRepo = ScanRepo(db)
+    val scans = ScanService(scanRepo, ruleFiles, mapCss, rules, mirror, drafts, account, events::emit)
     val ruleSources = RemoteRuleSources(ruleFiles, config.dataDir.resolve("rule-cache"), http, config.userAgent)
     val presets = PresetService(idPresets, ruleFiles)
 
@@ -75,6 +91,8 @@ class App(val config: Config, val http: HttpClient = defaultHttpClient()) : Auto
         log.info("Rules folder {}: {} files", ruleFiles.root, ruleFiles.list().size)
         ruleFiles.startWatching()
         ruleSources.start(scope)
+        ruleFiles.onChange { highlights.clear() }
+        scope.launch { runCatching { scanRepo.failRunning("Interrupted by a server restart") } }
         config.bingKey?.let { key ->
             scope.launch {
                 runCatching { BingImagery.resolve(http, key) }
@@ -90,6 +108,12 @@ class App(val config: Config, val http: HttpClient = defaultHttpClient()) : Auto
                     if (mirror.reloadIfChanged()) {
                         log.info("Swapped to GOL {}", mirror.status().file)
                         events.emit(UiEvent.MirrorSwapped(mirror.status()))
+                        highlights.clear()
+                        launch {
+                            runCatching { scans.rerunRecent(config.scanRerunDays) }
+                                .onSuccess { if (it.isNotEmpty()) log.info("Re-ran {} scans after the mirror swap", it.size) }
+                                .onFailure { log.warn("Re-running scans failed", it) }
+                        }
                     }
                 }.onFailure { log.warn("GOL swap check failed", it) }
             }
