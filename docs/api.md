@@ -119,12 +119,23 @@ keeps its status when nothing was uploaded.
 
 ### Manual edits on the live base
 
-`ManualEditRequest` takes `ref`, the full `tags` and optional `baseTags`, the tags the inspector
-showed when the edit started. With `baseTags`, only the difference between `baseTags` and `tags` is
-applied to the live tags, so edits made upstream in the meantime are kept. If the live object
-changed a key the edit touches (to a value other than the one being set), the change is stored as
-`conflict` with `liveTags` and `liveVersion`, ready for `/api/changes/{id}/resolve`. Without
-`baseTags`, `tags` replace the live tags.
+`ManualEditRequest` takes `ref`, the full `tags` and optional `baseTags`, exactly the tags the
+inspector showed when the edit started: the proposed `newTags` of the object's active change if it
+has one, the live tags otherwise.
+
+If the object has an active change (pending, approved or conflict in an open or partially merged
+draft) and `baseTags` equals that change's current `newTags`, the difference between `baseTags` and
+`tags` is applied to those `newTags`. Removing a key the earlier edit added removes it. The change
+keeps its `baseVersion` and `baseTags`, goes back to `pending` (a `conflict` stays one) and gets a
+`reset` review entry. No live check is made, so no conflict is reported. If the result equals the
+change's `baseTags`, the change becomes `rejected` with a `reject` review entry, like an edit back to
+the base in review.
+
+Otherwise, with `baseTags`, only the difference between `baseTags` and `tags` is applied to the live
+tags (or merged into the active change), so edits made upstream in the meantime are kept. If the
+live object changed a key the edit touches (to a value other than the one being set), the change is
+stored as `conflict` with `liveTags` and `liveVersion`, ready for `/api/changes/{id}/resolve`.
+Without `baseTags`, `tags` replace the live tags. A `baseTags` equal to `tags` is a 400.
 
 ## Account and settings
 

@@ -21,6 +21,7 @@ const drafts = useDraftsStore()
 const feature = computed(() => mapStore.selectedFeature)
 const base = computed<Record<string, string>>(() => feature.value?.tags ?? {})
 const edited = ref<Record<string, string>>({})
+const startedFrom = ref<Record<string, string>>({})
 const reason = ref('')
 const links = ref<EditorLinks | null>(null)
 const conflict = ref<Change | null>(null)
@@ -30,6 +31,7 @@ watch(
   () => feature.value,
   (f, old) => {
     edited.value = { ...(f?.tags ?? {}) }
+    startedFrom.value = { ...(f?.tags ?? {}) }
     reason.value = ''
     if (!old || !f || old.ref.type !== f.ref.type || old.ref.id !== f.ref.id) conflict.value = null
   },
@@ -71,16 +73,16 @@ function fixSummary(i: Issue): string {
 async function save() {
   const ref = mapStore.selected
   if (!ref || !dirty.value || drafts.savingManual) return
-  const startedFrom = { ...(mapStore.originTags ?? base.value) }
+  const from = { ...startedFrom.value }
   const mine = { ...edited.value }
-  const c = await drafts.saveManualEdit(ref, mine, startedFrom, reason.value)
+  const c = await drafts.saveManualEdit(ref, mine, from, reason.value)
   if (c?.status === 'conflict') {
     conflict.value = c
     const live = c.liveTags ?? {}
-    const keys = new Set([...Object.keys(startedFrom), ...Object.keys(mine)])
+    const keys = new Set([...Object.keys(from), ...Object.keys(mine)])
     conflictKeys.value = [...keys]
-      .filter((k) => startedFrom[k] !== mine[k] && live[k] !== startedFrom[k] && live[k] !== mine[k])
-      .map((k) => ({ key: k, base: startedFrom[k] ?? null, mine: mine[k] ?? null, live: live[k] ?? null }))
+      .filter((k) => from[k] !== mine[k] && live[k] !== from[k] && live[k] !== mine[k])
+      .map((k) => ({ key: k, base: from[k] ?? null, mine: mine[k] ?? null, live: live[k] ?? null }))
   } else if (c) {
     conflict.value = null
   }

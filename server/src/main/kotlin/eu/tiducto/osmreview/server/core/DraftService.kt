@@ -301,6 +301,12 @@ class DraftService(
     suspend fun manualEdit(ref: OsmRef, tags: Map<String, String>, reason: String?, baseTags: Map<String, String>? = null): Change {
         val diff = baseTags?.let { TagDiff.between(it, tags) }
         if (diff != null && diff.isNoOp) throw IllegalArgumentException("The edit leaves the tags unchanged")
+        if (diff != null && baseTags != null) {
+            val existing = repo.openChangeFor(ref)
+            if (existing != null && existing.action != ChangeAction.DELETE && existing.newTags == baseTags) {
+                return editOpenChange(existing, diff, reason)
+            }
+        }
         val edit = diff?.let {
             TagEdit(set = it.added + it.changed.mapValues { (_, v) -> v[1] }, remove = it.removed.keys.toList())
         } ?: TagEdit(replaceAll = tags)
@@ -331,6 +337,29 @@ class DraftService(
             repo.addReview(id, ReviewDecision.RESET, "edited on an outdated base: ${clashing.sorted().joinToString(", ")} changed upstream", null)
             emitUpdated(draft.id)
         }
+        return repo.change(id)!!
+    }
+
+    private suspend fun editOpenChange(c: Change, diff: TagDiff, reason: String?): Change {
+        val id = UUID.fromString(c.id)
+        val tags = diff.applyTo(c.newTags)
+        val noOp = c.action == ChangeAction.MODIFY && TagDiff.between(c.baseTags, tags).isNoOp
+        val why = reason?.takeIf { it.isNotBlank() } ?: "manual edit"
+        repo.updateChange(id) {
+            newTags = tags
+            this.reason = listOfNotNull(c.reason, why).distinct().joinToString(" · ")
+            status = when {
+                noOp -> ChangeStatus.REJECTED
+                c.status == ChangeStatus.CONFLICT -> ChangeStatus.CONFLICT
+                else -> ChangeStatus.PENDING
+            }
+        }
+        if (noOp) {
+            repo.addReview(id, ReviewDecision.REJECT, "edited back to the base tags in the inspector", tags)
+        } else {
+            repo.addReview(id, ReviewDecision.RESET, "edited in the inspector: ${diff.summary()}", tags)
+        }
+        emitUpdated(c.draftId)
         return repo.change(id)!!
     }
 

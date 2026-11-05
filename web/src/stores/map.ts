@@ -35,7 +35,6 @@ export const useMapStore = defineStore('map', () => {
 
   const selected = ref<OsmRef | null>(null)
   const selectedFeature = shallowRef<MapFeature | null>(null)
-  const originTags = shallowRef<Record<string, string> | null>(null)
   const selectedLoading = ref(false)
   const highlighted = ref<OsmRef[]>([])
 
@@ -138,21 +137,18 @@ export const useMapStore = defineStore('map', () => {
 
   async function select(ref: OsmRef | null, opts: { fly?: boolean } = {}) {
     selected.value = ref
-    originTags.value = null
     if (!ref) {
       selectedFeature.value = null
       return
     }
     const local = features.value.find((f) => sameRef(f.ref, ref))
     selectedFeature.value = local ?? null
-    originTags.value = local?.tags ?? null
     if (!local) {
       selectedLoading.value = true
       try {
         const f = await api.object(ref)
         if (sameRef(selected.value, ref)) {
           selectedFeature.value = f
-          originTags.value = f.tags
         }
       } catch (e) {
         if (sameRef(selected.value, ref)) app.fail(e, `Loading ${refString(ref)}`)
@@ -196,7 +192,7 @@ export const useMapStore = defineStore('map', () => {
 
   return {
     ready, bbox, zoom, features, featuresTruncated, featuresLoading,
-    selected, selectedFeature, originTags, selectedLoading, highlighted,
+    selected, selectedFeature, selectedLoading, highlighted,
     area, areaLoading, polygon, drawing, scopeName, setPolygon,
     imageryId, allImagery, activeImagery, setImagery, addImagery,
     attach, detach, instance, setBottomInset, fitBBox, flyTo, updateView, loadFeatures,

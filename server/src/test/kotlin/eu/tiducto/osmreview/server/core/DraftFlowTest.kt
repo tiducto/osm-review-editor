@@ -180,6 +180,54 @@ class DraftFlowTest {
     }
 
     @Test
+    fun secondManualEditOnProposedTagsAppliesCleanly(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        val way = OsmRef(OsmType.WAY, 55)
+        val seen = mapOf("highway" to "footway")
+        val first = drafts.manualEdit(way, seen + ("surface" to "asphalt"), null, baseTags = seen)
+        assertEquals(ChangeStatus.PENDING, first.status)
+        val second = drafts.manualEdit(way, first.newTags + ("surface" to "concrete") + ("lit" to "yes"), null, baseTags = first.newTags)
+        assertEquals(first.id, second.id)
+        assertEquals(ChangeStatus.PENDING, second.status)
+        assertEquals(3, second.baseVersion)
+        assertEquals(seen, second.baseTags)
+        assertEquals(mapOf("highway" to "footway", "lit" to "yes", "surface" to "concrete"), second.newTags)
+        assertEquals(null, second.liveVersion)
+    }
+
+    @Test
+    fun secondManualEditRemovesKeyAddedByFirst(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        val way = OsmRef(OsmType.WAY, 55)
+        val seen = mapOf("highway" to "footway")
+        val first = drafts.manualEdit(way, seen + ("surface" to "asphalt") + ("lit" to "yes"), null, baseTags = seen)
+        val second = drafts.manualEdit(way, first.newTags - "surface", null, baseTags = first.newTags)
+        assertEquals(first.id, second.id)
+        assertEquals(ChangeStatus.PENDING, second.status)
+        assertEquals(mapOf("highway" to "footway", "lit" to "yes"), second.newTags)
+
+        val third = drafts.manualEdit(way, second.newTags - "lit", null, baseTags = second.newTags)
+        assertEquals(first.id, third.id)
+        assertEquals(ChangeStatus.REJECTED, third.status)
+        assertEquals(seen, third.newTags)
+        assertEquals(null, repo.openChangeFor(way))
+    }
+
+    @Test
+    fun secondManualEditStillDetectsLiveConflict(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        val way = OsmRef(OsmType.WAY, 55)
+        val seen = mapOf("highway" to "footway")
+        val first = drafts.manualEdit(way, seen + ("lit" to "yes"), null, baseTags = seen)
+        osm.edit(way, mapOf("surface" to "gravel"))
+        val stale = drafts.manualEdit(way, seen + ("surface" to "asphalt"), null, baseTags = seen)
+        assertEquals(first.id, stale.id)
+        assertEquals(ChangeStatus.CONFLICT, stale.status)
+        assertEquals("gravel", stale.liveTags!!["surface"])
+        assertEquals(4, stale.liveVersion)
+    }
+
+    @Test
     fun manualEditWithoutBaseReplacesTags(): Unit = runBlocking {
         if (!docker) return@runBlocking println("Docker not available, skipping")
         val way = OsmRef(OsmType.WAY, 55)
