@@ -157,10 +157,9 @@ export const useEditIssuesStore = defineStore('editIssues', () => {
     panelOpen.value = true
     panelCollapsed.value = false
     draw()
-    const map = mapStore.instance()
-    if (opts.fly !== false && map && issue.loc) {
-      const b = map.getBounds()
-      if (!b.contains(issue.loc)) map.easeTo({ center: issue.loc, duration: 500 })
+    if (opts.fly !== false && issue.loc) {
+      const [lng, lat] = issue.loc
+      if (!mapStore.visibleContains(lng, lat)) mapStore.easeTo({ lng, lat }, { duration: 500 })
     }
     if (opts.select !== false && session && issue.entityIds.length) {
       const g = session.adapter.graph()

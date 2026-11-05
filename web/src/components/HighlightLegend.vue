@@ -56,7 +56,8 @@ function swatches(f: HighlightFile): string[] {
 <template>
   <div
     v-if="shown"
-    class="pointer-events-auto absolute top-3 left-3 z-10 w-[min(300px,calc(100%-72px))] overflow-hidden rounded-md border border-line-strong bg-surface text-[12px] shadow-panel"
+    class="pointer-events-auto absolute top-[60px] z-10 w-[min(300px,calc(100%-var(--inset-left)-var(--inset-right)-24px))] overflow-hidden rounded-md border border-line-strong bg-surface text-[12px] shadow-panel"
+    :style="{ left: 'calc(var(--inset-left) + 12px)' }"
     data-testid="highlight-legend"
   >
     <button class="flex w-full items-center gap-2 bg-surface-2 px-3 py-1.5 text-left hover:bg-surface-3" @click="hl.legendOpen = !hl.legendOpen">
@@ -66,7 +67,7 @@ function swatches(f: HighlightFile): string[] {
       <Spinner v-if="hl.evaluating > 0" :size="11" class="ml-auto text-fg-3" />
       <Icon :name="hl.legendOpen ? 'chevron-up' : 'chevron-down'" :size="13" class="text-fg-3" :class="hl.evaluating > 0 ? '' : 'ml-auto'" />
     </button>
-    <div v-if="hl.legendOpen" class="scroll-thin max-h-[42vh] space-y-2.5 overflow-y-auto border-t border-line-strong px-3 pt-2 pb-2.5">
+    <div v-if="hl.legendOpen" class="scroll-thin max-h-[min(42vh,calc(100vh-var(--inset-bottom)-230px))] space-y-2.5 overflow-y-auto border-t border-line-strong px-3 pt-2 pb-2.5">
       <section v-for="f in hl.activeFiles" :key="f.path">
         <div class="mb-1 flex items-center gap-1.5">
           <span class="truncate font-bold" :title="f.description ?? f.path">{{ f.path === FILTER_PATH ? t('legend.filter', { title: f.title }) : f.title }}</span>

@@ -8,6 +8,7 @@ import { useAppStore } from './app'
 import { refString, sameRef } from '@/lib/osm'
 import { asGeometry, geometryBBox } from '@/lib/geo'
 import { t } from '@/i18n'
+import { useLayoutStore } from './layout'
 
 const IMAGERY_KEY = 'ore.imagery'
 
@@ -94,16 +95,29 @@ export const useMapStore = defineStore('map', () => {
     return map
   }
 
-  const padding: FitPadding = { top: 64, bottom: 64, left: 64, right: 64 }
-  function setBottomInset(px: number) {
-    padding.bottom = Math.max(64, Math.round(px) + 24)
+  function cameraPadding(extra = 64): FitPadding {
+    const inset = useLayoutStore().insets
+    return { top: extra, bottom: extra + inset.bottom, left: extra + inset.left, right: extra + inset.right }
+  }
+
+  function centerOffset(): [number, number] {
+    const inset = useLayoutStore().insets
+    return [(inset.left - inset.right) / 2, -inset.bottom / 2]
+  }
+
+  function visibleContains(lng: number, lat: number): boolean {
+    if (!map) return false
+    const p = map.project([lng, lat])
+    const inset = useLayoutStore().insets
+    const c = map.getContainer()
+    return p.x >= inset.left && p.x <= c.clientWidth - inset.right && p.y >= 0 && p.y <= c.clientHeight - inset.bottom
   }
 
   function fitBBox(b: BBox, maxZoom = 18, animate = true) {
     if (!map) return
     const degenerate = b.west === b.east && b.south === b.north
     if (degenerate) {
-      map.flyTo({ center: [b.west, b.south], zoom: Math.max(map.getZoom(), Math.min(maxZoom, 18)), animate })
+      map.flyTo({ center: [b.west, b.south], zoom: Math.max(map.getZoom(), Math.min(maxZoom, 18)), offset: centerOffset(), animate })
       return
     }
     map.fitBounds(
@@ -111,12 +125,16 @@ export const useMapStore = defineStore('map', () => {
         [b.west, b.south],
         [b.east, b.north],
       ],
-      { padding, maxZoom, animate, duration: animate ? 900 : 0 },
+      { padding: cameraPadding(), maxZoom, animate, duration: animate ? 900 : 0 },
     )
   }
 
   function flyTo(p: LngLat, z?: number) {
-    map?.flyTo({ center: [p.lng, p.lat], zoom: z ?? Math.max(map.getZoom(), 17), duration: 900 })
+    map?.flyTo({ center: [p.lng, p.lat], zoom: z ?? Math.max(map.getZoom(), 17), offset: centerOffset(), duration: 900 })
+  }
+
+  function easeTo(p: LngLat, opts: { zoom?: number; duration?: number } = {}) {
+    map?.easeTo({ center: [p.lng, p.lat], zoom: opts.zoom, offset: centerOffset(), duration: opts.duration ?? 500 })
   }
 
   function updateView(b: BBox, z: number) {
@@ -183,7 +201,7 @@ export const useMapStore = defineStore('map', () => {
     selected, selectedFeature, selectedLoading, highlighted,
     area, areaLoading, polygon, drawing, scopeName, setPolygon,
     imageryId, allImagery, activeImagery, setImagery, addImagery,
-    attach, detach, instance, setBottomInset, fitBBox, flyTo, updateView,
+    attach, detach, instance, cameraPadding, centerOffset, visibleContains, fitBBox, flyTo, easeTo, updateView,
     select, patchSelectedTags, setArea,
   }
 })

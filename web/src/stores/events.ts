@@ -1,4 +1,5 @@
 import type { UiEvent, UiEventRemoteCommand } from '@/generated/models'
+import { useMirrorStore } from './mirror'
 import { EventStream } from '@/api/events'
 import { useAppStore } from './app'
 import { useMapStore } from './map'
@@ -9,6 +10,7 @@ import { useRuleFilesStore } from './ruleFiles'
 import { useScansStore } from './scans'
 import { usePushView } from './pushView'
 import { usePresetsStore } from './presets'
+import { usePanelStore } from './panel'
 import { t, tn } from '@/i18n'
 
 export function connectEvents(): () => void {
@@ -38,7 +40,7 @@ export function connectEvents(): () => void {
       app.toast(tn('app.remoteDrafts', ids.length), 'success')
       drafts.statusFilter = 'open'
       drafts.drawerTab = 'drafts'
-      drafts.drawerOpen = true
+      usePanelStore().open('drafts')
       void drafts.loadDrafts()
     }
     if (drafts.reviewing) drafts.stopReview()
@@ -64,8 +66,12 @@ export function connectEvents(): () => void {
       case 'mirror_swapped':
         app.setMirror(e.status)
         void rules.refresh()
-        mapStore.refreshTiles()
-        app.toast(t('app.mirrorUpdated'))
+        if (useMirrorStore().onSwapped()) {
+          mapStore.refreshTiles()
+          app.toast(t('app.mirrorUpdated'))
+        } else {
+          app.toast(t('shell.mirror.reloadHint'))
+        }
         void highlights.load()
         break
       case 'rules_changed':
@@ -79,6 +85,8 @@ export function connectEvents(): () => void {
       case 'push_view':
         void pushView.apply(e)
         break
+      default:
+        if ((e as { type: string }).type === 'mirror_status') useMirrorStore().onStatusEvent(e as unknown as Record<string, unknown>)
     }
   }
 

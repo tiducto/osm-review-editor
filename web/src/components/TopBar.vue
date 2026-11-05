@@ -2,7 +2,9 @@
 import { computed, ref } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useDraftsStore } from '@/stores/drafts'
+import { usePanelStore } from '@/stores/panel'
 import AreaPicker from './AreaPicker.vue'
+import MirrorIndicator from './MirrorIndicator.vue'
 import SearchBox from './SearchBox.vue'
 import AuthorBadge from './AuthorBadge.vue'
 import Icon from './Icon.vue'
@@ -12,6 +14,7 @@ import { LOCALES, useI18n } from '@/i18n'
 const { t, locale, setLocale } = useI18n()
 const app = useAppStore()
 const drafts = useDraftsStore()
+const panel = usePanelStore()
 const search = ref<InstanceType<typeof SearchBox> | null>(null)
 
 const draft = computed(() => drafts.current?.draft ?? null)
@@ -21,8 +24,8 @@ const connectionTitle = computed(
 )
 
 function openDraftChanges() {
-  drafts.drawerOpen = true
   drafts.drawerTab = 'changes'
+  panel.open('drafts')
 }
 
 defineExpose({ focusSearch: () => search.value?.focus() })
@@ -39,6 +42,7 @@ defineExpose({ focusSearch: () => search.value?.focus() })
     <SearchBox ref="search" />
 
     <div class="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
+      <MirrorIndicator />
       <div v-if="draft" class="bar-group hidden min-w-0 overflow-hidden lg:flex">
         <button class="bar-btn min-w-0 justify-start gap-2 font-normal" :title="t('top.showQueue')" @click="openDraftChanges">
           <AuthorBadge v-if="parseAuthor(draft.author).kind === 'claude'" :author="draft.author" />
@@ -67,7 +71,7 @@ defineExpose({ focusSearch: () => search.value?.focus() })
         class="hidden h-5 cursor-pointer items-center gap-1 rounded-sm px-1.5 text-[11px] leading-none font-bold uppercase sm:inline-flex"
         :class="app.target === 'prod' ? 'bg-[#dd2222] text-white' : 'bg-black/30 text-white'"
         :title="app.target === 'prod' ? t('top.targetProdTitle') : t('top.targetDevTitle')"
-        @click="app.settingsOpen = true"
+        @click="panel.open('settings')"
       >
         <Icon v-if="app.target === 'prod'" name="alert" :size="12" />
         {{ app.target === 'prod' ? t('top.prod') : t('top.dev') }}
@@ -82,7 +86,7 @@ defineExpose({ focusSearch: () => search.value?.focus() })
       >
         <Icon name="user" :size="16" /> <span class="hidden lg:inline">{{ t('top.connect') }}</span>
       </a>
-      <button v-else-if="app.account" class="bar-btn" :title="t('top.accountSettings')" @click="app.settingsOpen = true">
+      <button v-else-if="app.account" class="bar-btn" :title="t('top.accountSettings')" @click="panel.open('settings')">
         <span class="grid size-5 place-items-center rounded-sm bg-accent text-[10px] font-bold text-accent-fg uppercase">
           {{ app.account.displayName?.charAt(0) ?? '?' }}
         </span>
@@ -109,7 +113,6 @@ defineExpose({ focusSearch: () => search.value?.focus() })
         :class="{ 'bg-[#22cc22]': app.connection === 'open', 'animate-pulse bg-warning': app.connection === 'connecting', 'bg-error': app.connection === 'closed' }"
         :title="connectionTitle"
       />
-      <button class="bar-btn px-1.5" :title="t('top.settings')" @click="app.settingsOpen = true"><Icon name="settings" :size="18" /></button>
     </div>
   </header>
 </template>

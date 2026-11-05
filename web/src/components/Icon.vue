@@ -50,6 +50,9 @@ const paths = {
   more: 'M12 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM19 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM5 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2z',
   bolt: 'M13 2 3 14h9l-1 8 10-12h-9l1-8z',
   trash: 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6',
+  geolocate: 'M12 2v3M12 19v3M2 12h3M19 12h3M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12z',
+  wrench: 'M14.7 6.3a4 4 0 0 0 5 5L22 14l-8 8-2.3-2.3a4 4 0 0 0-5-5L2 10l8-8 2.3 2.3z',
+  star: 'M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9L12 3z',
 } as const
 
 export type IconName = keyof typeof paths
@@ -81,6 +84,9 @@ const sprites: Partial<Record<IconName, string>> = {
   target: 'iD-icon-framed-dot',
   more: 'iD-icon-more',
   trash: 'iD-operation-delete',
+  geolocate: 'iD-icon-geolocate',
+  wrench: 'iD-icon-wrench',
+  star: 'iD-icon-favorite',
 }
 
 const props = withDefaults(defineProps<{ name: IconName; size?: number; stroke?: number }>(), { size: 16, stroke: 1.8 })

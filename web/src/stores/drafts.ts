@@ -42,7 +42,6 @@ export const useDraftsStore = defineStore('drafts', () => {
   const busy = ref(false)
   const context = shallowRef<ChangeContext | null>(null)
 
-  const drawerOpen = ref(true)
   const drawerTab = ref<DrawerTab>('drafts')
 
   const progress = reactive(new Map<string, MergeProgress>())
@@ -405,7 +404,7 @@ export const useDraftsStore = defineStore('drafts', () => {
   return {
     drafts, visibleDrafts, listLoading, statusFilter, authorFilter,
     current, currentLoading, reviewing, index, showBefore, busy, context,
-    drawerOpen, drawerTab, progress,
+    drawerTab, progress,
     changes, currentChange, decidedCount, pendingCount, approvedCount, conflictCount,
     loadDrafts, open, startReview, stopReview, close, focusCurrent, goTo, next, prev, nextOpen,
     review, cascadePrompt, approve, reject, editTags, reset, sendToId, resolve, approveRemaining, refreshLive, fromRule,

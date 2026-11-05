@@ -92,7 +92,7 @@ function smartRunnable(s: SmartPreset): boolean {
 }
 
 async function openRules(path: string) {
-  panel.tab = 'rules'
+  panel.open('rules')
   await ruleFiles.load()
   await ruleFiles.openFile(path)
 }
@@ -151,7 +151,7 @@ async function fromFeature() {
     fields: cat.isFallback(matched) ? ['name'] : [`{${matched.id}}`],
   }
   await ruleFiles.create('preset', base, JSON.stringify(preset, null, 2) + '\n')
-  panel.tab = 'rules'
+  panel.open('rules')
   await presets.reloadUser()
 }
 </script>

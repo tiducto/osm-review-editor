@@ -256,6 +256,33 @@
   .map-btn {
     @apply grid size-10 place-items-center bg-control text-white transition-colors hover:bg-control-hover;
   }
+  .map-control {
+    @apply pointer-events-auto grid place-items-center bg-control text-white transition-colors first:rounded-tl-md last:rounded-bl-md hover:bg-control-hover;
+  }
+  .map-control[aria-pressed='true'] {
+    @apply bg-accent hover:bg-accent-strong;
+  }
+  .sidebar-resizer {
+    @apply absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none;
+  }
+  .sidebar-resizer:hover,
+  .sidebar-resizer.dragging {
+    background: linear-gradient(to right, transparent 3px, var(--accent) 3px, var(--accent) 5px, transparent 5px);
+  }
+}
+
+:root {
+  --inset-left: 0px;
+  --inset-right: 0px;
+  --inset-bottom: 0px;
+}
+.maplibregl-ctrl-bottom-left {
+  left: var(--inset-left);
+  bottom: var(--inset-bottom);
+}
+.maplibregl-ctrl-bottom-right {
+  right: var(--inset-right);
+  bottom: var(--inset-bottom);
 }
 
 .maplibregl-ctrl-group {

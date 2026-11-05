@@ -107,7 +107,7 @@ key leave `BING_KEY` empty.
 ## Rules folder
 
 Your highlights, checks and presets are plain text files in one folder that you edit in any editor,
-in the app's Rules tab, or through Claude over MCP:
+in the app's Rules pane, or through Claude over MCP:
 
 | Path | Kind |
 | --- | --- |
@@ -139,7 +139,7 @@ example per kind. The examples:
 The highlights, checks and smart presets of `user-rules.example` also ship inside the server as a
 read-only built-in source, so a new install already has them. A file of yours with the same path
 overrides the built-in one; delete it and the built-in comes back. Copy a built-in or remote file into
-your folder (Rules tab, `POST /api/rule-files/copy`, MCP `copy_rule_file`) to edit it.
+your folder (Rules pane, `POST /api/rule-files/copy`, MCP `copy_rule_file`) to edit it.
 
 The server watches the folder (on macOS the JDK polls, so edits show up within a few seconds) and
 tells the UI over the WebSocket. Writes from the app and MCP are validated first and written
@@ -160,16 +160,28 @@ of large areas, preset icons from id-tagging-schema) and the map draws them with
 in central Opava builds in about 25 ms (z15 about 75 ms) on Apple Silicon; built tiles are cached per
 mirror generation. Imagery, when chosen, replaces the light grey background.
 
-The left panel has four tabs:
+The layout follows iD: the left sidebar shows what you are working on (the inspector of the selected
+feature, the editor or the review card of a draft); it opens on its own, can be resized by dragging its
+right edge (300 px to half the window, remembered per browser) and hidden with `[`. A strip of map
+controls on the right has zoom, "show my location" and buttons for panes that open next to it, one at a
+time (`]` closes the pane or reopens the last one, `Esc` closes it):
 
-- **Map**: imagery, a quick tag filter (`highway=footway !surface`, saved as a highlight file with
-  one click) and the highlight files.
-- **Validate**: validation scans (see below).
-- **Rules**: the rules folder by kind, a CodeMirror editor with live diagnostics, templates, save with
-  conflict detection (a diff to reload or overwrite), delete to the trash, copy of built-in and remote
-  files, and a live map preview of unsaved highlight edits.
-- **Presets**: iD presets by category or search, your presets and smart presets (see
+- **Background** (`B`): imagery.
+- **Map data** (`F`, not while reviewing): a quick tag filter (`highway=footway !surface`, saved as a
+  highlight file with one click) and the highlight files.
+- **Validation** (`I`): validation scans (see below).
+- **Rules** (`L`): the rules folder by kind, a CodeMirror editor with live diagnostics, templates, save
+  with conflict detection (a diff to reload or overwrite), delete to the trash, copy of built-in and
+  remote files, and a live map preview of unsaved highlight edits.
+- **Presets** (`P`): iD presets by category or search, your presets and smart presets (see
   [Presets](#presets)).
+- **Drafts** (`D`, not in edit mode): the drafts with filters and Review/Merge/Close, and the change
+  list of the open draft.
+- **Settings**: account, language, API target, imagery sources, mirror status, MCP and keys.
+
+Panels overlay the map and never move it; camera moves (fit to a feature, fly to a change) keep the
+target in the part of the map they leave visible. On phones one bottom sheet shows either the sidebar
+content or the open pane, with tabs to switch and a handle to collapse it.
 
 A highlight file styles objects on the map and can carry a legend (`-ore-legend`), a coverage measure
 (`-ore-stats: length|count|area`) and `-ore-dim-others` to fade the base map. Most rules compile to
@@ -211,7 +223,8 @@ graph is drawn in iD's style above the tiles.
 | `X` `D` `C` `V` `Q` `O` `S` `M` `R` `A` `E` | Split, disconnect, combine, reverse, square, circularize, straighten, move, rotate, continue, extract |
 | `Delete`, `⌘⌫` | Delete |
 | `⌘Z`, `⇧⌘Z` (or `⌘Y`), `Esc`, `⌘S` | Undo, redo, cancel or deselect, save |
-| `/`, `[` `]` | Focus search, toggle the side panels |
+| `/`, `[` `]` | Focus search, hide or show the sidebar, close or reopen the pane |
+| `B` `F` `I` `L` `P` | Background, map data, validation, rules and presets panes (`D` drafts only outside edit mode) |
 
 **Inspector.** Selecting a feature opens an inspector like iD's sidebar: the preset with its icon and
 name, "Change preset", the preset's fields from id-tagging-schema and the raw tag editor. Edits are
@@ -221,14 +234,14 @@ field starts edit mode with the feature selected (below zoom 15 the change goes 
 **Choosing a preset after drawing.** When you finish a new point, line or area that has no tags
 (other than `area=yes`), the inspector opens the preset picker, as iD does. Pick a preset to tag the
 feature, or dismiss the picker and tag it by hand. The prompt goes away when the feature gets tags,
-is deleted or undone, or you select something else. Drawing from the Presets tab ("Draw") creates
+is deleted or undone, or you select something else. Drawing from the Presets pane ("Draw") creates
 the feature with that preset's tags right away.
 
 **Validation.** Shortly after each edit (not while drawing or dragging) the editor validates the
 features you touched: iD's own validations (crossing ways, almost junctions, disconnected ways,
 missing and outdated tags, unsquare buildings and the rest) and your MapCSS check files (the active
-ones of the Validate tab), run in the browser over the edited graph. Issues show in a collapsible
-issues panel docked at the bottom of the right sidebar and as markers on the map; clicking one selects
+ones of the Validation pane), run in the browser over the edited graph. Issues show in a collapsible
+issues panel docked at the bottom of the sidebar and as markers on the map; clicking one selects
 the feature. Fix buttons run iD's fixes or the check's `fixAdd`/`fixRemove`/`fixChangeKey` and
 `fixDeleteObject`, each as one undoable step. Warnings can be ignored for the session. Saving first
 lists the errors and warnings of the edits, like iD's save screen. In the browser only the loaded
@@ -253,7 +266,7 @@ lists, relation members). They come from the editor, rules and scans, bulk prese
 and JOSM remote control. The review card goes through the changes one by one with the matched
 preset's icon and name, a tag diff and before/after geometry on the map; edit mode in the card uses
 the full preset editor. Keys: `↵` approve, `E` edit, `S` skip, `R` reject (with a comment Claude can
-read), `O` open in iD, `J`/`K` next and previous, `Space` toggle before/after.
+read), `O` open in iD, `J`/`K` next and previous, `Space` toggle before/after, `F` zoom to the change (so the Map data pane has no key while reviewing).
 
 Changes that depend on each other (a way and its new nodes, a delete of a node a way no longer uses)
 are reviewed per object with their dependencies and always uploaded together. Before upload every
@@ -278,7 +291,7 @@ id-tagging-schema, and matching follows iD's scoring, with your preset winning t
 The app picks the current language, then `en`, then the first entry; a string may still be a
 `{presetId}` reference to another preset's translated name.
 
-The Presets tab and the inspector's picker search names, terms and aliases without diacritics (in
+The Presets pane and the inspector's picker search names, terms and aliases without diacritics (in
 Czech also the English names), with categories, recently used presets and your presets first. From a
 preset you can import it as an overlay file, detach an overlay into a full copy, create a preset from
 the selected feature's tags, apply it to the selection, draw with it, or **bulk apply** it to the

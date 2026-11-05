@@ -24,6 +24,7 @@ import Icon from './Icon.vue'
 import Spinner from './Spinner.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import { useEditorStore } from '@/stores/editor'
+import { usePanelStore } from '@/stores/panel'
 import type { ChangeLink } from '@/generated/models'
 
 const drafts = useDraftsStore()
@@ -166,8 +167,13 @@ function cancel() {
   ;(document.activeElement as HTMLElement | null)?.blur()
 }
 
+function showQueue() {
+  drafts.drawerTab = 'changes'
+  usePanelStore().open('drafts')
+}
+
 function onKey(e: KeyboardEvent) {
-  if (app.settingsOpen || app.mergeDraftId || drafts.cascadePrompt || editor.active) return
+  if (app.mergeDraftId || drafts.cascadePrompt || editor.active) return
   if (mode.value === 'reject') {
     if (e.key === 'Escape') {
       e.preventDefault()
@@ -270,6 +276,7 @@ const shortcuts = computed(() => [
         <button class="btn btn-ghost btn-icon btn-sm" :title="t('shell.review.prevTitle')" @click="drafts.prev()"><Icon name="chevron-up" :size="14" /></button>
         <button class="btn btn-ghost btn-icon btn-sm" :title="t('shell.review.nextTitle')" @click="drafts.next()"><Icon name="chevron-down" :size="14" /></button>
         <span class="text-[12px] text-fg-2">{{ t('shell.review.position', { i: drafts.index + 1, n: total }) }}</span>
+        <button class="btn btn-ghost btn-icon btn-sm" :title="t('shell.queue.show')" data-testid="review-show-queue" @click="showQueue"><Icon name="list" :size="14" /></button>
         <span v-if="counts" class="ml-auto flex gap-2 text-[11.5px] text-fg-3">
           <span class="text-added">{{ counts.approved }} ✓</span>
           <span class="text-removed">{{ counts.rejected }} ✕</span>

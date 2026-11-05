@@ -409,7 +409,6 @@ onMounted(() => {
   registerTileProtocol(map, onDashes)
   setDashState({ dashes, lowZoom, add: onDashes })
   map.touchZoomRotate.disableRotation()
-  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left')
   map.on('style.load', () => {
     if (!map) return
@@ -492,6 +491,7 @@ const currentHasGeometryChange = computed(() => {
       <div v-if="hover.sub" class="font-mono text-[10.5px] text-fg-3">{{ hover.sub }}</div>
     </div>
 
+    <div class="pointer-events-none absolute top-0 z-10" :style="{ left: 'var(--inset-left)', right: 'var(--inset-right)', bottom: 'var(--inset-bottom)' }" data-testid="map-visible-area">
     <div class="pointer-events-none absolute top-3 left-1/2 z-10 flex w-max max-w-[calc(100%-24px)] -translate-x-1/2 flex-col items-center gap-2">
       <EditToolbar v-if="!drafts.reviewing && !mapStore.drawing" />
       <div
@@ -527,8 +527,8 @@ const currentHasGeometryChange = computed(() => {
     </div>
 
     <Transition name="fade">
-      <div v-if="drafts.reviewing" class="absolute top-3 left-3 z-10 flex flex-col gap-2">
-        <div class="flex items-center gap-3 rounded-md border border-line-strong bg-surface px-3 py-1.5 text-[11.5px] text-fg-2 shadow-panel">
+      <div v-if="drafts.reviewing" class="pointer-events-auto absolute top-3 left-3 z-10 flex max-w-[calc(100%-24px)] flex-col gap-2">
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-line-strong bg-surface px-3 py-1.5 text-[11.5px] text-fg-2 shadow-panel">
           <span v-for="k in kinds" :key="k" class="flex items-center gap-1.5">
             <span class="h-[3px] w-3.5 rounded-full" :style="{ background: changeKindColor[k] }" />{{ changeKindLabel[k] }}
           </span>
@@ -561,6 +561,7 @@ const currentHasGeometryChange = computed(() => {
       class="pointer-events-none absolute bottom-9 left-3 z-10 flex items-center gap-1.5 rounded-sm bg-black/50 px-2 py-0.5 text-[11px] text-white"
     >
       <Icon name="image" :size="12" /> {{ mapStore.activeImagery.name }}
+    </div>
     </div>
   </div>
 </template>

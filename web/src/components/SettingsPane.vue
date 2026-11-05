@@ -5,7 +5,6 @@ import { api } from '@/api/client'
 import { useAppStore } from '@/stores/app'
 import { useMapStore } from '@/stores/map'
 import { dateTime, relativeTime } from '@/lib/format'
-import Modal from './Modal.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import ImageryEditor from './ImageryEditor.vue'
 import Icon from './Icon.vue'
@@ -57,7 +56,14 @@ async function copy(text: string) {
 const shortcuts: [string, MessageKey][] = [
   ['/', 'settings.key.focusSearch'],
   ['Esc', 'settings.key.deselect'],
-  ['[  ]', 'settings.key.panels'],
+  ['[', 'shell.key.sidebar'],
+  [']', 'shell.key.pane'],
+  ['B', 'shell.pane.background'],
+  ['F', 'shell.pane.map-data'],
+  ['I', 'shell.pane.validation'],
+  ['L', 'shell.pane.rules'],
+  ['P', 'shell.pane.presets'],
+  ['D', 'shell.pane.drafts'],
   ['↵', 'settings.key.approve'],
   ['E', 'settings.key.editTags'],
   ['S', 'settings.key.skip'],
@@ -71,9 +77,9 @@ const shortcuts: [string, MessageKey][] = [
 </script>
 
 <template>
-  <Modal :title="t('settings.title')" width="640px" @close="app.settingsOpen = false">
-    <div class="divide-y divide-line-strong bg-surface-2">
-      <section class="space-y-2 px-5 py-4">
+  <div class="flex h-full flex-col" data-testid="settings">
+    <div class="scroll-thin min-h-0 flex-1 divide-y divide-line-strong overflow-y-auto bg-surface-2">
+      <section class="space-y-2 px-4 py-4">
         <h3 class="section-title">{{ t('settings.account') }}</h3>
         <div class="flex items-center gap-3">
           <span class="grid size-8 place-items-center rounded-full border border-line-strong bg-surface text-fg-2"><Icon name="user" /></span>
@@ -94,7 +100,7 @@ const shortcuts: [string, MessageKey][] = [
         </div>
       </section>
 
-      <section class="flex items-center gap-3 px-5 py-4">
+      <section class="flex items-center gap-3 px-4 py-4">
         <h3 class="section-title">{{ t('common.language') }}</h3>
         <div class="seg ml-auto" role="group" :aria-label="t('common.language')" data-testid="settings-locale">
           <button
@@ -110,11 +116,11 @@ const shortcuts: [string, MessageKey][] = [
         </div>
       </section>
 
-      <section class="space-y-2 px-5 py-4">
+      <section class="space-y-2 px-4 py-4">
         <h3 class="section-title">{{ t('settings.target') }}</h3>
         <div class="grid grid-cols-2 gap-2">
           <button
-            class="rounded-md border p-3 text-left transition-colors"
+            class="min-w-0 rounded-md border p-3 text-left [overflow-wrap:anywhere] transition-colors"
             :class="app.target === 'dev' ? 'border-accent bg-accent-soft shadow-[inset_0_0_0_1px_var(--accent)]' : 'border-line-strong bg-surface hover:bg-surface-3'"
             @click="pickTarget('dev')"
           >
@@ -122,7 +128,7 @@ const shortcuts: [string, MessageKey][] = [
             <div class="text-[12px] text-fg-3">{{ t('settings.devHint') }}</div>
           </button>
           <button
-            class="rounded-md border p-3 text-left transition-colors"
+            class="min-w-0 rounded-md border p-3 text-left [overflow-wrap:anywhere] transition-colors"
             :class="app.target === 'prod' ? 'border-prod bg-prod-soft shadow-[inset_0_0_0_1px_var(--prod)]' : 'border-line-strong bg-surface hover:bg-surface-3'"
             @click="pickTarget('prod')"
           >
@@ -134,7 +140,7 @@ const shortcuts: [string, MessageKey][] = [
         </div>
       </section>
 
-      <section class="space-y-2 px-5 py-4">
+      <section class="space-y-2 px-4 py-4">
         <div class="flex items-center">
           <h3 class="section-title">{{ t('settings.imagery') }}</h3>
           <button v-if="!editingImagery" class="btn btn-ghost btn-sm ml-auto" data-testid="edit-imagery" @click="editingImagery = true">
@@ -160,7 +166,7 @@ const shortcuts: [string, MessageKey][] = [
         </div>
       </section>
 
-      <section class="space-y-2 px-5 py-4">
+      <section class="space-y-2 px-4 py-4">
         <h3 class="section-title">{{ t('settings.mirror') }}</h3>
         <div v-if="app.mirror" class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12px]">
           <span class="text-fg-3">{{ t('settings.status') }}</span>
@@ -214,7 +220,7 @@ const shortcuts: [string, MessageKey][] = [
         <div v-else class="text-fg-3">{{ app.serverError ?? t('common.unknown') }}</div>
       </section>
 
-      <section class="space-y-2 px-5 py-4">
+      <section class="space-y-2 px-4 py-4">
         <h3 class="section-title">Claude (MCP)</h3>
         <p class="text-[12px] text-fg-2">{{ t('settings.mcpHint') }}</p>
         <div class="flex items-center gap-2">
@@ -237,7 +243,7 @@ const shortcuts: [string, MessageKey][] = [
         </div>
       </section>
 
-      <section class="space-y-2 px-5 py-4">
+      <section class="space-y-2 px-4 py-4">
         <h3 class="section-title">{{ t('settings.josm') }}</h3>
         <p class="text-[12px] text-fg-2">
           {{ t('settings.josmBefore') }}
@@ -245,20 +251,19 @@ const shortcuts: [string, MessageKey][] = [
         </p>
       </section>
 
-
-      <section class="space-y-2 px-5 py-4">
+      <section class="space-y-2 px-4 py-4">
         <h3 class="section-title">{{ t('settings.keyboard') }}</h3>
-        <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-[12px]">
+        <div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-x-6 gap-y-1 text-[12px]">
           <div v-for="[k, l] in shortcuts" :key="k" class="flex items-center justify-between gap-2">
             <span class="text-fg-2">{{ t(l) }}</span><span class="kbd">{{ k }}</span>
           </div>
         </div>
       </section>
     </div>
-    <template #footer>
+    <footer class="flex shrink-0 items-center border-t border-line-strong bg-surface-2 px-4 py-2.5">
       <span class="text-[11.5px] text-fg-3">OSM Review Editor {{ app.status?.version ?? '' }} · Apache-2.0</span>
-    </template>
-  </Modal>
+    </footer>
+  </div>
 
   <ConfirmDialog
     v-if="confirmProd"

@@ -28,7 +28,6 @@ export const useAppStore = defineStore('app', () => {
   const serverError = ref<string | null>(null)
   const connection = ref<ConnectionState>('connecting')
 
-  const settingsOpen = ref(false)
   const mergeDraftId = ref<string | null>(null)
 
   const toasts = ref<Toast[]>([])
@@ -99,7 +98,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   return {
-    status, account, imagery, areas, serverError, connection, settingsOpen, mergeDraftId,
+    status, account, imagery, areas, serverError, connection, mergeDraftId,
     toasts, toast, dismiss, fail,
     target, mirror,
     init, loadStatus, loadAccount, setTarget, logout, setMirror,
