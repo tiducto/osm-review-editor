@@ -24,8 +24,8 @@ cp .env.example .env      # set DB_PASSWORD and TOKEN_ENCRYPTION_KEY at least
 docker compose up -d --build
 ```
 
-The first start downloads the Czechia extract from Geofabrik and builds the GOL (about 15 minutes);
-the `gol` sidecar then applies daily replication diffs and does a weekly full rebuild. Open
+The first start downloads the Czechia extract from Geofabrik (about 950 MB, so a few minutes on a
+typical connection) and builds the GOL (under 2 minutes on Apple Silicon); the `gol` sidecar then applies daily replication diffs and does a weekly full rebuild. Open
 http://localhost:3000.
 
 Uploads go to the OSM **development** API until you switch to production in Settings (with a
@@ -92,6 +92,14 @@ names the one the app reads. Each day it copies the current file under a tempora
 atomically. The app notices within 15 seconds, opens the new file, swaps it in under a write lock,
 drops rule caches and closes the old one; the UI refreshes its layers. Because `gol update` is
 marked experimental, a full rebuild from a fresh extract runs every 7 days (`REBUILD_DAYS`).
+
+Disk space for the `goldata` volume: `gol update` only appends, so the GOL grows with every update
+and the weekly rebuild compacts it again. A fresh Czechia GOL is about 1.5 GB; after one month of
+daily updates it had doubled to 3.1 GB. During an update the volume holds the current GOL, the idle
+one and the temporary copy being updated, so three GOLs at once; a full build additionally needs the
+950 MB extract and the build's index work directory. With the default `REBUILD_DAYS=7` plan for at
+least 10 GB free, and more if you rebuild less often. The sidecar deletes the extract, the build's
+`-indexes` directory, the update's `.gob` file and any temporary copy after each run, failed or not.
 
 After every run the sidecar atomically rewrites `/data/status.json`, which the app serves as
 `mirror.sidecar` in `/api/status`:
@@ -234,7 +242,7 @@ docs/     API reference
 
 | # | Milestone | State |
 | --- | --- | --- |
-| 0 | GOL spike | Reads verified on a Czechia GOL (GOQL, `parents()`, distance queries, all rules < 1.2 s). `gol update` half: run `infra/gol/spike.sh`. |
+| 0 | GOL spike | Done end to end on a Czechia GOL: reads (GOQL, `parents()`, distance queries, all rules < 1.2 s), `gol build --updatable`, a month of `gol update` and reading the result from Kotlin (`infra/gol/spike.sh`) |
 | 1 | Skeleton and data | Monorepo, compose, Postgres, gol sidecar with update, rebuild and swap |
 | 2 | Map explorer | Done |
 | 3 | Rules engine | Seven rules, issue layers with counts and filters |
@@ -247,6 +255,16 @@ docs/     API reference
 Notes from the GOL spike: GeoDesk for Java 2.1.0 declares `maxMetersFrom(double, Feature)` but
 throws "todo", so rules use `withinMeters()` (bbox prefilter plus exact JTS distance). Lookup by ID
 scans the whole GOL (about 0.5 s for Czechia), so lookups are batched into one ID-set scan.
+
+The `gol update` half (GOL Tool 2.5.3, Czechia extract of 2026-10-04, Apple Silicon): `gol build
+--updatable` took 1 min 36 s and gave a 1.53 GB GOL; `gol update` from replication sequence 4930
+(2026-10-04) to 4960 (2026-11-04) took 44 s over 373 tiles (+84,748, \*120,419, −10,284 features)
+and grew the file to 3.07 GB, leaving an 18 MB `.gob` file next to it; the build leaves a
+`-indexes` directory. `gol check` was clean after both. Reading both files from Kotlin
+(`GolUpdateSpikeTest`) in Brno-střed went from 123,168 to 123,371 features: 271 added, 68 removed,
+1,133 changed. GeoDesk adds pseudo-tags such as `geodesk:missing_members` to relations that cross
+the extract boundary; they are not OSM data, so the app drops every `geodesk:` key when it reads
+the mirror and again before anything is proposed or uploaded.
 
 ## License
 

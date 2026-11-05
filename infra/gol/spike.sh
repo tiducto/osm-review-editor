@@ -13,5 +13,6 @@ echo "== update"
 time "$GOL" update "$WORK/after.gol"
 "$GOL" check "$WORK/after.gol"
 echo "== compare from Kotlin"
-OSM_REVIEW_TEST_GOL="$WORK/before.gol" OSM_REVIEW_TEST_GOL_AFTER="$WORK/after.gol" \
+ABS=$(cd "$WORK" && pwd)
+OSM_REVIEW_TEST_GOL="$ABS/before.gol" OSM_REVIEW_TEST_GOL_AFTER="$ABS/after.gol" \
   ./gradlew :rules:test --tests '*GolUpdateSpikeTest*' -i | grep -E "GolUpdateSpikeTest|changed|added|removed|PASSED|FAILED"

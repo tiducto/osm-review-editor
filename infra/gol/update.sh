@@ -37,31 +37,39 @@ publish() {
   log "current -> $1"
 }
 
+clean_build() { rm -rf "$DATA/build.gol" "$DATA/build.gol.journal" "$DATA/build-indexes" "$DATA"/build-*.gob; }
+clean_update() { rm -rf "$DATA/update.gol" "$DATA/update.gol.journal" "$DATA/update-indexes" "$DATA"/update-*.gob; }
+
 full_build() {
   local idle; idle=$(idle_name)
+  clean_build
   log "downloading $EXTRACT_URL"
-  run curl -fSL --retry 3 -o "$DATA/extract.osm.pbf.tmp" "$EXTRACT_URL" || return 1
+  run curl -fSL --retry 3 -o "$DATA/extract.osm.pbf.tmp" "$EXTRACT_URL" || { rm -f "$DATA/extract.osm.pbf.tmp"; return 1; }
   mv -f "$DATA/extract.osm.pbf.tmp" "$DATA/extract.osm.pbf"
-  rm -f "$DATA/build.gol" "$DATA/build.gol.journal"
   log "building $idle (--updatable keeps waynode ids for gol update)"
-  run gol build --updatable "$DATA/build.gol" "$DATA/extract.osm.pbf" || return 1
-  run gol check "$DATA/build.gol" || return 1
-  mv -f "$DATA/build.gol" "$DATA/$idle"
-  date +%s > "$DATA/last-build"
-  publish "$idle"
+  if run gol build --updatable "$DATA/build.gol" "$DATA/extract.osm.pbf" && run gol check "$DATA/build.gol"; then
+    mv -f "$DATA/build.gol" "$DATA/$idle"
+    clean_build
+    rm -f "$DATA/extract.osm.pbf"
+    date +%s > "$DATA/last-build"
+    publish "$idle"
+  else
+    clean_build
+    return 1
+  fi
 }
 
 update() {
   local cur idle; cur=$(current_name); idle=$(idle_name)
   log "updating a copy of $cur as $idle"
-  rm -f "$DATA/update.gol" "$DATA/update.gol.journal"
-  run cp "$DATA/$cur" "$DATA/update.gol" || return 1
-  if run gol update "$DATA/update.gol" && run gol check "$DATA/update.gol"; then
+  clean_update
+  if run cp "$DATA/$cur" "$DATA/update.gol" && run gol update "$DATA/update.gol" && run gol check "$DATA/update.gol"; then
     mv -f "$DATA/update.gol" "$DATA/$idle"
+    clean_update
     publish "$idle"
   else
     log "update failed; keeping $cur (next full rebuild will recover)"
-    rm -f "$DATA/update.gol" "$DATA/update.gol.journal"
+    clean_update
     return 1
   fi
 }
