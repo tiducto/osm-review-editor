@@ -44,6 +44,7 @@ dependencies {
 
     implementation(libs.mcp.kotlin.sdk.server)
     implementation(libs.logback.classic)
+    implementation(libs.eclipse.collections)
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.ktor.server.test.host)
@@ -130,4 +131,13 @@ tasks.named<JavaExec>("run") {
 
 tasks.test {
     environment("OSM_REVIEW_TEST_GOL", System.getenv("OSM_REVIEW_TEST_GOL") ?: "")
+}
+
+tasks.register<JavaExec>("runClipper") {
+    group = "application"
+    description = "Runs the replication clipper once against a GOL: --gol <file> --out <dir> [--max N], or --header <file.gol>..."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("eu.tiducto.osmreview.server.replication.ClipperCli")
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    workingDir = rootProject.projectDir
 }

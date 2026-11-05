@@ -173,6 +173,11 @@ export interface UiEventMergeProgress {
   progress: MergeProgress
 }
 
+export interface UiEventMirrorStatus {
+  type: 'mirror_status'
+  status: MirrorStatus
+}
+
 export interface UiEventMirrorSwapped {
   type: 'mirror_swapped'
   status: MirrorStatus
@@ -216,7 +221,7 @@ export interface UiEventScanFinished {
   issueCount: number
 }
 
-export type UiEvent = UiEventDraftUpdated | UiEventMergeProgress | UiEventMirrorSwapped | UiEventPushView | UiEventRemoteCommand | UiEventRulesChanged | UiEventScanFinished
+export type UiEvent = UiEventDraftUpdated | UiEventMergeProgress | UiEventMirrorStatus | UiEventMirrorSwapped | UiEventPushView | UiEventRemoteCommand | UiEventRulesChanged | UiEventScanFinished
 
 export interface ApiError {
   error: string
@@ -728,6 +733,10 @@ export interface MirrorStatus {
   dataTimestamp: string | null
   message: string | null
   sidecar: SidecarStatus | null
+  dataSequence: number | null
+  dataSource: string | null
+  lagSeconds: number | null
+  replication: ReplicationStatus | null
 }
 
 export interface OpenChangeElsewhere {
@@ -875,6 +884,37 @@ export interface SidecarStatus {
   replicationSequence: number | null
   replicationTimestamp: string | null
   current: string | null
+  phase: string | null
+  cycleStartedAt: string | null
+  lastCycleSeconds: number | null
+  nextCycleAt: string | null
+  availableSequence: number | null
+  dataTimestamp: string | null
+  lagSeconds: number | null
+  intervalSeconds: number | null
+}
+
+export interface ReplicationStatus {
+  enabled: boolean
+  phase: string
+  source: string | null
+  area: string | null
+  sequence: number | null
+  timestamp: string | null
+  lagSeconds: number | null
+  firstSequence: number | null
+  sourceSequence: number | null
+  backlog: number | null
+  lastRunAt: string | null
+  lastRunSeconds: number | null
+  lastRunSequences: number
+  keptLastRun: number
+  droppedLastRun: number
+  keptTotal: number
+  droppedTotal: number
+  nextRunAt: string | null
+  rebasedAt: string | null
+  error: string | null
 }
 
 export interface RuleOrigin {

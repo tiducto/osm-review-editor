@@ -48,9 +48,10 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Set at least `DB_PASSWORD` and `TOKEN_ENCRYPTION_KEY` in `.env` first. The first start downloads the
-Czechia extract from Geofabrik (about 950 MB) and builds the GOL (under 2 minutes on Apple Silicon);
-the `gol` sidecar then applies daily replication diffs and rebuilds weekly. Open
+Set at least `DB_PASSWORD` and `TOKEN_ENCRYPTION_KEY` in `.env` first. The first start downloads the Czechia extract from Geofabrik (about 950 MB, so a few minutes on a
+typical connection) and builds the GOL (under 2 minutes on Apple Silicon); from then on the app clips
+the planet's minutely diffs to Czechia and the `gol` sidecar applies them every 3 minutes, with a
+weekly full rebuild (see [How the mirror stays current](#how-the-mirror-stays-current)). Open
 http://localhost:3000.
 
 Uploads go to the OSM **development** API until you switch to production in Settings (with a
@@ -83,8 +84,14 @@ Environment variables (`.env` for Docker Compose):
 | `BING_KEY` | Optional Bing Maps key; when set, Bing aerial imagery is offered |
 | `RULES_DIR` | Your rules folder; default `user-rules`, Compose mounts `./user-rules` at `/rules` |
 | `SCAN_RERUN_DAYS` | After a mirror swap, re-run validation scans started in this many days (default 7, 0 turns it off) |
-| `EXTRACT_URL` | Geofabrik extract the gol sidecar mirrors (default Czechia) |
-| `UPDATE_INTERVAL`, `REBUILD_DAYS` | Sidecar update interval in seconds (default 86400) and full rebuild period (default 7) |
+| `EXTRACT_URL` | Geofabrik extract the gol sidecar builds from (default Czechia) |
+| `MIRROR_UPDATE_SECONDS` | Sidecar cycle: update the idle GOL and flip (default 180) |
+| `REBUILD_DAYS` | Full rebuild from `EXTRACT_URL` every this many days (default 7) |
+| `REPLICATION_ENABLED` | Run the minutely clipper in the app (compose sets `true`; default `false` for `./gradlew :server:run`) |
+| `REPLICATION_SOURCE_URL` | Upstream replication feed (default `https://planet.openstreetmap.org/replication/minute`) |
+| `REPLICATION_INTERVAL_SECONDS`, `REPLICATION_BATCH` | Clipper polling (60 s) and diffs per batch (60) |
+| `REPLICATION_AREA`, `REPLICATION_BUFFER_METERS` | Clip area: empty for the shipped Czechia polygon, a `.poly`/GeoJSON path or `mirror:CZ`; buffer (2000 m) |
+| `REPLICATION_DIR`, `REPLICATION_KEEP_DAYS` | Local replication directory (default `DATA_DIR/replication`) and how long diffs are kept (3 days) |
 | `CONTACT` | Contact for the User-Agent sent to the OSM API |
 | `PORT`, `REMOTE_CONTROL_PORT` | Ports (default 3000 and 8111) |
 | `DB_URL`, `DB_USER`, `DATA_DIR`, `GOL_FILE` | Set by Compose; `GOL_FILE` points at a GOL when running without the sidecar |
@@ -341,6 +348,7 @@ comments to revise it.
 | Rules folder | `list_rule_files`, `read_rule_file`, `validate_rule_file`, `write_rule_file`, `copy_rule_file`, `delete_rule_file` |
 | Presets | `search_presets`, `get_preset`, `match_preset`, `import_preset`, `detach_preset`, `apply_preset_bulk` (dry run, then a draft of up to 5,000 objects) |
 | View | `push_view`: move your open tab to an area or point, switch highlights, open a scan or draft, select objects; you see a toast "Claude changed the view" with undo |
+| Mirror | `update_mirror_now`: ask the gol sidecar to start an update cycle now; returns the mirror status (data time, lag, phase) or fails while a cycle runs |
 
 Arguments and results of every tool are in [docs/api.md](docs/api.md#mcp-mcp). `area` is an area
 preset, admin boundary or place name, a bbox `[west, south, east, north]` or a GeoJSON
@@ -379,17 +387,110 @@ Only deterministic fixes can be approved in bulk.
 
 ## How the mirror stays current
 
-The `gol` sidecar keeps two GOL files, `a.gol` and `b.gol`, in the shared volume; `/data/current`
-names the one the app reads. Each day it copies the current file, runs `gol update` and `gol check`
-on the copy and publishes it atomically. The app notices within 15 seconds, swaps the new file in,
-drops rule caches and tells the UI to refresh. Because `gol update` is marked experimental, a full
-rebuild runs every `REBUILD_DAYS` (7). After every run the sidecar writes `/data/status.json`, shown
-as `mirror.sidecar` in `/api/status` ([API](docs/api.md#sidecar-status)).
+The mirror is minutes behind OSM, not a day. Two parts cooperate over the shared `goldata` volume:
 
-Disk space: `gol update` only appends, so the GOL grows until the weekly rebuild compacts it. A fresh
-Czechia GOL is about 1.5 GB and doubled to 3.1 GB after a month of daily updates; during an update the
-volume holds three GOLs, and a rebuild also needs the extract and an index directory. Plan for at least
-10 GB free with the default rebuild period.
+1. **Clipper (in the app).** Every minute (`REPLICATION_INTERVAL_SECONDS`) it reads
+   `state.txt` of the planet's minutely replication feed (`REPLICATION_SOURCE_URL`), downloads every
+   new `AAA/BBB/CCC.osc.gz` in order (batches of `REPLICATION_BATCH`, one request at a time, with the
+   app's User-Agent) and keeps only what concerns the mirror:
+   - every change to an element whose id is already in the GOL (one batched ID-set scan of the open
+     mirror per batch) or that the clipper kept before (`tracked-ids.bin`, so a node created a minute
+     ago and moved now is still kept even though the GOL has not caught up yet);
+   - created, modified and deleted nodes inside the clip area plus `REPLICATION_BUFFER_METERS`
+     (default 2,000 m). The area is the Geofabrik extract polygon shipped with the server
+     (`czech-republic.poly`), a `.poly` or GeoJSON file named by `REPLICATION_AREA`, or
+     `REPLICATION_AREA=mirror:CZ` for the mirror's own `admin_level=2` boundary with that ISO code;
+   - ways that reference a kept or existing node (always with their full `nd` list), plus the nodes
+     of kept ways that appear in the same diff, so `gol update` finds their coordinates;
+   - relations with a kept or existing member, repeated until nothing changes.
+
+   It writes the clipped diffs to `/data/replication` in the replication layout, with OSM's sequence
+   numbers and timestamps (`AAA/BBB/CCC.osc.gz`, `AAA/BBB/CCC.state.txt`, then `state.txt` last, all
+   atomically), and keeps `clipper.json` (first sequence, source, area). User names and uids are not
+   copied. A restart resumes from `state.txt`. When the GOL is older than the oldest local diff (first
+   start, a long outage, or `REPLICATION_SOURCE_URL` changed), the clipper re-bases: it finds the
+   upstream sequence 15 minutes before the GOL's data time, empties the directory and starts there,
+   working off the backlog in batches. Diffs older than `REPLICATION_KEEP_DAYS` (3) are deleted,
+   but never one the GOL pair may still need.
+2. **Sidecar (`gol` container).** It keeps two GOLs, `a.gol` and `b.gol`; `/data/current` names the
+   one the app reads. Every `MIRROR_UPDATE_SECONDS` (default 180) it serves `/data` on
+   `127.0.0.1:8189` inside its container (busybox `httpd`) and runs
+   `gol update <idle>.gol http://127.0.0.1:8189/replication` on the idle file in place, then
+   `gol check`, deletes the `-update.gob` and `-indexes` leftovers and rewrites `/data/current`
+   atomically. The app polls every 5 seconds, opens the new file, swaps it in under the write lock,
+   closes the old one, drops rule caches and writes `/data/released`
+   (`{"open":"b.gol","released":"a.gol","generation":7,"at":"…"}`). The sidecar updates a file
+   only after the app has acknowledged that it opened the other one: GeoDesk holds a shared lock
+   while a GOL is open and `gol update` needs an exclusive one. Without an ack for
+   `RELEASE_TIMEOUT_SECONDS` (600) it tries anyway, and `gol update` refuses a file that is still
+   open. When nothing new arrived it skips the cycle without flipping.
+
+`gol update` scans every tile on each run, so each cycle has a fixed cost of roughly 10 to 30
+seconds for Czechia plus the changes; with the default cadence the mirror's data is usually 3 to 6
+minutes old. `POST /api/mirror/update-now` (or the MCP tool `update_mirror_now`) starts a cycle at
+once. The weekly full rebuild stays (`REBUILD_DAYS`, default 7): the sidecar builds the idle file
+from a fresh Geofabrik extract with `--updatable`, flips to it, waits for the ack and copies it over
+the other file. The rebuilt GOL carries Geofabrik's replication URL, so its next `gol update` with
+the local URL finds its start sequence by the data timestamp, which the clipper keeps available
+(it re-bases if not).
+
+Disk space for the `goldata` volume: two GOLs (about 1.5 GB each for Czechia right after a build;
+`gol update` appends rewritten tiles and punches holes into the old pages, so each stays near its
+size between rebuilds), the replication directory (clipped Czech minutely diffs, a few MB per day,
+three days kept), and during the weekly rebuild the 950 MB extract, a third GOL being built and its
+index work directory. Plan for at least 8 GB free.
+
+Failure modes:
+
+- **Clipper lag.** `mirror.replication.lagSeconds` and `backlog` grow when the planet feed is
+  unreachable or the app was down; it catches up in batches. `mirror.replication.error` has the
+  last error. The sidecar meanwhile reports `result: "current"` (nothing new).
+- **Missing nodes.** A GOL keeps no area, so the clipper decides what is relevant. Untagged way nodes
+  are not GeoDesk features and their ids cannot be looked up, so a node moved outside the buffer
+  that belongs to a way inside the area keeps its old position, and a new way that only reuses
+  existing untagged nodes is dropped, until the weekly rebuild. Ways whose nodes could not be
+  resolved get `geodesk:missing_nodes`; `infra/gol/live-spike.sh` counts them before and after.
+- **Failed update or check.** The current GOL stays; a file that fails `gol check` is replaced by a
+  copy of the current one before the next cycle. `mirror.sidecar.error` has the tool's last lines.
+- **App not acknowledging.** The sidecar waits (`phase: "idle"`, `result: "waiting"`) and retries.
+
+After every step the sidecar atomically rewrites `/data/status.json`, which the app serves as
+`mirror.sidecar` in `/api/status` and pushes as the `mirror_status` WebSocket event:
+
+```json
+{
+  "lastRunAt": "2026-11-05T22:30:12Z",
+  "lastRunKind": "update",
+  "result": "ok",
+  "error": null,
+  "lastFullBuildAt": "2026-11-01T02:10:00Z",
+  "nextFullBuildDue": "2026-11-08T02:10:00Z",
+  "replicationSequence": 7360230,
+  "replicationTimestamp": "2026-11-05T22:46:03Z",
+  "current": "b.gol",
+  "phase": "idle",
+  "cycleStartedAt": null,
+  "lastCycleSeconds": 27,
+  "nextCycleAt": "2026-11-05T22:53:12Z",
+  "availableSequence": 7360232,
+  "dataTimestamp": "2026-11-05T22:46:03Z",
+  "lagSeconds": 249,
+  "intervalSeconds": 180
+}
+```
+
+`replicationSequence` and `dataTimestamp` come from the current GOL's header. A failed first build
+is retried every 15 minutes (`RETRY_SECONDS`). Without the sidecar the file is absent and
+`mirror.sidecar` is `null`. Edits you upload stay visible as an overlay until the mirror's data
+time passes the upload (`GET /api/overlay`, [API](docs/api.md#overlay-of-own-uploads)).
+
+In the app, the top bar starts its right-hand group with a freshness pill: "Data as of 14:05" with a
+dot (green under 10 minutes of lag, amber under 2 hours, red when older or when the last cycle
+failed) and a spinner while a cycle runs. Clicking it shows the OSM data time and sequence, the lag,
+the last and next cycle, the next full rebuild and the last error, with "Update now". When new data
+arrives while you edit or review, the map keeps what you see and the pill offers "Reload map data";
+otherwise the tiles reload on their own. Your own uploads stay drawn as a dashed overlay until the
+mirror contains them.
 
 ## Development
 
@@ -403,6 +504,24 @@ npm install
 GOL_FILE=/path/to/czechia.gol ./gradlew :server:run
 npm run dev
 ```
+
+For a minutes-fresh mirror without Docker, `infra/gol/local-mirror.sh` seeds an alternating pair
+`data/live/a.gol` and `b.gol` from an updatable GOL (APFS clones, so no extra disk at first) and runs
+the sidecar loop natively (needs the `gol` binary, `jq`, and `python3` or `busybox` for the local
+HTTP server); start the server against the pair in a second terminal, which runs the clipper:
+
+```sh
+infra/gol/local-mirror.sh /path/to/gol data/spike/after.gol
+DATA_DIR=data/live REPLICATION_ENABLED=true ./gradlew :server:run
+```
+
+`./gradlew :server:runClipper --args="--gol <file.gol> --out <dir> --max 20"` runs the clipper once
+(20 minutely sequences past the GOL's data time); `--header <file.gol>` prints a GOL's replication
+sequence, timestamp and URL. `infra/gol/live-spike.sh /path/to/gol data/spike/after.gol` checks the
+whole chain against the real `gol` on copies in `data/live-spike`: clipping, `gol update` from the
+local HTTP feed (first by timestamp, then incrementally), `gol check`, the lock refusal while a JVM
+holds the file, both files of the pair, file size and `geodesk:missing_nodes`, printing `PASS`/`FAIL`
+lines and `RESULT PASS` at the end.
 
 The server runs on `:3000` and `:8111` against any GOL built with GOL Tool 2.x; `npm run dev` serves
 the UI with hot reload on `:5173` and proxies `/api`, `/auth` and `/mcp` to `:3000`. Run `npm install`
@@ -440,7 +559,7 @@ shared/   KMP module (jvm + js): wire models, TagDiff, MapCSS engine, presets, T
 rules/    GOL mirror with hot swap, rule engine, built-in rules, MapCSS host over GeoDesk
 web/      Vue 3 app: MapLibre map, iD editor adapter, inspector, presets, review, i18n (cs, en)
 user-rules.example/  Example rules folder, also shipped as the built-in rules
-infra/    gol sidecar: build, update, check, swap
+infra/    gol sidecar: build, minutely update of an alternating GOL pair, check, swap; live spike
 config/   Example area presets
 docs/     API reference
 ```
@@ -467,7 +586,7 @@ real production changeset is still to come.
 
 | Area | State |
 | --- | --- |
-| GOL mirror, sidecar with update, rebuild and hot swap | Done |
+| GOL mirror: minutely clipped replication, alternating GOL pair with hot swap, weekly rebuild | Done |
 | iD-look map from server vector tiles | Done |
 | Rules engine, MapCSS engine and checks, built-in Kotlin rules | Done |
 | Highlights with coverage legends | Done |
@@ -477,7 +596,7 @@ real production changeset is still to come.
 | In-browser editor (iD core), inspector with preset fields, in-editor validation | Done |
 | Presets with overlays, bulk apply; smart presets | Done |
 | Czech and English UI | Done |
-| MCP server (30 tools, `push_view`) | Done |
+| MCP server (31 tools, `push_view`) | Done |
 | JOSM remote control | Done; imports tag changes and new tagged nodes, not geometry |
 | First real changeset on production | Pending |
 
@@ -499,3 +618,4 @@ patterns), id-tagging-schema (ISC), MapLibre GL (BSD-3-Clause) and clipper2-ts (
 License 1.0); iD's sprites carry icons under CC0 and CC BY 4.0 (see NOTICE). The example rules are
 Apache-2.0; remote rule sources keep their own licences and are not redistributed. The gol sidecar
 downloads GOL Tool (AGPL-3.0) when its image is built; it is not part of this repository.
+The server ships Geofabrik's Czechia extract polygon and the tests use recorded minutely diffs (ODbL, see NOTICE).

@@ -45,8 +45,11 @@ Each run is recorded in `app.rule_runs` with its scope key and scope geometry (s
 
 | Method | Path | Returns |
 | --- | --- | --- |
-| GET | `/api/status` | `AppStatus` (version, mirror, account, MCP URL, remote-control port); `mirror.sidecar` is the gol sidecar's `SidecarStatus`, `null` without `/data/status.json` |
+| GET | `/api/status` | `AppStatus` (version, mirror, account, MCP URL, remote-control port); `mirror` is a `MirrorStatus` (see [Mirror status](#mirror-status)) |
 | GET | `/api/settings/mcp` | `McpInfo` `{url, token, claudeCodeCommand}`: the MCP endpoint, its bearer token and the `claude mcp add` command shown in Settings |
+| GET | `/api/mirror/status` | `MirrorStatus` alone |
+| POST | `/api/mirror/update-now` | 202 with `MirrorStatus`: asks the gol sidecar to start a cycle now (writes `/data/update-now`, which the sidecar checks every 2 seconds, and wakes the clipper). 409 `ApiError` when no sidecar manages the mirror (no `/data/current`), when `sidecar.phase` is `updating`, `checking`, `swapping` or `rebuilding`, or when a request is still pending |
+| GET | `/api/overlay?bbox=` | `OverlayCollection` of your uploaded changes the mirror does not contain yet (see [Overlay of own uploads](#overlay-of-own-uploads)) |
 | GET | `/api/areas` | `Area[]` presets from `DEFAULT_AREAS` and the built-in names (geometry omitted) |
 | GET | `/api/areas/{name}` | `Area` with GeoJSON geometry (preset polygon from `DEFAULT_AREAS`, else admin boundary from the mirror) |
 | GET | `/api/imagery` | `ImagerySource[]` for the map: the configured list plus Bing when `BING_KEY` is set |
@@ -332,13 +335,91 @@ for the changeset `source` tag when the layer was used (`ČÚZK ortofoto`, `Esri
   `wms` URL needs `{bbox-epsg-3857}` (the MapLibre placeholders)
 - `maxZoom` is outside 1-24, or `sourceTag` is longer than 255 characters (the OSM tag limit)
 
-### Sidecar status
+### Mirror status
 
-`SidecarStatus` mirrors `/data/status.json`, which the gol sidecar rewrites atomically after every
-build or update: `lastRunAt`, `lastRunKind` (`build` or `update`), `result` (`ok` or `failed`;
-`unknown` when the file cannot be parsed), `error`, `lastFullBuildAt`, `nextFullBuildDue`,
-`replicationSequence` and `replicationTimestamp` (the GOL's revision as `gol info` reports it) and
-`current` (the published GOL file). Every field is optional.
+`MirrorStatus` (field names are stable; every field except `available` may be `null`):
+
+| Field | Meaning |
+| --- | --- |
+| `available` | A GOL is open |
+| `file` | Open file (`a.gol`, `b.gol`, or the `GOL_FILE` name) |
+| `openedAt` | When the app opened it |
+| `dataTimestamp` | OSM data time of the open GOL (replication timestamp from the GOL header, not the file time); `null` for a GOL without replication info |
+| `dataSequence` | Replication sequence of the open GOL (minutely sequence once the sidecar has updated it, Geofabrik's daily sequence right after a build) |
+| `dataSource` | Replication URL stored in the GOL (the sidecar's local feed, or Geofabrik's after a build) |
+| `lagSeconds` | Now minus `dataTimestamp` |
+| `message` | Why no GOL is open, or a problem writing the release ack |
+| `sidecar` | `SidecarStatus` from `/data/status.json`, `null` without the sidecar |
+| `replication` | `ReplicationStatus` of the clipper, `null` when `REPLICATION_ENABLED` is off |
+
+`SidecarStatus` mirrors `/data/status.json`, which the gol sidecar rewrites atomically at every phase
+change and after every cycle:
+
+| Field | Meaning |
+| --- | --- |
+| `phase` | `idle` (sleeping until `nextCycleAt`), `rebuilding`, `updating` (`gol update` on the idle file), `checking` (`gol check`), `swapping` (flipped `/data/current`, waiting up to a minute for the app's ack) |
+| `cycleStartedAt` | Start of the running cycle, `null` when idle |
+| `lastRunAt`, `lastRunKind` | End of the last cycle and its kind: `build` or `update` |
+| `result` | Last cycle: `ok` (updated and flipped), `current` (nothing new), `waiting` (no local replication yet, or the app has not released the idle file; see `error`), `skipped`, `failed`; `unknown` when the file cannot be parsed |
+| `error` | Last lines of the failing tool's output, or what the sidecar waits for |
+| `lastCycleSeconds` | Duration of the last cycle |
+| `nextCycleAt` | Next scheduled cycle (while idle) |
+| `intervalSeconds` | `MIRROR_UPDATE_SECONDS` |
+| `lastFullBuildAt`, `nextFullBuildDue` | Weekly rebuild bookkeeping |
+| `current` | The published GOL file |
+| `replicationSequence`, `replicationTimestamp` | Sequence and data time from the current GOL's header |
+| `dataTimestamp`, `lagSeconds` | Same data time, and its age when the file was written |
+| `availableSequence` | Newest sequence in the local replication directory (what the next cycle can reach) |
+
+`ReplicationStatus` (the clipper in the app):
+
+| Field | Meaning |
+| --- | --- |
+| `enabled` | Always `true` when present |
+| `phase` | `idle`, `clipping` (downloading and filtering diffs), `rebasing` (finding a new start sequence for an older GOL), `waiting` (no GOL open yet) |
+| `source`, `area` | Upstream feed URL and clip area name |
+| `sequence`, `timestamp` | Newest clipped sequence and its OSM time |
+| `lagSeconds` | Now minus `timestamp` |
+| `sourceSequence`, `backlog` | Newest upstream sequence seen and how many are still to clip |
+| `firstSequence` | Oldest sequence kept locally |
+| `lastRunAt`, `lastRunSeconds`, `lastRunSequences` | Last run: end, duration, sequences processed |
+| `keptLastRun`, `droppedLastRun`, `keptTotal`, `droppedTotal` | Changes kept and dropped (last run, since the app started) |
+| `nextRunAt` | Next scheduled run |
+| `rebasedAt` | Last re-base |
+| `error` | Last run's error, `null` after a successful run |
+
+The UI's freshness indicator shows "data as of `dataTimestamp`" with `lagSeconds`, and the pipeline
+step from `replication.phase` and `sidecar.phase`. Updates arrive as `mirror_status` events, so no
+polling is needed.
+
+### Overlay of own uploads
+
+After a merge, uploaded changes stay visible until the mirror contains them. `GET /api/overlay`
+(optional `bbox=west,south,east,north`, filtered by the change's centroid) returns:
+
+```json
+{
+  "type": "FeatureCollection",
+  "dataTimestamp": "2026-11-05T22:46:03Z",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "w55",
+      "geometry": {"type": "LineString", "coordinates": [[17.9, 49.93], [17.91, 49.93]]},
+      "properties": {
+        "ref": {"type": "way", "id": 55}, "action": "modify", "tags": {"highway": "footway", "surface": "asphalt"},
+        "draftId": "…", "changeId": "…", "changesetId": 1001, "uploadedAt": "2026-11-05T22:47:10Z"
+      }
+    }
+  ]
+}
+```
+
+A change is listed while the mirror's `dataTimestamp` is earlier than its upload (end of the
+changeset upload) plus 90 seconds, or when the mirror has no data time; uploads older than 14 days
+are never listed. `geometry` is the new geometry (`baseGeom` for deletions, then `tags` are the old
+tags), `ref` the real id after creation (the feature `id` is the short form, e.g. `w55`). When an object was uploaded more than once, the latest
+upload wins. Refetch after `draft_updated`, `mirror_swapped` and `mirror_status` events.
 
 ## Rules folder
 
@@ -581,7 +662,8 @@ the client.
 | `push_view` | `bbox?`, `center?`, `zoom?`, `areaName?`, `highlights`, `replaceHighlights`, `scanId?`, `draftId?`, `select`, `message?` | Claude moved the view with the MCP `push_view` tool. `bbox` is `{west, south, east, north}` (the resolved area or, with only `select`, the selected objects), `center` is `{lng, lat}` with `zoom` (0–22, 17 when only a center was given), `areaName` is set when the area was given by name, `highlights` are highlight file paths (`replaceHighlights: false` adds them to the active ones, `true` makes exactly these active), `select` is an `OsmRef` list. The UI shows a toast "Claude changed the view" with undo. |
 | `draft_updated` | `draftId` | A draft changed (Claude proposed changes, a takeover withdrew changes, a draft was edited); refetch it. |
 | `merge_progress` | `progress`: `MergeProgress` `{draftId, group, done, total, changesetId?, message, finished, failed}` | Upload progress of a draft; `finished` ends it, `failed` with the error in `message`. |
-| `mirror_swapped` | `status`: `MirrorStatus` `{available, file?, openedAt?, dataTimestamp?, message?, sidecar?}` | The GOL was updated and swapped; refetch tiles and rule layers. |
+| `mirror_swapped` | `status`: `MirrorStatus` (see [Mirror status](#mirror-status)) | The GOL was updated and swapped; refetch tiles, rule layers and the [overlay](#overlay-of-own-uploads). |
+| `mirror_status` | `status`: `MirrorStatus` | Sent whenever the clipper or the sidecar changes state (clipper sequence, lag and phase; sidecar phase, cycle result and duration, next cycle, errors) and after every swap and `update-now` request. |
 | `rules_changed` | `changed`, `removed` | Files in the rules folder or remote sources changed (paths). Refetch `/api/rule-files` and presets. |
 | `scan_finished` | `scanId`, `scope`, `issueCount` | A validation scan finished, for example the automatic re-run after a mirror swap. |
 

@@ -43,4 +43,13 @@ The rules tests include a GOL built from OpenStreetMap highways of Opava-Kateři
 (rules/src/test/resources/fixtures/katerinky-highways.gol, also as web/src/editor/validation/fixtures/
 katerinky-highways.osm.gz), © OpenStreetMap contributors, ODbL.
 
+The server bundles server/src/main/resources/replication/czech-republic.poly, the Czech Republic
+extract polygon from Geofabrik (https://download.geofabrik.de/europe/czech-republic.poly), derived
+from OpenStreetMap data, © OpenStreetMap contributors, ODbL.
+
+The server tests include six OpenStreetMap minutely replication diffs (sequences 7360200 to 7360205
+of 2026-11-05, server/src/test/resources/replication/minute/) from
+https://planet.openstreetmap.org/replication/minute/, with user names and uids removed,
+© OpenStreetMap contributors, ODbL.
+
 Map data © OpenStreetMap contributors, available under the Open Database License (ODbL).

@@ -17,7 +17,7 @@ services:
     volumes: [goldata:/data]
     environment:
       EXTRACT_URL: ${EXTRACT_URL:-https://download.geofabrik.de/europe/czech-republic-latest.osm.pbf}
-      UPDATE_INTERVAL: ${UPDATE_INTERVAL:-86400}
+      MIRROR_UPDATE_SECONDS: ${MIRROR_UPDATE_SECONDS:-180}
       REBUILD_DAYS: ${REBUILD_DAYS:-7}
     restart: unless-stopped
 
@@ -38,6 +38,7 @@ services:
       DB_URL: jdbc:postgresql://db:5432/osmreview
       DB_USER: osmreview
       RULES_DIR: /rules
+      REPLICATION_ENABLED: ${REPLICATION_ENABLED:-true}
     restart: unless-stopped
 
 volumes:

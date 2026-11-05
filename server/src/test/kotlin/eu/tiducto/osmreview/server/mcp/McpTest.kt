@@ -222,6 +222,7 @@ class McpTest {
         assertEquals(
             setOf(
                 "list_rules", "run_rule", "query_osm", "get_object", "create_draft", "propose_changes", "propose_geometry", "update_change", "list_drafts", "get_draft",
+                "update_mirror_now",
                 "list_rule_files", "read_rule_file", "validate_rule_file", "write_rule_file", "delete_rule_file", "copy_rule_file",
                 "search_presets", "get_preset", "match_preset", "import_preset", "detach_preset", "apply_preset_bulk",
                 "run_scan", "get_scan", "diff_scans", "draft_from_scan", "list_highlights", "highlight_stats", "evaluate_highlight",
