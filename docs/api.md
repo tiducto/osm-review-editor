@@ -17,8 +17,9 @@ Object refs are `{type: 'node'|'way'|'relation', id}` in bodies and JOSM-style s
 
 Endpoints that run rules take exactly one of:
 
-- `area`: a preset or admin boundary name. When the area has a polygon (admin boundaries, presets
-  with geometry) rules are clipped to it, not just to its bbox.
+- `area`: a preset or admin boundary name. Presets with a geometry in `DEFAULT_AREAS` are matched
+  first (case-insensitive), then the mirror's admin boundaries and places. When the area has a
+  polygon (admin boundaries, presets with geometry) rules are clipped to it, not just to its bbox.
 - `bbox`: `west,south,east,north` in query strings, `{west, south, east, north}` in bodies.
 - `polygon`: a GeoJSON `Polygon` or `MultiPolygon` in WGS84 `[lon, lat]` (a bare geometry, a
   `Feature`, or a `FeatureCollection` with one feature). In query strings it is URL-encoded JSON; use
@@ -67,7 +68,7 @@ Each run is recorded in `app.rule_runs` with its scope key and scope geometry (s
 | POST | `/api/drafts` | `CreateDraftRequest` | `Draft` (author `user`) |
 | POST | `/api/drafts/from-rule` | `DraftFromRuleRequest` `{ruleId, area?, bbox?, polygon?, title?, limit?}` | `DraftDetail` (author `rule:<id>`; every issue with a fix becomes a change, refetched live; the draft's `scope` is the scope geometry) |
 | GET | `/api/drafts/{id}` | | `DraftDetail` |
-| PATCH | `/api/drafts/{id}` | `UpdateDraftRequest` | `Draft` |
+| PATCH | `/api/drafts/{id}` | `UpdateDraftRequest` `{title?, description?, status?, changesetComment?, changesetSource?}` | `Draft` (omitted fields are kept; `status` only `open` or `closed`) |
 | POST | `/api/drafts/{id}/changes` | `ProposeChangesRequest` | `ProposalResult[]` |
 | POST | `/api/drafts/{id}/refresh` | | `DraftDetail` (refetches live versions; marks conflicts, auto-rebases where possible) |
 | POST | `/api/drafts/{id}/approve-remaining?ruleId=` | | `DraftDetail` (approves pending changes with `confidence=deterministic` only) |
@@ -81,8 +82,13 @@ Each run is recorded in `app.rule_runs` with its scope key and scope geometry (s
 ### Changeset metadata
 
 `CreateDraftRequest` takes optional `area`, `changesetComment` and `changesetSource`; `Draft` returns
-them. Drafts from rules store the resolved area name in `area`; JOSM remote control stores
-`changeset_comment` and `changeset_source` there.
+them. Drafts from rules and MCP `create_draft` store the resolved area name in `area` (the preset or
+boundary name as found, without the scope hash) and `null` for bbox and polygon scopes. JOSM remote
+control stores `changeset_comment` and `changeset_source` there.
+
+`PATCH /api/drafts/{id}` edits `changesetComment` and `changesetSource` after creation. Values are
+trimmed; an empty string clears the field, so the merge falls back to the generated comment or to
+the review imagery alone.
 
 `ReviewRequest.imagery` is the attribution string of the imagery the reviewer had on (for example
 `Esri World Imagery`). It is stored on the `Review` as `imagery`.
@@ -91,7 +97,8 @@ The merge splits approved changes into changesets by rule (`manual` when none) a
 500 changes each. Each changeset carries:
 
 - `comment`: the draft's `changesetComment` when set, else `<area>: <rule comment> (rule <id>),
-  reviewed individually` (or the draft title for manual changes).
+  reviewed individually` (or the draft title for manual changes); the `<area>: ` prefix is left out
+  when the draft has no area, as for bbox and polygon scopes.
 - `source`: the distinct non-blank values of the draft's `changesetSource` and the `imagery` of the
   `approve` and `edit` reviews of the changes in that changeset, joined with `; `. Omitted when empty.
 - `created_by`.

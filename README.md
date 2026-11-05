@@ -62,7 +62,9 @@ uploads on dev with objects created on dev.
 preset: a `Polygon` or `MultiPolygon` geometry is used as is (its bbox computed from it); a feature
 with no or another geometry is looked up by name among the mirror's admin boundaries, like the
 built-in presets (Opava, Opava-Kateřinky, Brno, Brno-střed, Ostrava, Olomouc, Praha), which are
-always added. A missing or invalid file is logged and ignored.
+always added. A missing or invalid file is logged and ignored. Preset names work wherever an area
+name does (rule runs, drafts from rules, MCP `area` and `area://{name}`); a preset with a geometry
+wins over a mirror boundary of the same name, and rules are clipped to its polygon.
 
 ```sh
 cp config/areas.example.geojson config/areas.geojson
@@ -137,7 +139,7 @@ queries, creates a draft with a reason per change, and reads your rejection comm
 | `update_change` | Revise or withdraw a proposed change |
 | `list_drafts`, `get_draft` | Drafts, changes, your review decisions and comments |
 
-`area` is an admin boundary or place name (`"Opava"`, `"Opava-Kateřinky"`), a bbox
+`area` is an area preset, admin boundary or place name (`"Opava"`, `"Opava-Kateřinky"`), a bbox
 `[west, south, east, north]` (or the string `"w,s,e,n"`), or a GeoJSON Polygon/MultiPolygon in WGS84
 (geometry, `Feature` or one-feature `FeatureCollection`, at most 10° across and 20,000 vertices).
 Rules and GOQL queries are clipped to the polygon. Overpass queries get the area's bbox as a global
@@ -199,7 +201,8 @@ npm run dev
 ```
 
 Tests: `./gradlew :shared:allTests :rules:test :server:test`. Rule tests against a real GOL run when
-`OSM_REVIEW_TEST_GOL` points at one; `DraftFlowTest` uses Testcontainers.
+`OSM_REVIEW_TEST_GOL` points at one; `DraftFlowTest`, `McpTest` and `RemoteControlTest` use
+Testcontainers and skip without Docker.
 
 After changing a `@Serializable` model in `shared/`, run `./gradlew :shared:generateTsModels`; CI
 fails when `web/src/generated/models.ts` is stale.
