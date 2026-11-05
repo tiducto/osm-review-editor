@@ -43,9 +43,9 @@ class App(val config: Config, val http: HttpClient = defaultHttpClient()) : Auto
     val queries = MirrorQueries(mirror)
     val rules = RuleEngine(mirror)
     val account = Account(config, settings, http)
-    val drafts = DraftService(repo, account, mirror, queries, rules, events)
-    val merge = MergeService(config, repo, drafts, account, rules, events)
     val areas = AreaPresets(config, queries)
+    val drafts = DraftService(repo, account, mirror, queries, rules, events, areas::find)
+    val merge = MergeService(config, repo, drafts, account, rules, events)
     val search = Search(queries)
     val imagery = ImageryStore(settings)
 
@@ -82,6 +82,8 @@ class App(val config: Config, val http: HttpClient = defaultHttpClient()) : Auto
                 .onFailure { log.warn("Could not record rule run", it) }
         }
     }
+
+    fun area(name: String): eu.tiducto.osmreview.shared.Area? = areas.find(name) ?: queries.area(name)?.first
 
     fun editorLinks(ref: OsmRef): EditorLinks {
         val web = config.target(account.target).webUrl

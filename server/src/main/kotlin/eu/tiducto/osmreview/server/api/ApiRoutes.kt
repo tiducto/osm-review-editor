@@ -60,7 +60,7 @@ fun Route.apiRoutes(app: App) {
         get("/areas") { call.respond(app.areas.presets()) }
         get("/areas/{name}") {
             val name = call.parameters["name"]!!
-            val area = app.areas.find(name) ?: queries.area(name)?.first
+            val area = app.area(name)
                 ?: throw eu.tiducto.osmreview.server.core.NotFoundException("Unknown area '$name'")
             call.respond(area)
         }

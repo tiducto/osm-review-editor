@@ -10,6 +10,7 @@ import eu.tiducto.osmreview.server.db.DraftMeta
 import eu.tiducto.osmreview.server.db.DraftRepo
 import eu.tiducto.osmreview.server.db.NewChange
 import eu.tiducto.osmreview.server.osm.OsmElement
+import eu.tiducto.osmreview.shared.Area
 import eu.tiducto.osmreview.shared.Authors
 import eu.tiducto.osmreview.shared.BBox
 import eu.tiducto.osmreview.shared.Change
@@ -49,6 +50,7 @@ class DraftService(
     private val queries: MirrorQueries,
     private val rules: RuleEngine,
     private val events: EventBus,
+    private val presets: (String) -> Area? = { null },
 ) {
     private val log = LoggerFactory.getLogger(DraftService::class.java)
 
@@ -86,11 +88,11 @@ class DraftService(
         val withFix = run.issues.filter { it.fix != null }
         require(withFix.isNotEmpty()) { "Rule ${def.id} found ${run.issueCount} issues in $scopeKey, none with an automatic fix" }
         val draft = repo.createDraft(
-            title = req.title ?: "${def.title} · ${req.area ?: if (req.polygon != null) "drawn area" else "map area"}",
+            title = req.title ?: "${def.title} · ${resolved.areaName ?: if (req.polygon != null) "drawn area" else "map area"}",
             description = "${run.issueCount} issues found by rule ${def.id}; ${withFix.size} with a proposed fix.",
             author = Authors.rule(def.id),
             scope = scopeGeom,
-            meta = DraftMeta(area = req.area?.let { scopeKey.takeIf { k -> k.startsWith("area:") }?.removePrefix("area:") ?: it }),
+            meta = DraftMeta(area = resolved.areaName),
         )
         val proposals = withFix.map { issue ->
             ProposedChange(
@@ -124,11 +126,17 @@ class DraftService(
             return ResolvedScope(p.scope, p.key, p.geoJson, p.scope.polygon)
         }
         if (area != null) {
+            presets(area)?.let { a ->
+                val shape = PolygonScopes.fromAreaGeometry(a.geometry)
+                val scope = shape?.let { Scope(Geo.boundsOf(it), it) } ?: Scope(Geo.box(a.bbox))
+                val key = "area:${a.name}" + (shape?.let { "#${PolygonScopes.hash(it)}" } ?: "")
+                return ResolvedScope(scope, key, a.geometry ?: bboxPolygon(a.bbox), shape, a.name)
+            }
             val (a, found) = queries.area(area) ?: throw NotFoundException("Unknown area '$area'")
             val shape = found.polygon ?: PolygonScopes.fromAreaGeometry(a.geometry)
             val scope = if (shape != null && found.polygon == null) Scope(found.bounds, shape) else found
             val key = "area:${a.name}" + (shape?.let { "#${PolygonScopes.hash(it)}" } ?: "")
-            return ResolvedScope(scope, key, a.geometry, shape)
+            return ResolvedScope(scope, key, a.geometry, shape, a.name)
         }
         val b = bbox ?: throw IllegalArgumentException("Give an area name, a bbox or a polygon")
         require(b.west < b.east && b.south < b.north) { "bbox must be west,south,east,north with west < east and south < north" }
@@ -438,7 +446,13 @@ class DraftService(
     }
 }
 
-data class ResolvedScope(val scope: Scope, val key: String, val geometry: JsonElement?, val polygon: Geometry?) {
+data class ResolvedScope(
+    val scope: Scope,
+    val key: String,
+    val geometry: JsonElement?,
+    val polygon: Geometry?,
+    val areaName: String? = null,
+) {
     val runGeometry: JsonElement? get() = polygon?.let { PolygonScopes.simplifiedGeoJson(it) } ?: geometry
 }
 

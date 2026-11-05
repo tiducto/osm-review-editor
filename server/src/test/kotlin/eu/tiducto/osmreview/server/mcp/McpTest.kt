@@ -79,6 +79,12 @@ class McpTest {
             put("OVERPASS_URL", "https://overpass.test/api/interpreter")
             put("DATA_DIR", Files.createTempDirectory("gol").toString())
             gol?.let { put("GOL_FILE", it.toString()) }
+            val presets = Files.createTempFile("areas", ".geojson")
+            Files.writeString(
+                presets,
+                """{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"$PRESET"},"geometry":$opavaTriangle}]}""",
+            )
+            put("DEFAULT_AREAS", presets.toString())
         }
         app = App(Config.fromEnv(env), HttpClient(MockEngine { req -> osm.handle(this, req) }))
         if (gol != null) app.mirror.reloadIfChanged()
@@ -265,6 +271,47 @@ class McpTest {
     }
 
     @Test
+    fun presetAreaFromDefaultAreasFile() = mcpTest {
+        val resolved = app.drafts.resolveScope(PRESET.lowercase(), null, null)
+        assertEquals(PRESET, resolved.areaName)
+        assertEquals("area:$PRESET#${PolygonScopes.hash(PolygonScopes.parse(opavaTriangle).scope.polygon!!)}", resolved.key)
+        assertTrue(resolved.scope.containsLonLat(17.905, 49.94))
+        assertFalse(resolved.scope.containsLonLat(17.896, 49.949))
+        assertEquals(null, app.drafts.resolveScope(null, null, polygon(opavaTriangle)).areaName)
+        assertEquals(null, app.drafts.resolveScope(null, eu.tiducto.osmreview.shared.BBox(17.8, 49.9, 17.9, 50.0), null).areaName)
+
+        val session = initialize()
+        val r = call(session, "query_osm", args("overpass" to "node[highway=crossing];", "area" to PRESET))
+        assertFalse(r.isError, r.text)
+        assertTrue("[bbox:49.935,17.895,49.950001,17.915]" in osm.overpassQueries.single(), osm.overpassQueries.single())
+        assertEquals(listOf("node:1"), r.json.jsonObject["objects"]!!.jsonArray.map { refKey(it.jsonObject["ref"]!!) })
+
+        val created = call(session, "create_draft", args("title" to "preset", "area" to PRESET))
+        assertFalse(created.isError, created.text)
+        val draft = call(session, "get_draft", args("draft_id" to created.json.jsonObject["draft_id"]!!.jsonPrimitive.content))
+            .json.jsonObject["draft"]!!.jsonObject
+        assertEquals(PRESET, draft["area"]!!.jsonPrimitive.content)
+        assertEquals("Polygon", draft["scope"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+
+        val resource = body(rpc("resources/read", buildJsonObject { put("uri", "area://$PRESET") }, session))
+        val contents = resource["result"]!!.jsonObject["contents"]!!.jsonArray.single().jsonObject
+        val area = Json.parseToJsonElement(contents["text"]!!.jsonPrimitive.content).jsonObject
+        assertEquals(PRESET, area["name"]!!.jsonPrimitive.content)
+        assertEquals("Polygon", area["geometry"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        val encoded = body(rpc("resources/read", buildJsonObject { put("uri", "area://Kate%C5%99inky%20Triangle") }, session))
+        assertTrue(PRESET in encoded["result"]!!.jsonObject["contents"]!!.jsonArray.single().jsonObject["text"]!!.jsonPrimitive.content)
+
+        if (gol == null) return@mcpTest println("OSM_REVIEW_TEST_GOL not set, skipping the rule run")
+        val run = call(session, "run_rule", args("rule_id" to "footway-missing-surface", "area" to PRESET, "limit" to 2000))
+        assertFalse(run.isError, run.text)
+        val polygonRun = call(session, "run_rule", args("rule_id" to "footway-missing-surface", "area" to polygon(opavaTriangle), "limit" to 2000))
+        assertEquals(
+            polygonRun.json.jsonObject["issueCount"]!!.jsonPrimitive.content,
+            run.json.jsonObject["issueCount"]!!.jsonPrimitive.content,
+        )
+    }
+
+    @Test
     fun runRuleWithPolygonArea() = mcpTest {
         if (gol == null) return@mcpTest println("OSM_REVIEW_TEST_GOL not set, skipping")
         val session = initialize()
@@ -355,5 +402,6 @@ class McpTest {
 
     private companion object {
         const val TOKEN = "test-token"
+        const val PRESET = "Kateřinky Triangle"
     }
 }

@@ -8,6 +8,7 @@ import eu.tiducto.osmreview.server.App
 import eu.tiducto.osmreview.server.api.runRule
 import eu.tiducto.osmreview.server.core.NotFoundException
 import eu.tiducto.osmreview.server.core.ResolvedScope
+import eu.tiducto.osmreview.server.db.DraftMeta
 import eu.tiducto.osmreview.server.osm.Overpass
 import eu.tiducto.osmreview.shared.Authors
 import eu.tiducto.osmreview.shared.BBox
@@ -263,8 +264,14 @@ private fun buildServer(app: App): Server {
             area()
         },
     ) { args ->
-        val scope = args["area"]?.takeUnless { it is JsonNull }?.let { resolveArea(app, it).geometry }
-        val d = app.drafts.createDraft(args.str("title")!!, args.str("description").orEmpty(), Authors.CLAUDE, scope)
+        val resolved = args["area"]?.takeUnless { it is JsonNull }?.let { resolveArea(app, it) }
+        val d = app.drafts.createDraft(
+            args.str("title")!!,
+            args.str("description").orEmpty(),
+            Authors.CLAUDE,
+            resolved?.geometry,
+            DraftMeta(area = resolved?.areaName),
+        )
         okJson(buildJsonObject { put("draft_id", d.id) })
     }
 
@@ -346,7 +353,8 @@ private fun buildServer(app: App): Server {
         ReadResourceResult(listOf(TextResourceContents(WireJson.encodeToString(eu.tiducto.osmreview.shared.Rule.serializer(), r), request.uri, "application/json")))
     }
     server.addResourceTemplate("area://{name}", "Area", "Polygon of a named area (GeoJSON)", "application/json") { request, params ->
-        val (a, _) = app.queries.area(params.getValue("name")) ?: throw IllegalArgumentException("Unknown area")
+        val name = java.net.URLDecoder.decode(params.getValue("name").replace("+", "%2B"), Charsets.UTF_8)
+        val a = app.area(name) ?: throw IllegalArgumentException("Unknown area '$name'")
         ReadResourceResult(listOf(TextResourceContents(WireJson.encodeToString(eu.tiducto.osmreview.shared.Area.serializer(), a), request.uri, "application/json")))
     }
     return server
@@ -372,7 +380,7 @@ private fun resolveArea(app: App, area: JsonElement?): ResolvedScope = when (are
 }
 
 private const val AREA_FORMS =
-    "Give an admin boundary or place name (e.g. \"Opava\"), a bbox [west, south, east, north], or a GeoJSON Polygon/MultiPolygon in WGS84."
+    "Give an area preset, admin boundary or place name (e.g. \"Opava\"), a bbox [west, south, east, north], or a GeoJSON Polygon/MultiPolygon in WGS84."
 
 private fun bboxOf(a: JsonArray): BBox {
     val parts = a.map { (it as? JsonPrimitive)?.doubleOrNull }
