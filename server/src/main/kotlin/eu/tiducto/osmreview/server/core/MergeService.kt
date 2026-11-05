@@ -22,6 +22,7 @@ import eu.tiducto.osmreview.shared.MergeProgress
 import eu.tiducto.osmreview.shared.OsmType
 import eu.tiducto.osmreview.shared.ReviewDecision
 import eu.tiducto.osmreview.shared.UiEvent
+import eu.tiducto.osmreview.shared.withoutPseudoTags
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -154,9 +155,9 @@ class MergeService(
                 generator = "OSM Review Editor ${config.version}",
                 create = block(byAction[ChangeAction.CREATE].orEmpty()) { c ->
                     val p = c.centroid ?: error("created node ${c.ref} has no location")
-                    OsmElement(OsmType.NODE, c.ref.id, 0, true, c.newTags, p.lat.toString(), p.lng.toString())
+                    OsmElement(OsmType.NODE, c.ref.id, 0, true, c.newTags.withoutPseudoTags(), p.lat.toString(), p.lng.toString())
                 },
-                modify = block(byAction[ChangeAction.MODIFY].orEmpty()) { c -> live.getValue(c.ref).copy(tags = c.newTags) },
+                modify = block(byAction[ChangeAction.MODIFY].orEmpty()) { c -> live.getValue(c.ref).copy(tags = c.newTags.withoutPseudoTags()) },
                 delete = block(byAction[ChangeAction.DELETE].orEmpty()) { c -> live.getValue(c.ref) },
             ),
         )

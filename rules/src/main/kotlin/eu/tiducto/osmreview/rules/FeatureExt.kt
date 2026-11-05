@@ -6,6 +6,7 @@ import com.geodesk.geom.Mercator
 import eu.tiducto.osmreview.shared.LngLat
 import eu.tiducto.osmreview.shared.OsmRef
 import eu.tiducto.osmreview.shared.OsmType
+import eu.tiducto.osmreview.shared.PseudoTags
 
 val Feature.ref: OsmRef
     get() = OsmRef(
@@ -21,7 +22,10 @@ val Feature.ref: OsmRef
 fun Feature.tagMap(): Map<String, String> {
     val out = sortedMapOf<String, String>()
     val t = tags()
-    while (t.next()) out[t.key()] = t.stringValue()
+    while (t.next()) {
+        val k = t.key()
+        if (!PseudoTags.isPseudo(k)) out[k] = t.stringValue()
+    }
     return out
 }
 

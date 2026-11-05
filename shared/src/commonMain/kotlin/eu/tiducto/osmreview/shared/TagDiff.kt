@@ -57,7 +57,7 @@ data class TagEdit(
         val out = LinkedHashMap(replaceAll ?: base)
         remove.forEach { out.remove(it) }
         out.putAll(set)
-        return out.sortedByKey()
+        return out.withoutPseudoTags().sortedByKey()
     }
 
     val isEmpty: Boolean get() = set.isEmpty() && remove.isEmpty() && replaceAll == null

@@ -33,6 +33,22 @@ class GolSpikeTest {
     }
 
     @Test
+    fun crossBorderRelationsHaveNoGeodeskPseudoTags() = withGol { gol ->
+        val crossing = gol.select("r[boundary=administrative][admin_level=2], r[type=route][route=train]").filter { r ->
+            val t = r.tags()
+            var pseudo = false
+            while (t.next()) if (t.key().startsWith("geodesk:")) pseudo = true
+            pseudo
+        }.take(20)
+        println("Relations carrying geodesk: pseudo-tags: ${crossing.size}")
+        assertTrue(crossing.isNotEmpty(), "expected cross-border relations with geodesk: pseudo-tags in the raw GOL")
+        crossing.forEach { r ->
+            assertTrue(r.tagMap().keys.none { it.startsWith("geodesk:") }, "${r.ref} leaks ${r.tagMap().keys}")
+            assertTrue(r.toMapFeature().tags.keys.none { it.startsWith("geodesk:") })
+        }
+    }
+
+    @Test
     fun parentsOfPlatformsWork() = withGol { gol ->
         val withParents = gol.select("n[public_transport=platform]").`in`(opava).take(200).map { p ->
             p to p.parents().toList()

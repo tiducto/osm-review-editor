@@ -49,3 +49,12 @@ data class BBox(val west: Double, val south: Double, val east: Double, val north
         require(west <= east && south <= north) { "Invalid bbox: $west,$south,$east,$north" }
     }
 }
+
+object PseudoTags {
+    const val GEODESK_PREFIX = "geodesk:"
+
+    fun isPseudo(key: String): Boolean = key.startsWith(GEODESK_PREFIX)
+}
+
+fun Map<String, String>.withoutPseudoTags(): Map<String, String> =
+    if (keys.none(PseudoTags::isPseudo)) this else filterKeys { !PseudoTags.isPseudo(it) }

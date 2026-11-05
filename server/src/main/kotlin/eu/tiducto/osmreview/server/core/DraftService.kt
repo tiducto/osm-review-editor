@@ -33,6 +33,7 @@ import eu.tiducto.osmreview.shared.ReviewRequest
 import eu.tiducto.osmreview.shared.TagDiff
 import eu.tiducto.osmreview.shared.TagEdit
 import eu.tiducto.osmreview.shared.UiEvent
+import eu.tiducto.osmreview.shared.withoutPseudoTags
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -244,7 +245,7 @@ class DraftService(
         when (req.decision) {
             ReviewDecision.APPROVE -> repo.updateChange(id) { status = ChangeStatus.APPROVED }
             ReviewDecision.EDIT -> {
-                val tags = req.tags ?: throw IllegalArgumentException("An edit needs the full tag set")
+                val tags = req.tags?.withoutPseudoTags() ?: throw IllegalArgumentException("An edit needs the full tag set")
                 val noOp = c.action == ChangeAction.MODIFY && TagDiff.between(c.baseTags, tags).isNoOp
                 repo.updateChange(id) {
                     newTags = tags
@@ -298,7 +299,10 @@ class DraftService(
         return detail(draftId)
     }
 
-    suspend fun manualEdit(ref: OsmRef, tags: Map<String, String>, reason: String?, baseTags: Map<String, String>? = null): Change {
+    suspend fun manualEdit(ref: OsmRef, tags: Map<String, String>, reason: String?, baseTags: Map<String, String>? = null): Change =
+        recordManualEdit(ref, tags.withoutPseudoTags(), reason, baseTags?.withoutPseudoTags())
+
+    private suspend fun recordManualEdit(ref: OsmRef, tags: Map<String, String>, reason: String?, baseTags: Map<String, String>?): Change {
         val diff = baseTags?.let { TagDiff.between(it, tags) }
         if (diff != null && diff.isNoOp) throw IllegalArgumentException("The edit leaves the tags unchanged")
         if (diff != null && baseTags != null) {
@@ -409,7 +413,8 @@ class DraftService(
         }
     }
 
-    suspend fun resolveConflict(changeId: String, tags: Map<String, String>): Change {
+    suspend fun resolveConflict(changeId: String, proposed: Map<String, String>): Change {
+        val tags = proposed.withoutPseudoTags()
         val id = parseId(changeId)
         val c = repo.change(id) ?: throw NotFoundException("Change $changeId not found")
         if (c.status != ChangeStatus.CONFLICT) throw StateException("Change is not in conflict")

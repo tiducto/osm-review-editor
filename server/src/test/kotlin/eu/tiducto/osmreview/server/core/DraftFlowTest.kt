@@ -228,6 +228,40 @@ class DraftFlowTest {
     }
 
     @Test
+    fun geodeskPseudoTagsNeverReachNewTagsOrOsmChange(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        connect()
+        val pseudo = "geodesk:missing_members" to "2236"
+        val way = OsmRef(OsmType.WAY, 55)
+        val node = OsmRef(OsmType.NODE, 101)
+        val d = drafts.createDraft("Test · pseudo tags", "", Authors.CLAUDE)
+        val results = drafts.proposeChanges(
+            d.id,
+            listOf(ProposedChange(way, TagEdit(replaceAll = mapOf("highway" to "footway", "surface" to "asphalt") + pseudo), "rule fix")),
+        )
+        assertEquals(ProposalOutcome.ACCEPTED, results.single().outcome)
+        val proposed = drafts.detail(d.id).changes.single()
+        assertEquals(mapOf("highway" to "footway", "surface" to "asphalt"), proposed.newTags)
+
+        val manual = drafts.manualEdit(node, mapOf("highway" to "crossing", "crossing" to "uncontrolled") + pseudo, null, baseTags = mapOf("highway" to "crossing") + pseudo)
+        assertTrue(manual.newTags.keys.none { it.startsWith("geodesk:") }, manual.newTags.toString())
+        assertTrue(manual.diff.touchedKeys.none { it.startsWith("geodesk:") })
+
+        val edited = drafts.review(proposed.id, ReviewRequest(ReviewDecision.EDIT, tags = proposed.newTags + ("lit" to "yes") + pseudo))
+        assertEquals(mapOf("highway" to "footway", "lit" to "yes", "surface" to "asphalt"), edited.newTags)
+        assertTrue(edited.reviews.all { r -> r.editedTags.orEmpty().keys.none { it.startsWith("geodesk:") } })
+
+        val xml = merge.osmChange(listOf(edited.copy(newTags = edited.newTags + pseudo)), mapOf(way to account.api().fetchOne(way)!!), 7)
+        assertTrue("geodesk:" !in xml, xml)
+        assertTrue("""k="lit"""" in xml, xml)
+
+        merge.merge(d.id)
+        assertTrue(osm.uploads.isNotEmpty())
+        assertTrue(osm.uploads.none { "geodesk:" in it })
+        assertTrue(osm.tags(way).keys.none { it.startsWith("geodesk:") })
+    }
+
+    @Test
     fun manualEditWithoutBaseReplacesTags(): Unit = runBlocking {
         if (!docker) return@runBlocking println("Docker not available, skipping")
         val way = OsmRef(OsmType.WAY, 55)

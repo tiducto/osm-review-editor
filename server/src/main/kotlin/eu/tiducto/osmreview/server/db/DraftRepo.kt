@@ -14,6 +14,7 @@ import eu.tiducto.osmreview.shared.Review
 import eu.tiducto.osmreview.shared.ReviewDecision
 import eu.tiducto.osmreview.shared.TagDiff
 import eu.tiducto.osmreview.shared.Upload
+import eu.tiducto.osmreview.shared.withoutPseudoTags
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.JsonElement
 import org.jetbrains.exposed.v1.core.ResultRow
@@ -191,7 +192,7 @@ class DraftRepo(private val db: Db) {
             it[action] = c.action.wire
             it[baseVersion] = c.baseVersion
             it[baseTags] = c.baseTags
-            it[newTags] = c.newTags
+            it[newTags] = c.newTags.withoutPseudoTags()
             it[baseGeom] = c.baseGeom
             it[newGeom] = c.newGeom
             it[centroidLon] = c.centroid?.lng
@@ -232,7 +233,7 @@ class DraftRepo(private val db: Db) {
     suspend fun updateChange(id: UUID, block: ChangeUpdate.() -> Unit): Change = db.tx {
         val u = ChangeUpdate().apply(block)
         ChangesTable.update({ ChangesTable.id eq id }) {
-            u.newTags?.let { v -> it[newTags] = v }
+            u.newTags?.let { v -> it[newTags] = v.withoutPseudoTags() }
             u.baseTags?.let { v -> it[baseTags] = v }
             u.baseVersion?.let { v -> it[baseVersion] = v }
             u.status?.let { v -> it[status] = v.wire }
@@ -278,7 +279,7 @@ class DraftRepo(private val db: Db) {
             it[ReviewsTable.changeId] = changeId
             it[ReviewsTable.decision] = decision.wire
             it[ReviewsTable.comment] = comment
-            it[ReviewsTable.editedTags] = editedTags
+            it[ReviewsTable.editedTags] = editedTags?.withoutPseudoTags()
             it[ReviewsTable.imagery] = imagery
             it[createdAt] = now()
         }
