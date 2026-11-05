@@ -8,7 +8,10 @@ kotlin {
     jvm()
     js {
         outputModuleName = "osm-review-shared"
-        browser()
+        browser {
+            testTask { enabled = false }
+        }
+        nodejs()
         binaries.library()
         generateTypeScriptDefinitions()
         compilerOptions {
