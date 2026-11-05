@@ -1,0 +1,29 @@
+# Gradle / Kotlin
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+.kotlin/
+kotlin-js-store/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Node
+node_modules/
+web/dist/
+
+# Local data and tools: GOL files, PBF extracts, downloaded binaries
+data/
+.tools/
+*.gol
+*.osm.pbf
+
+# Secrets
+.env
+
+# Claude Code
+.claude/worktrees/
+.claude/settings.local.json

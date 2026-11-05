@@ -1,0 +1,13 @@
+{
+  "name": "osm-review-editor",
+  "private": true,
+  "workspaces": [
+    "web",
+    "shared/build/dist/js/productionLibrary"
+  ],
+  "scripts": {
+    "build:shared": "./gradlew :shared:jsBrowserProductionLibraryDistribution :shared:generateTsModels",
+    "dev": "npm run dev -w web",
+    "build": "npm run build -w web"
+  }
+}

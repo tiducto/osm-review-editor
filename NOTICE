@@ -1,0 +1,10 @@
+OSM Review Editor
+Copyright 2026 Tiducto Mobility s.r.o.
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes rules/src/main/resources/id-tagging-schema/deprecated.json from
+id-tagging-schema (https://github.com/openstreetmap/id-tagging-schema),
+Copyright (c) iD Contributors, ISC License.
+
+Map data © OpenStreetMap contributors, available under the Open Database License (ODbL).
