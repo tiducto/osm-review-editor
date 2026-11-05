@@ -7,6 +7,7 @@ import { useDraftsStore } from './drafts'
 import { useHighlightsStore } from './highlights'
 import { useRuleFilesStore } from './ruleFiles'
 import { useScansStore } from './scans'
+import { usePushView } from './pushView'
 
 export function connectEvents(): () => void {
   const app = useAppStore()
@@ -16,6 +17,7 @@ export function connectEvents(): () => void {
   const highlights = useHighlightsStore()
   const ruleFiles = useRuleFilesStore()
   const scans = useScansStore()
+  const pushView = usePushView()
 
   function remote(cmd: UiEventRemoteCommand) {
     if (cmd.imagery) {
@@ -69,6 +71,9 @@ export function connectEvents(): () => void {
         break
       case 'scan_finished':
         void scans.onScanFinished(e)
+        break
+      case 'push_view':
+        void pushView.apply(e)
         break
     }
   }
