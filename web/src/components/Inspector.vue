@@ -15,7 +15,10 @@ import { severityColor } from '@/lib/colors'
 import PresetEditor, { type EditableEntity } from './presets/PresetEditor.vue'
 import Icon from './Icon.vue'
 import Spinner from './Spinner.vue'
+import { useI18n, type MessageKey } from '@/i18n'
 
+const { t } = useI18n()
+const severityKey: Record<Issue['severity'], MessageKey> = { error: 'common.error', warning: 'common.warning', info: 'common.info' }
 const mapStore = useMapStore()
 const rules = useRulesStore()
 const drafts = useDraftsStore()
@@ -167,48 +170,49 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <div class="flex h-full flex-col">
-    <div class="flex h-10 shrink-0 items-center gap-2 border-b border-line px-3">
-      <h2 class="text-[13px] font-semibold">Inspector</h2>
-      <button class="btn btn-ghost btn-icon btn-sm ml-auto w-6" title="Deselect (Esc)" @click="mapStore.select(null)"><Icon name="x" :size="14" /></button>
+  <div class="flex h-full flex-col bg-surface-2">
+    <div class="panel-header px-0">
+      <span class="w-10 shrink-0" />
+      <h2 class="panel-title">{{ t('view.title') }}</h2>
+      <button class="grid h-full w-10 shrink-0 place-items-center text-fg hover:bg-surface-3" :title="t('view.deselect')" @click="mapStore.select(null)"><Icon name="x" :size="18" /></button>
     </div>
 
     <div v-if="mapStore.selected" class="scroll-thin min-h-0 flex-1 overflow-y-auto">
-      <div class="space-y-2.5 border-b border-line px-4 py-3">
+      <div class="space-y-2.5 border-b border-line-strong px-4 py-3">
         <div>
           <div class="flex items-center gap-2">
             <Spinner v-if="mapStore.selectedLoading" :size="12" class="text-fg-3" />
           </div>
-          <h3 class="mt-1 text-[16px] leading-snug font-semibold break-words">
+          <h3 class="mt-1 text-[15px] leading-snug font-bold break-words">
             {{ feature ? featureTitle(feature.ref, feature.tags) : refLabel(mapStore.selected) }}
           </h3>
-          <button class="mt-0.5 flex items-center gap-1 font-mono text-[11.5px] text-fg-3 hover:text-fg-2" title="Copy ID" @click="copyRef">
+          <button class="mt-0.5 flex items-center gap-1 font-mono text-[11.5px] text-fg-3 hover:text-fg-2" :title="t('view.copyId')" @click="copyRef">
             {{ refString(mapStore.selected) }}<span v-if="feature?.version"> · v{{ feature.version }}</span>
             <Icon name="copy" :size="11" />
           </button>
         </div>
         <div class="flex flex-wrap gap-1.5">
-          <button class="btn btn-sm" title="Open in iD (new tab)" @click="drafts.openInId(mapStore.selected)">
-            <Icon name="edit" :size="12" /> Open in iD
+          <button class="btn btn-sm" :title="t('view.openInIdTitle')" @click="drafts.openInId(mapStore.selected)">
+            <Icon name="edit" :size="12" /> {{ t('view.openInId') }}
           </button>
           <a class="btn btn-sm" :class="!links && 'pointer-events-none opacity-50'" :href="links?.osm" target="_blank" rel="noopener">
             <Icon name="external" :size="12" /> osm.org
           </a>
           <a class="btn btn-sm" :class="!links && 'pointer-events-none opacity-50'" :href="links?.history" target="_blank" rel="noopener">
-            <Icon name="history" :size="12" /> History
+            <Icon name="history" :size="12" /> {{ t('view.history') }}
           </a>
         </div>
       </div>
 
-      <section v-if="issues.length" class="space-y-2 border-b border-line px-4 py-3">
-        <div class="section-title">Issues</div>
-        <div v-for="i in issues" :key="i.ruleId" class="rounded-md border border-line bg-surface-2 p-2.5">
+      <section v-if="issues.length" class="space-y-2 border-b border-line-strong px-4 py-3">
+        <div class="section-title">{{ t('view.issues') }}</div>
+        <div v-for="i in issues" :key="i.ruleId" class="card p-2.5">
           <div class="flex items-start gap-2">
             <span class="mt-1 size-2 shrink-0 rounded-full" :style="{ background: rules.colorOf.get(i.ruleId) }" />
             <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-1.5 font-medium">
+              <div class="flex items-center gap-1.5 font-bold">
                 {{ rules.ruleById.get(i.ruleId)?.title ?? i.ruleId }}
-                <span class="size-1.5 rounded-full" :style="{ background: severityColor[i.severity] }" :title="i.severity" />
+                <span class="size-1.5 rounded-full" :style="{ background: severityColor[i.severity] }" :title="t(severityKey[i.severity])" />
               </div>
               <p v-if="i.note" class="mt-0.5 text-[12px] text-fg-2">{{ i.note }}</p>
               <div v-if="i.fix" class="mt-1.5">
@@ -216,12 +220,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
                   class="chip"
                   :class="i.confidence === 'deterministic' ? 'bg-surface-3 text-fg-2' : 'bg-changed-soft text-changed'"
                 >
-                  {{ i.confidence === 'deterministic' ? 'Deterministic fix' : 'Fix needs review' }}
+                  {{ i.confidence === 'deterministic' ? t('view.fixDeterministic') : t('view.fixNeedsReview') }}
                 </span>
               </div>
               <div v-if="i.fix" class="mt-1.5 flex items-center gap-2">
                 <code class="min-w-0 flex-1 truncate font-mono text-[11.5px] text-fg-2" :title="fixSummary(i)">{{ fixSummary(i) }}</code>
-                <button class="btn btn-sm shrink-0" title="Apply this fix to the tags below" @click="applyFix(i)">Apply fix</button>
+                <button class="btn btn-sm shrink-0" :title="t('view.applyFixTitle')" @click="applyFix(i)">{{ t('view.applyFix') }}</button>
               </div>
             </div>
           </div>
@@ -231,31 +235,33 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       <template v-if="feature">
         <PresetEditor :entities="entities" @patch="onPatch" @preset="onPreset" @tags="edited = $event">
           <template #before-fields>
-            <p v-if="!editable && !dirty" class="border-b border-line px-4 py-1.5 text-[11px] text-fg-3">{{ presets.t('inspector.notEditable') }}</p>
+            <p v-if="!editable && !dirty" class="border-b border-line-strong px-4 py-1.5 text-[11px] text-fg-3">{{ presets.t('inspector.notEditable') }}</p>
           </template>
         </PresetEditor>
       </template>
-      <div v-else-if="!mapStore.selectedLoading" class="px-4 py-6 text-center text-fg-3">This object is not in the local copy.</div>
+      <div v-else-if="!mapStore.selectedLoading" class="px-4 py-6 text-center text-fg-3">{{ t('view.notLocal') }}</div>
     </div>
 
     <div v-else class="grid flex-1 place-items-center px-6 text-center text-fg-3">
       <div>
         <Icon name="target" :size="28" class="mx-auto mb-2 opacity-60" />
-        <p>Click an object or an issue on the map to inspect it.</p>
+        <p>{{ t('view.empty') }}</p>
       </div>
     </div>
 
-    <section v-if="conflict" class="scroll-thin max-h-[45%] shrink-0 space-y-2 overflow-y-auto border-t border-changed/40 bg-changed-soft px-4 py-3" data-testid="manual-conflict">
-      <div class="flex items-center gap-2 font-semibold text-changed">
-        <Icon name="conflict" :size="15" /> Conflict with the live object
+    <section v-if="conflict" class="scroll-thin max-h-[45%] shrink-0 space-y-2 overflow-y-auto border-t border-line-strong bg-changed-soft px-4 py-3" data-testid="manual-conflict">
+      <div class="flex items-center gap-2 font-bold text-changed">
+        <Icon name="conflict" :size="15" /> {{ t('view.conflictTitle') }}
       </div>
-      <p class="text-[12px] text-fg-2">
-        Someone changed this object upstream (now v{{ conflict.liveVersion ?? '?' }}) on a key you edited. Your edit is saved in the manual draft
-        as a conflict and will not upload until you pick the values.
-      </p>
+      <p class="text-[12px] text-fg-2">{{ t('view.conflictBody', { version: conflict.liveVersion ?? '?' }) }}</p>
       <table v-if="conflictKeys.length" class="w-full font-mono text-[11.5px]">
         <thead class="text-left text-[10.5px] text-fg-3">
-          <tr><th class="pr-2 font-medium">Key</th><th class="pr-2 font-medium">Was</th><th class="pr-2 font-medium">Yours</th><th class="font-medium">Live</th></tr>
+          <tr>
+            <th class="pr-2 font-medium">{{ t('view.colKey') }}</th>
+            <th class="pr-2 font-medium">{{ t('view.colWas') }}</th>
+            <th class="pr-2 font-medium">{{ t('view.colYours') }}</th>
+            <th class="font-medium">{{ t('view.colLive') }}</th>
+          </tr>
         </thead>
         <tbody>
           <tr v-for="k in conflictKeys" :key="k.key">
@@ -267,20 +273,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         </tbody>
       </table>
       <div class="flex gap-1.5">
-        <button class="btn btn-sm btn-primary" @click="resolveConflict">Resolve conflict</button>
-        <button class="btn btn-sm btn-ghost" @click="conflict = null">Dismiss</button>
+        <button class="btn btn-sm btn-primary" @click="resolveConflict">{{ t('view.resolveConflict') }}</button>
+        <button class="btn btn-sm btn-ghost" @click="conflict = null">{{ t('common.dismiss') }}</button>
       </div>
     </section>
 
     <Transition name="fade">
-      <footer v-if="dirty && mapStore.selected" class="shrink-0 space-y-2 border-t border-line bg-surface-2 px-4 py-3">
+      <footer v-if="dirty && mapStore.selected" class="shrink-0 space-y-2 border-t border-line-strong bg-surface px-4 py-3">
         <code class="block truncate font-mono text-[11.5px] text-fg-2" :title="summary">{{ summary }}</code>
-        <input v-model="reason" class="input" placeholder="Reason (optional, shown in review)" @keydown.enter.prevent="save" />
+        <input v-model="reason" class="input" :placeholder="t('view.reasonPlaceholder')" @keydown.enter.prevent="save" />
         <div class="flex items-center gap-2">
           <button class="btn btn-primary" :disabled="drafts.savingManual" @click="save">
-            <Spinner v-if="drafts.savingManual" :size="12" /> Save to manual draft
+            <Spinner v-if="drafts.savingManual" :size="12" /> {{ t('view.saveToManual') }}
           </button>
-          <button class="btn btn-ghost" @click="discard">Discard</button>
+          <button class="btn btn-ghost" @click="discard">{{ t('view.discard') }}</button>
           <span class="ml-auto text-[11px] text-fg-3"><span class="kbd">⌘</span> <span class="kbd">↵</span></span>
         </div>
       </footer>

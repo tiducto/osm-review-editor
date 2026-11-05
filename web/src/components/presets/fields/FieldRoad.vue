@@ -102,8 +102,8 @@ defineExpose({ focus: () => combo.value?.focus() })
 
 <template>
   <div class="min-w-0">
-    <div v-if="isSpeed" class="flex min-w-0 gap-1">
-      <div class="min-w-0 flex-1">
+    <div v-if="isSpeed" class="flex min-w-0">
+      <div class="min-w-0 flex-1 [&_.input]:rounded-br-none">
         <ComboInput
           ref="combo"
           :model-value="speedDisplay"
@@ -114,13 +114,13 @@ defineExpose({ focus: () => combo.value?.focus() })
           @commit="commitSpeed"
         />
       </div>
-      <select class="input w-[4.5rem] shrink-0 px-1" :value="speedUnit" :disabled="readonly" :title="tr(locale, 'field.unit')" @change="setSpeedUnit">
+      <select class="input -ml-px w-[4.5rem] shrink-0 rounded-bl-none px-1.5" :value="speedUnit" :disabled="readonly" :title="tr(locale, 'field.unit')" @change="setSpeedUnit">
         <option value="km/h">km/h</option>
         <option value="mph">mph</option>
       </select>
     </div>
-    <div v-else class="flex min-w-0 gap-1">
-      <div class="min-w-0 flex-1">
+    <div v-else class="flex min-w-0">
+      <div class="min-w-0 flex-1 [&_.input]:rounded-br-none">
         <ComboInput
           ref="combo"
           :model-value="heightDisplay"
@@ -134,7 +134,7 @@ defineExpose({ focus: () => combo.value?.focus() })
       <input
         v-if="heightUnit === 'ft'"
         ref="secondaryEl"
-        class="input w-14 shrink-0"
+        class="input -ml-px w-14 shrink-0 rounded-b-none"
         inputmode="decimal"
         :value="height.secondary"
         placeholder="in"
@@ -142,7 +142,7 @@ defineExpose({ focus: () => combo.value?.focus() })
         @change="commitSecondary"
         @keydown="onKey"
       />
-      <select class="input w-14 shrink-0 px-1" :value="heightUnit" :disabled="readonly" :title="tr(locale, 'field.unit')" @change="setHeightUnit">
+      <select class="input -ml-px w-14 shrink-0 rounded-bl-none px-1.5" :value="heightUnit" :disabled="readonly" :title="tr(locale, 'field.unit')" @change="setHeightUnit">
         <option value="m">m</option>
         <option value="ft">ft</option>
       </select>

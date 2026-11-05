@@ -84,7 +84,7 @@ fun Route.presetRoutes(presets: PresetService, bulk: PresetBulkService? = null) 
         if (bulk != null) post("/apply/bulk") { call.respond(bulk.apply(call.receive<PresetBulkApplyRequest>())) }
         post("/import") { call.respondWrite(presets.import(call.receive<ImportPresetRequest>()), HttpStatusCode.Created) }
         post("/detach") { call.respondWrite(presets.detach(call.receive<DetachPresetRequest>())) }
-        get("/smart") { call.respond(presets.smartPresets()) }
+        get("/smart") { call.respond(presets.smartPresets(call.request.queryParameters["locale"])) }
         get("/user") { call.respond(presets.userPresets(call.request.queryParameters["locale"])) }
         get("/id-schema") { call.respond(presets.data.info("/api/presets/id-schema/")) }
         get("/id-schema/{file...}") {

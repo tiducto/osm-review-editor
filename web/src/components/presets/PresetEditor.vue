@@ -6,6 +6,7 @@ import type { FieldDef, FieldTags, Geometry, PresetDef, TagPatch, Tags } from '@
 import TagEditor from '../TagEditor.vue'
 import Icon from '../Icon.vue'
 import PresetIcon from './PresetIcon.vue'
+import { useI18n } from '@/i18n'
 import PresetPicker from './PresetPicker.vue'
 import PresetFieldList from './PresetFieldList.vue'
 
@@ -25,7 +26,7 @@ const props = withDefaults(defineProps<{ entities: EditableEntity[]; smart?: Sma
 const emit = defineEmits<{ patch: [patch: TagPatch]; tags: [tags: Tags]; preset: [id: string]; smart: [preset: SmartPreset]; 'update:picking': [v: boolean] }>()
 
 const presets = usePresetsStore()
-const t = presets.t
+const { t, tn } = useI18n()
 void presets.ensure().catch(() => {})
 
 const pickerOpen = ref(props.picking)
@@ -95,7 +96,7 @@ const presetName = computed(() => {
 const title = computed(() => {
   const s = single.value
   if (s) return s.title ?? s.tags.name ?? ''
-  return t('preset.multi', { n: props.entities.length })
+  return tn('preset.multi', props.entities.length)
 })
 
 function choose(id: string) {
@@ -121,13 +122,13 @@ function runSmart(p: SmartPreset) {
       @smart="runSmart"
       @close="pickerOpen = false"
     />
-    <div v-else class="scroll-thin min-h-0 flex-1 overflow-y-auto">
-      <div class="flex items-center gap-2.5 border-b border-line px-4 py-3">
-        <PresetIcon :icon="preset?.icon" :size="36" data-testid="edit-preset-icon" />
+    <div v-else class="scroll-thin min-h-0 flex-1 overflow-y-auto bg-surface-2">
+      <div class="flex items-center gap-2.5 border-b border-line-strong bg-surface px-4 py-3">
+        <PresetIcon :icon="preset?.icon" :size="44" data-testid="edit-preset-icon" />
         <div class="min-w-0 flex-1">
           <button
             class="group flex max-w-full items-center gap-1 truncate text-fg-2 hover:text-accent disabled:hover:text-fg-2"
-            :class="title ? 'text-[12px]' : 'text-[15px] font-semibold text-fg'"
+            :class="title ? 'text-[12px]' : 'text-[15px] font-bold text-fg'"
             :disabled="readonly"
             :title="t('preset.change')"
             data-testid="edit-preset-name"
@@ -136,36 +137,24 @@ function runSmart(p: SmartPreset) {
             <span class="truncate">{{ presetName }}</span>
             <Icon v-if="!readonly" name="chevron-down" :size="12" class="shrink-0 opacity-60 group-hover:opacity-100" />
           </button>
-          <h3 v-if="title" class="truncate text-[15px] leading-snug font-semibold">{{ title }}</h3>
+          <h3 v-if="title" class="truncate text-[15px] leading-snug font-bold">{{ title }}</h3>
           <slot name="meta" />
         </div>
         <div class="flex shrink-0 flex-col items-end gap-1">
-          <div class="flex overflow-hidden rounded-md border border-line text-[10.5px]" :title="t('inspector.locale')">
-            <button
-              v-for="l in ['cs', 'en'] as const"
-              :key="l"
-              class="px-1.5 py-0.5 uppercase"
-              :class="presets.locale === l ? 'bg-accent text-white' : 'text-fg-3 hover:bg-surface-3'"
-              :data-testid="`preset-locale-${l}`"
-              @click="presets.locale = l"
-            >
-              {{ l }}
-            </button>
-          </div>
           <button v-if="!readonly" class="btn btn-sm" data-testid="change-preset" @click="pickerOpen = true">{{ t('preset.change') }}</button>
         </div>
       </div>
 
       <slot name="before-fields" />
 
-      <section v-if="smart.length && !readonly" class="flex flex-wrap items-center gap-1.5 border-b border-line px-4 py-2" data-testid="smart-presets">
-        <span class="text-[11px] font-medium text-fg-3">{{ t('smart.available') }}</span>
+      <section v-if="smart.length && !readonly" class="flex flex-wrap items-center gap-1.5 border-b border-line-strong px-4 py-2.5" data-testid="smart-presets">
+        <span class="text-[12px] font-bold text-fg">{{ t('smart.available') }}</span>
         <button v-for="s in smart" :key="s.id" class="btn btn-sm text-claude" :title="s.description ?? s.id" :data-smart="s.id" @click="emit('smart', s)">
-          <Icon name="sparkle" :size="12" /> {{ s.name }}
+          <Icon name="sparkle" :size="14" /> {{ s.name }}
         </button>
       </section>
 
-      <section v-if="presets.catalog" class="border-b border-line px-4 py-3" data-testid="edit-preset-fields">
+      <section v-if="presets.catalog" class="border-b border-line-strong px-4 py-4" data-testid="edit-preset-fields">
         <PresetFieldList
           :fields="fieldSets.fields"
           :more-fields="fieldSets.more"
@@ -178,9 +167,9 @@ function runSmart(p: SmartPreset) {
           @change="emit('patch', $event)"
         />
       </section>
-      <div v-else class="border-b border-line px-4 py-3 text-[12px] text-fg-3">{{ t('inspector.loading') }}</div>
+      <div v-else class="border-b border-line-strong px-4 py-3 text-[12px] text-fg-3">{{ t('inspector.loading') }}</div>
 
-      <section v-if="single" class="px-4 py-3">
+      <section v-if="single" class="px-4 py-4">
         <TagEditor v-model="rawTags" :base="single.baseTags ?? null" :readonly="readonly">
           <template #title><span class="section-title">{{ t('preset.tags') }}</span></template>
         </TagEditor>

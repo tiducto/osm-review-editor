@@ -1,7 +1,7 @@
 {
   "id": "custom/sidewalk-cz",
   "extends": "highway/footway/sidewalk",
-  "name": "Chodník",
+  "name": { "cs": "Chodník", "en": "Sidewalk (Czech)" },
   "apply": "merge",
   "addTags": {
     "highway": "footway",

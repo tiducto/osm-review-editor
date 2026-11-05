@@ -7,6 +7,7 @@ import { api } from '@/api/client'
 import { useAppStore } from './app'
 import { refString, sameRef } from '@/lib/osm'
 import { asGeometry, geometryBBox } from '@/lib/geo'
+import { t } from '@/i18n'
 import { readHiddenFeatures, writeHiddenFeatures, type FeatureGroup } from '@/map/osm/features'
 
 const IMAGERY_KEY = 'ore.imagery'
@@ -54,7 +55,7 @@ export const useMapStore = defineStore('map', () => {
   const areaLoading = ref(false)
   const polygon = shallowRef<Polygon | null>(null)
   const drawing = ref(false)
-  const scopeName = computed(() => area.value?.name ?? (polygon.value ? 'Drawn polygon' : null))
+  const scopeName = computed(() => area.value?.name ?? (polygon.value ? t('area.drawnPolygon') : null))
 
   const extraImagery = ref<ImagerySource[]>([])
   const imageryId = ref<string | null>(readImagery())
@@ -121,6 +122,14 @@ export const useMapStore = defineStore('map', () => {
     writeHiddenFeatures(hiddenFeatures.value)
   }
 
+  function visibleContains(lng: number, lat: number): boolean {
+    if (!map) return false
+    const p = map.project([lng, lat])
+    const i = insets.value
+    const c = map.getContainer()
+    return p.x >= i.left && p.x <= c.clientWidth - i.right && p.y >= i.top && p.y <= c.clientHeight - i.bottom
+  }
+
   function fitBBox(b: BBox, maxZoom = 18, animate = true) {
     if (!map) return
     const degenerate = b.west === b.east && b.south === b.north
@@ -139,6 +148,10 @@ export const useMapStore = defineStore('map', () => {
 
   function flyTo(p: LngLat, z?: number) {
     map?.flyTo({ center: [p.lng, p.lat], zoom: z ?? Math.max(map.getZoom(), 17), offset: visibleOffset(), duration: 900 })
+  }
+
+  function easeTo(p: LngLat, opts: { zoom?: number; duration?: number } = {}) {
+    map?.easeTo({ center: [p.lng, p.lat], zoom: opts.zoom, offset: visibleOffset(), duration: opts.duration ?? 500 })
   }
 
   function updateView(b: BBox, z: number) {
@@ -162,7 +175,7 @@ export const useMapStore = defineStore('map', () => {
       const f = await api.object(ref)
       if (sameRef(selected.value, ref)) selectedFeature.value = f
     } catch (e) {
-      if (sameRef(selected.value, ref)) app.fail(e, `Loading ${refString(ref)}`)
+      if (sameRef(selected.value, ref)) app.fail(e, t('app.loadingObject', { ref: refString(ref) }))
     } finally {
       selectedLoading.value = false
     }
@@ -194,7 +207,7 @@ export const useMapStore = defineStore('map', () => {
       area.value = a
       if (fly) fitBBox(a.bbox, 16)
     } catch (e) {
-      app.fail(e, `Area ${name}`)
+      app.fail(e, t('area.load', { name }))
     } finally {
       areaLoading.value = false
     }
@@ -205,7 +218,7 @@ export const useMapStore = defineStore('map', () => {
     selected, selectedFeature, selectedLoading, highlighted,
     area, areaLoading, polygon, drawing, scopeName, setPolygon,
     imageryId, allImagery, activeImagery, setImagery, addImagery,
-    attach, detach, instance, insets, setInsets, fitPadding, visibleOffset, fitBBox, flyTo, updateView,
+    attach, detach, instance, insets, setInsets, fitPadding, visibleOffset, visibleContains, fitBBox, flyTo, easeTo, updateView,
     hiddenFeatures, setFeatureVisible, setHiddenFeatures,
     select, patchSelectedTags, setArea,
   }

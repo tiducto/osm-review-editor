@@ -37,9 +37,9 @@ defineExpose({ focus: () => combos.value?.[0]?.focus() })
 </script>
 
 <template>
-  <div class="flex flex-col gap-1">
-    <div v-for="(key, i) in keys" :key="key" class="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start gap-2">
-      <span class="truncate pt-1.5 text-[12px] text-fg-2" :title="key">{{ sideLabel(key, i) }}</span>
+  <div class="flex flex-col rounded-b-md border border-line-strong bg-surface [&_.input]:rounded-none! [&_.input]:border-0 [&_.input]:border-l [&_.input]:border-line">
+    <div v-for="(key, i) in keys" :key="key" class="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start border-b border-line last:border-b-0">
+      <span class="truncate px-2.5 pt-1 text-[12px] text-fg-2" :title="key">{{ sideLabel(key, i) }}</span>
       <div class="min-w-0">
         <ComboInput
           ref="combos"

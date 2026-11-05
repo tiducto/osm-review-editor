@@ -1,6 +1,12 @@
 package eu.tiducto.osmreview.server.mcp
 
+import eu.tiducto.osmreview.rules.MirrorUnavailableException
 import eu.tiducto.osmreview.server.App
+import eu.tiducto.osmreview.server.presets.PresetBulkService
+import eu.tiducto.osmreview.shared.Authors
+import eu.tiducto.osmreview.shared.OsmRef
+import eu.tiducto.osmreview.shared.OsmType
+import eu.tiducto.osmreview.shared.ProposalOutcome
 import eu.tiducto.osmreview.shared.RuleFileContent
 import eu.tiducto.osmreview.shared.RuleFileInfo
 import eu.tiducto.osmreview.shared.RuleKind
@@ -9,17 +15,23 @@ import eu.tiducto.osmreview.shared.WireJson
 import eu.tiducto.osmreview.shared.WriteRuleFileResult
 import eu.tiducto.osmreview.shared.presets.DetachPresetRequest
 import eu.tiducto.osmreview.shared.presets.ImportPresetRequest
+import eu.tiducto.osmreview.shared.presets.PresetBulkApplyRequest
+import eu.tiducto.osmreview.shared.presets.PresetBulkApplyResult
 import eu.tiducto.osmreview.shared.presets.PresetGeometry
 import eu.tiducto.osmreview.shared.presets.PresetMatch
 import eu.tiducto.osmreview.shared.presets.PresetSummary
 import eu.tiducto.osmreview.shared.presets.ResolvedPreset
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
 private val KINDS = RuleKind.entries.map { it.wireName }
@@ -164,6 +176,139 @@ internal fun registerRuleFileTools(server: Server, app: App) {
             str("path", "Or the file path when it holds one preset")
         },
     ) { args -> writeResult(presets.detach(DetachPresetRequest(args.str("id"), args.str("path")))) }
+
+    server.tool(
+        "apply_preset_bulk",
+        "Apply one preset to many OSM objects from the local mirror, like the Presets bulk apply in the editor. Each object's " +
+            "geometry comes from the mirror and its current best preset is replaced (merge keeps other tags). dry_run (default true) " +
+            "returns counts and a preview of the first $MCP_BULK_PREVIEW changed objects; dry_run=false puts the changes into a new " +
+            "draft authored by Claude (or the open draft draft_id), one proposal per object, for the user to review. " +
+            "Smart presets (presets/smart/) run in the editor only and cannot be applied here.",
+        schema(listOf("preset_id", "refs")) {
+            str("preset_id", "Preset id from search_presets, e.g. highway/footway/sidewalk or custom/sidewalk-cz")
+            putJsonObject("refs") {
+                put("type", "array")
+                put("description", "Up to ${PresetBulkService.MAX_REFS} objects: \"n123\", \"w45\", \"r6\" or {type, id}")
+                putJsonObject("items") {
+                    putJsonArray("anyOf") {
+                        add(buildJsonObject { put("type", "string") })
+                        add(
+                            buildJsonObject {
+                                put("type", "object")
+                                putJsonObject("properties") {
+                                    enum("type", "node, way or relation", listOf("node", "way", "relation"))
+                                    long("id", "OSM id")
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+            bool("dry_run", "Only count and preview (default true)")
+            str("title", "Title of the new draft (default 'Preset <name> · <n> objects')")
+            str("draft_id", "Add the changes to this open draft instead of creating one")
+            str("reason", "Reason on every change (default 'Preset \"<name>\"')")
+            str("area", "Area name stored on a new draft, e.g. Opava")
+            str("locale", "en or cs (default en), for the preset name")
+        },
+    ) { args ->
+        val presetId = args.str("preset_id")?.trim()?.takeIf { it.isNotEmpty() } ?: return@tool err("preset_id is required")
+        val rawRefs = args["refs"] as? JsonArray ?: return@tool err("refs must be an array of \"n123\", \"w45\", \"r6\" or {type, id}")
+        if (rawRefs.isEmpty()) return@tool err("Give at least one ref")
+        if (rawRefs.size > PresetBulkService.MAX_REFS) {
+            return@tool err("Too many refs: ${rawRefs.size}; at most ${PresetBulkService.MAX_REFS} per call, split the list")
+        }
+        val refs = rawRefs.mapIndexed { i, e ->
+            parseRef(e) ?: return@tool err("refs[$i]: ${e} is not an OSM ref; use \"n123\", \"w45\", \"r6\" or {\"type\": \"way\", \"id\": 45}")
+        }
+        if (!presets.index.contains(presetId)) {
+            return@tool err("Unknown preset '$presetId'; find preset ids with search_presets")
+        }
+        val dryRun = args.bool("dry_run") ?: true
+        val req = PresetBulkApplyRequest(
+            presetId = presetId,
+            refs = refs,
+            dryRun = dryRun,
+            title = args.str("title"),
+            draftId = args.str("draft_id"),
+            reason = args.str("reason"),
+            area = args.str("area"),
+            locale = args.str("locale"),
+        )
+        val r = try {
+            app.presetBulk.apply(req, Authors.CLAUDE)
+        } catch (e: MirrorUnavailableException) {
+            return@tool err("No GOL mirror is open (${e.message}); bulk apply reads the objects from the local mirror")
+        }
+        okJson(bulkJson(r, dryRun))
+    }
+}
+
+private const val MCP_BULK_PREVIEW = 50
+private const val MCP_BULK_LIST = 50
+
+private fun parseRef(e: JsonElement): OsmRef? = runCatching {
+    when (e) {
+        is JsonPrimitive -> if (e.isString) OsmRef.parse(e.content) else null
+        is JsonObject -> OsmRef(OsmType.fromApiName(e.str("type")!!), e.long("id")!!)
+        else -> null
+    }
+}.getOrNull()
+
+private fun bulkJson(r: PresetBulkApplyResult, dryRun: Boolean): JsonObject = buildJsonObject {
+    put("preset_id", r.presetId)
+    put("preset_name", r.presetName)
+    put("dry_run", dryRun)
+    put("total", r.total)
+    put("changed", r.changed)
+    put("unchanged", r.unchanged)
+    put("skipped", r.skipped.size)
+    putJsonArray("skipped_objects") {
+        r.skipped.take(MCP_BULK_LIST).forEach { s ->
+            add(
+                buildJsonObject {
+                    put("ref", s.ref.toString())
+                    put("message", s.message)
+                },
+            )
+        }
+    }
+    putJsonArray("preview") {
+        r.preview.take(MCP_BULK_PREVIEW).forEach { p ->
+            add(
+                buildJsonObject {
+                    put("ref", p.ref.toString())
+                    p.name?.let { put("name", it) }
+                    p.fromPresetId?.let { put("from_preset_id", it) }
+                    put("summary", p.summary)
+                },
+            )
+        }
+    }
+    put("truncated", r.truncated || r.preview.size > MCP_BULK_PREVIEW || r.skipped.size > MCP_BULK_LIST)
+    val draft = r.draft
+    if (draft != null) {
+        put("draft_id", draft.draft.id)
+        put("title", draft.draft.title)
+        put("author", draft.draft.author)
+        putJsonObject("results") {
+            ProposalOutcome.entries.forEach { o ->
+                put(WireJson.encodeToJsonElement(ProposalOutcome.serializer(), o).jsonPrimitive.content, r.results.count { it.outcome == o })
+            }
+        }
+        putJsonArray("errors") {
+            r.results.filter { it.outcome == ProposalOutcome.ERROR }.take(MCP_BULK_LIST).forEach { res ->
+                add(
+                    buildJsonObject {
+                        put("ref", res.ref.toString())
+                        res.message?.let { put("message", it) }
+                    },
+                )
+            }
+        }
+    } else if (!dryRun) {
+        put("message", "Nothing to change; no draft was created")
+    }
 }
 
 private fun writeResult(r: WriteRuleFileResult) = if (r.saved) {

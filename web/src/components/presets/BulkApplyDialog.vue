@@ -15,6 +15,7 @@ import Modal from '../Modal.vue'
 import Spinner from '../Spinner.vue'
 import PresetPicker from './PresetPicker.vue'
 import PresetIcon from './PresetIcon.vue'
+import { useI18n } from '@/i18n'
 
 const props = defineProps<{ presetId: string | null }>()
 const emit = defineEmits<{ close: [] }>()
@@ -25,7 +26,7 @@ const scans = useScansStore()
 const mapStore = useMapStore()
 const drafts = useDraftsStore()
 const app = useAppStore()
-const t = presets.t
+const { t, tn } = useI18n()
 
 const presetId = ref<string | null>(props.presetId)
 const picking = ref(!props.presetId)
@@ -62,7 +63,7 @@ async function collect(): Promise<OsmRef[]> {
 }
 
 function sourceLabel() {
-  return source.value === 'issues' ? `${scans.picked.size} scan issues` : hlPath.value
+  return source.value === 'issues' ? tn('bulk.sourceIssues', scans.picked.size) : hlPath.value
 }
 
 async function count() {
@@ -99,7 +100,7 @@ async function create() {
     })
     const r = await presetsApi.bulk<PresetBulkApplyRequest, PresetBulkApplyResult>(req)
     if (!r.draft) throw new Error(t('bulk.noFeatures'))
-    app.toast(t('bulk.created', { title: r.draft.draft.title, n: r.draft.changes.length }), 'success')
+    app.toast(tn('bulk.created', r.draft.changes.length, { title: r.draft.draft.title }), 'success')
     emit('close')
     void drafts.loadDrafts()
     await drafts.open(r.draft.draft.id, { review: true })
@@ -126,33 +127,33 @@ function diffRows(before: Record<string, string>, after: Record<string, string>)
   <Modal :title="t('bulk.title')" width="620px" @close="emit('close')">
     <div class="space-y-3 px-5 py-4" data-testid="bulk-dialog">
       <div class="space-y-1">
-        <div class="text-[11.5px] font-medium text-fg-2">{{ t('bulk.preset') }}</div>
-        <div v-if="picking" class="h-72 overflow-hidden rounded-md border border-line">
+        <div class="text-[12px] font-bold text-fg">{{ t('bulk.preset') }}</div>
+        <div v-if="picking" class="h-72 overflow-hidden rounded-md border border-line-strong">
           <PresetPicker class="h-full" :geometries="[]" :closable="!!presetId" @choose="choose" @close="picking = false" />
         </div>
-        <button v-else class="flex w-full items-center gap-2 rounded-md border border-line px-2 py-1.5 text-left hover:bg-surface-2" data-testid="bulk-preset" @click="picking = true">
-          <PresetIcon :icon="preset?.icon" :size="26" />
-          <span class="flex-1 truncate">{{ preset?.name ?? t('bulk.pick') }}</span>
+        <button v-else class="flex w-full items-center gap-2.5 rounded-md border border-line-strong bg-surface px-2 py-1.5 text-left transition-colors hover:bg-surface-3" data-testid="bulk-preset" @click="picking = true">
+          <PresetIcon :icon="preset?.icon" :size="30" />
+          <span class="flex-1 truncate font-bold">{{ preset?.name ?? t('bulk.pick') }}</span>
           <span class="font-mono text-[11px] text-fg-3">{{ presetId }}</span>
         </button>
       </div>
 
       <div class="grid grid-cols-2 gap-3">
         <label class="flex flex-col gap-1">
-          <span class="text-[11.5px] font-medium text-fg-2">{{ t('bulk.source') }}</span>
+          <span class="text-[12px] font-bold text-fg">{{ t('bulk.source') }}</span>
           <select v-model="source" class="input" data-testid="bulk-source">
             <option value="highlight">{{ t('bulk.highlight') }}</option>
             <option value="issues">{{ t('bulk.issues') }} ({{ scans.picked.size }})</option>
           </select>
         </label>
         <label v-if="source === 'highlight'" class="flex flex-col gap-1">
-          <span class="text-[11.5px] font-medium text-fg-2">{{ t('bulk.highlight') }}</span>
+          <span class="text-[12px] font-bold text-fg">{{ t('bulk.highlight') }}</span>
           <select v-model="hlPath" class="input" data-testid="bulk-highlight">
             <option v-for="f in hl.files" :key="f.path" :value="f.path">{{ f.title }}{{ hl.active.includes(f.path) ? ' ●' : '' }}</option>
           </select>
         </label>
         <label v-if="source === 'highlight'" class="flex flex-col gap-1">
-          <span class="text-[11.5px] font-medium text-fg-2">{{ t('bulk.area') }}</span>
+          <span class="text-[12px] font-bold text-fg">{{ t('bulk.area') }}</span>
           <select v-model="scope" class="input">
             <option v-if="mapStore.area" value="area">{{ mapStore.area.name }}</option>
             <option value="view">{{ t('bulk.view') }}</option>
@@ -170,10 +171,10 @@ function diffRows(before: Record<string, string>, after: Record<string, string>)
       <div v-if="error" class="rounded-md border border-removed/40 bg-removed-soft px-2.5 py-2 text-[12px] text-removed">{{ error }}</div>
 
       <div v-if="result" class="space-y-2" data-testid="bulk-result">
-        <div class="font-medium">
+        <div class="font-bold">
           {{ t('bulk.total', { total: result.total, changed: result.changed, unchanged: result.unchanged, skipped: result.skipped.length }) }}
         </div>
-        <div class="scroll-thin max-h-64 overflow-y-auto rounded-md border border-line">
+        <div class="scroll-thin max-h-64 overflow-y-auto rounded-md border border-line-strong bg-surface">
           <div v-for="item in result.preview" :key="`${item.ref.type}${item.ref.id}`" class="border-b border-line px-2.5 py-1.5 last:border-b-0">
             <div class="flex items-center gap-2 text-[12px]">
               <span class="font-mono text-fg-3">{{ item.ref.type[0] }}{{ item.ref.id }}</span>
@@ -194,7 +195,7 @@ function diffRows(before: Record<string, string>, after: Record<string, string>)
           </div>
         </div>
         <label class="flex flex-col gap-1">
-          <span class="text-[11.5px] font-medium text-fg-2">{{ t('bulk.draftTitle') }}</span>
+          <span class="text-[12px] font-bold text-fg">{{ t('bulk.draftTitle') }}</span>
           <input v-model="title" class="input" />
         </label>
         <div class="flex justify-end">

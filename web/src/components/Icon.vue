@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { spriteSymbol } from '@/lib/idSprite'
+
 const paths = {
   search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-4.3-4.3',
   layers: 'M12 3 2 8l10 5 10-5-10-5zM2 13l10 5 10-5M2 17.5l10 5 10-5',
@@ -8,8 +11,6 @@ const paths = {
   'chevron-up': 'M18 15l-6-6-6 6',
   x: 'M18 6 6 18M6 6l12 12',
   check: 'M20 6 9 17l-5-5',
-  sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
-  moon: 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z',
   settings:
     'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
   pin: 'M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
@@ -49,15 +50,65 @@ const paths = {
   more: 'M12 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM19 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM5 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2z',
   bolt: 'M13 2 3 14h9l-1 8 10-12h-9l1-8z',
   trash: 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6',
+  geolocate: 'M12 2v3M12 19v3M2 12h3M19 12h3M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12z',
+  wrench: 'M14.7 6.3a4 4 0 0 0 5 5L22 14l-8 8-2.3-2.3a4 4 0 0 0-5-5L2 10l8-8 2.3 2.3z',
+  star: 'M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9L12 3z',
 } as const
 
 export type IconName = keyof typeof paths
 
-withDefaults(defineProps<{ name: IconName; size?: number; stroke?: number }>(), { size: 16, stroke: 1.8 })
+const sprites: Partial<Record<IconName, string>> = {
+  search: 'iD-icon-search',
+  layers: 'iD-icon-layers',
+  'chevron-left': 'iD-icon-backward',
+  'chevron-right': 'iD-icon-forward',
+  'chevron-down': 'iD-icon-down',
+  'chevron-up': 'iD-icon-up',
+  x: 'iD-icon-close',
+  check: 'iD-icon-apply',
+  pin: 'iD-icon-point',
+  external: 'iD-icon-out-link',
+  edit: 'iD-icon-edit',
+  undo: 'iD-icon-undo',
+  merge: 'iD-icon-save',
+  upload: 'iD-icon-save',
+  user: 'iD-icon-avatar',
+  plus: 'iD-icon-plus',
+  minus: 'iD-icon-minus',
+  alert: 'iD-icon-alert',
+  info: 'iD-icon-info',
+  'panel-left': 'iD-icon-sidebar-left',
+  'panel-right': 'iD-icon-sidebar-right',
+  copy: 'iD-operation-copy',
+  database: 'iD-icon-data',
+  target: 'iD-icon-framed-dot',
+  more: 'iD-icon-more',
+  trash: 'iD-operation-delete',
+  geolocate: 'iD-icon-geolocate',
+  wrench: 'iD-icon-wrench',
+  star: 'iD-icon-favorite',
+}
+
+const props = withDefaults(defineProps<{ name: IconName; size?: number; stroke?: number }>(), { size: 16, stroke: 1.8 })
+const symbol = computed(() => {
+  const id = sprites[props.name]
+  return id ? spriteSymbol(id) : null
+})
 </script>
 
 <template>
   <svg
+    v-if="symbol"
+    :width="size"
+    :height="size"
+    :viewBox="symbol.viewBox"
+    fill="currentColor"
+    aria-hidden="true"
+    class="shrink-0"
+    v-html="symbol.body"
+  />
+  <svg
+    v-else
     :width="size"
     :height="size"
     viewBox="0 0 24 24"

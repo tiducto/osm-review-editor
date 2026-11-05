@@ -16,6 +16,7 @@ import PresetIcon from './PresetIcon.vue'
 import BulkApplyDialog from './BulkApplyDialog.vue'
 import Icon from '../Icon.vue'
 import Spinner from '../Spinner.vue'
+import { useI18n } from '@/i18n'
 
 const presets = usePresetsStore()
 const presetEdit = useEditPresetsStore()
@@ -24,7 +25,7 @@ const mapStore = useMapStore()
 const ruleFiles = useRuleFilesStore()
 const panel = usePanelStore()
 const app = useAppStore()
-const t = presets.t
+const { t, tn } = useI18n()
 
 const query = ref('')
 const openId = ref<string | null>(null)
@@ -32,7 +33,7 @@ const openCat = ref<string | null>(null)
 const bulkFor = ref<string | null | undefined>(undefined)
 const working = ref(false)
 
-onMounted(() => void presets.ensure().catch((e) => app.fail(e, 'Presets')))
+onMounted(() => void presets.ensure().catch((e) => app.fail(e, t('library.title'))))
 
 const userPresets = computed<PresetDef[]>(() => {
   const cat = presets.catalog
@@ -67,6 +68,10 @@ const selectedFeature = computed<{ tags: Tags; geometry: Geometry } | null>(() =
   return { tags: f.tags, geometry }
 })
 
+function drawLabel(k: 'point' | 'line' | 'area'): string {
+  return t(k === 'point' ? 'draw.point' : k === 'line' ? 'draw.line' : 'draw.area')
+}
+
 function members(c: CategoryDef): PresetDef[] {
   const cat = presets.catalog
   return cat ? c.members.map((id) => cat.preset(id)).filter((p): p is PresetDef => !!p) : []
@@ -87,7 +92,7 @@ function smartRunnable(s: SmartPreset): boolean {
 }
 
 async function openRules(path: string) {
-  panel.tab = 'rules'
+  panel.open('rules')
   await ruleFiles.load()
   await ruleFiles.openFile(path)
 }
@@ -135,7 +140,7 @@ async function fromFeature() {
   for (const [k, v] of Object.entries(f.tags)) if (!SKIP_KEY.test(k)) addTags[k] = v
   const tags = Object.keys(addTags).length ? addTags : matched.tags
   const base = slug(fold(`${matched.name}-${Object.values(addTags).slice(1, 3).join('-')}`)) || 'preset'
-  const name = `${matched.name} (${presets.locale === 'cs' ? 'vlastní' : 'custom'})`
+  const name = `${matched.name} (${t('library.custom')})`
   const preset = {
     id: `custom/${base}`,
     name,
@@ -146,122 +151,110 @@ async function fromFeature() {
     fields: cat.isFallback(matched) ? ['name'] : [`{${matched.id}}`],
   }
   await ruleFiles.create('preset', base, JSON.stringify(preset, null, 2) + '\n')
-  panel.tab = 'rules'
+  panel.open('rules')
   await presets.reloadUser()
 }
 </script>
 
 <template>
-  <div class="flex h-full flex-col" data-testid="presets-library">
-    <div class="space-y-2 border-b border-line px-3 py-3">
+  <div class="flex h-full flex-col bg-surface-2" data-testid="presets-library">
+    <div class="space-y-2 border-b border-line-strong px-3 py-3">
       <div class="flex items-center gap-2">
         <span class="section-title">{{ t('library.title') }}</span>
         <Spinner v-if="presets.loading || working" :size="11" class="text-fg-3" />
-        <div class="ml-auto flex overflow-hidden rounded-md border border-line text-[10.5px]" :title="t('inspector.locale')">
-          <button
-            v-for="l in ['cs', 'en'] as const"
-            :key="l"
-            class="px-1.5 py-0.5 uppercase"
-            :class="presets.locale === l ? 'bg-accent text-white' : 'text-fg-3 hover:bg-surface-3'"
-            :data-testid="`library-locale-${l}`"
-            @click="presets.locale = l"
-          >
-            {{ l }}
-          </button>
-        </div>
       </div>
       <input v-model="query" class="input" :placeholder="t('library.search')" data-testid="library-search" />
       <div class="flex flex-wrap gap-1">
         <button class="btn btn-sm" :disabled="!selectedFeature" :title="selectedFeature ? '' : t('library.noSelection')" data-testid="library-from-feature" @click="fromFeature">
-          <Icon name="plus" :size="11" /> {{ t('library.fromFeature') }}
+          <Icon name="plus" :size="14" /> {{ t('library.fromFeature') }}
         </button>
-        <button class="btn btn-sm" data-testid="library-bulk" @click="bulkFor = null"><Icon name="layers" :size="11" /> {{ t('library.bulk') }}</button>
+        <button class="btn btn-sm" data-testid="library-bulk" @click="bulkFor = null"><Icon name="layers" :size="14" /> {{ t('library.bulk') }}</button>
       </div>
     </div>
 
     <div class="scroll-thin min-h-0 flex-1 overflow-y-auto pb-4">
-      <div class="px-3 pt-3 pb-1 text-[10.5px] font-semibold tracking-wide text-fg-3 uppercase">{{ t('library.user') }}</div>
-      <p v-if="!userPresets.length" class="px-3 pb-1 text-[12px] text-fg-3">{{ t('library.empty') }}</p>
-      <div v-for="p in userPresets" :key="p.id" class="border-b border-line/60" :data-user-preset="p.id">
-        <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-2" @click="openId = openId === p.id ? null : p.id">
-          <PresetIcon :icon="p.icon" :size="26" />
+      <div class="section-title px-3 pt-3 pb-1.5">{{ t('library.user') }}</div>
+      <p v-if="!userPresets.length" class="px-3 pb-2 text-[12px] text-fg-3">{{ t('library.empty') }}</p>
+      <div v-for="p in userPresets" :key="p.id" class="mx-3 mb-2 overflow-hidden rounded-md border border-line-strong bg-surface" :data-user-preset="p.id">
+        <button class="row-btn px-2.5 py-1.5" @click="openId = openId === p.id ? null : p.id">
+          <PresetIcon :icon="p.icon" :size="28" />
           <span class="min-w-0 flex-1">
-            <span class="block truncate text-[12.5px] font-medium">{{ p.name }}</span>
-            <span class="block truncate font-mono text-[10.5px] text-fg-3">{{ p.file }}{{ p.extends ? ` · ${t('library.extends', { id: p.extends })}` : '' }}</span>
+            <span class="block truncate text-[12.5px] font-bold">{{ p.name }}</span>
+            <span class="block truncate font-mono text-[11px] text-fg-3">{{ p.file }}{{ p.extends ? ` · ${t('library.extends', { id: p.extends })}` : '' }}</span>
           </span>
           <Icon :name="openId === p.id ? 'chevron-up' : 'chevron-down'" :size="12" class="text-fg-3" />
         </button>
-        <div v-if="openId === p.id" class="flex flex-wrap gap-1 px-3 pb-2">
-          <button v-if="p.file" class="btn btn-sm" @click="openRules(p.file)"><Icon name="edit" :size="11" /> {{ t('library.openRules') }}</button>
+        <div v-if="openId === p.id" class="flex flex-wrap gap-1 border-t border-line bg-surface-2 px-2.5 py-2">
+          <button v-if="p.file" class="btn btn-sm" @click="openRules(p.file)"><Icon name="edit" :size="14" /> {{ t('library.openRules') }}</button>
           <button v-if="p.extends" class="btn btn-sm" data-testid="library-detach" @click="detach(p)">{{ t('library.detach') }}</button>
           <button class="btn btn-sm" :disabled="!fits(p)" :title="fits(p) ? '' : t('library.noSelection')" data-testid="library-apply" @click="presetEdit.changePreset(selectionIds, p.id)">
             {{ t('library.applySelection') }}
           </button>
-          <button v-for="k in presetEdit.canDraw(p)" :key="k" class="btn btn-sm" :data-draw="k" @click="presetEdit.drawWith(p.id, k)">{{ t('library.draw') }}: {{ t(`draw.${k}`) }}</button>
+          <button v-for="k in presetEdit.canDraw(p)" :key="k" class="btn btn-sm" :data-draw="k" @click="presetEdit.drawWith(p.id, k)">{{ t('library.draw') }}: {{ drawLabel(k) }}</button>
           <button class="btn btn-sm" @click="bulkFor = p.id">{{ t('library.bulk') }}</button>
         </div>
       </div>
 
-      <div class="px-3 pt-3 pb-1 text-[10.5px] font-semibold tracking-wide text-fg-3 uppercase">{{ t('library.smart') }}</div>
-      <p v-if="!smartPresets.length" class="px-3 pb-1 text-[12px] text-fg-3">{{ t('library.smartEmpty') }}</p>
-      <div v-for="s in smartPresets" :key="s.id" class="border-b border-line/60 px-3 py-1.5" :data-smart-preset="s.id">
+      <div class="section-title px-3 pt-3 pb-1.5">{{ t('library.smart') }}</div>
+      <p v-if="!smartPresets.length" class="px-3 pb-2 text-[12px] text-fg-3">{{ t('library.smartEmpty') }}</p>
+      <div v-for="s in smartPresets" :key="s.id" class="mx-3 mb-2 rounded-md border border-line-strong bg-surface px-2.5 py-2" :data-smart-preset="s.id">
         <div class="flex items-center gap-2">
-          <PresetIcon :icon="null" :size="26" smart />
+          <PresetIcon :icon="null" :size="28" smart />
           <span class="min-w-0 flex-1">
-            <span class="block truncate text-[12.5px] font-medium">{{ s.name }}</span>
-            <span class="block truncate font-mono text-[10.5px] text-fg-3">{{ s.match }} · {{ t('smart.steps', { n: s.steps.length }) }}</span>
+            <span class="block truncate text-[12.5px] font-bold">{{ s.name }}</span>
+            <span class="block truncate font-mono text-[11px] text-fg-3">{{ s.match }} · {{ tn('smart.steps', s.steps.length) }}</span>
           </span>
         </div>
-        <p v-if="s.description" class="mt-0.5 text-[11.5px] text-fg-2">{{ s.description }}</p>
-        <div class="mt-1 flex flex-wrap gap-1">
+        <p v-if="s.description" class="mt-1 text-[11.5px] text-fg-2">{{ s.description }}</p>
+        <div class="mt-1.5 flex flex-wrap gap-1">
           <button
             class="btn btn-sm text-claude"
             :disabled="!smartRunnable(s)"
             :title="smartRunnable(s) ? '' : t('library.notApplicable')"
             @click="presetEdit.openSmart(s, editor.selection[0].id)"
           >
-            <Icon name="sparkle" :size="11" /> {{ t('library.runOnSelection') }}
+            <Icon name="sparkle" :size="14" /> {{ t('library.runOnSelection') }}
           </button>
           <button v-if="smartPath(s)" class="btn btn-sm" @click="openRules(smartPath(s)!)">{{ t('library.openRules') }}</button>
         </div>
       </div>
 
-      <div class="px-3 pt-3 pb-1 text-[10.5px] font-semibold tracking-wide text-fg-3 uppercase">{{ t('library.id') }}</div>
+      <div class="section-title px-3 pt-3 pb-1.5">{{ t('library.id') }}</div>
       <template v-if="query.trim()">
-        <div v-for="p in results" :key="p.id" class="border-b border-line/60" :data-id-preset="p.id">
-          <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-2" @click="openId = openId === p.id ? null : p.id">
-            <PresetIcon :icon="p.icon" :size="26" />
+        <div v-for="p in results" :key="p.id" class="mx-3 mb-2 overflow-hidden rounded-md border border-line-strong bg-surface" :data-id-preset="p.id">
+          <button class="row-btn px-2.5 py-1.5" @click="openId = openId === p.id ? null : p.id">
+            <PresetIcon :icon="p.icon" :size="28" />
             <span class="min-w-0 flex-1">
-              <span class="block truncate text-[12.5px]">{{ p.name }}</span>
-              <span class="block truncate font-mono text-[10.5px] text-fg-3">{{ p.id }} · {{ p.geometry.join(', ') }}</span>
+              <span class="block truncate text-[12.5px] font-bold">{{ p.name }}</span>
+              <span class="block truncate font-mono text-[11px] text-fg-3">{{ p.id }} · {{ p.geometry.join(', ') }}</span>
             </span>
           </button>
-          <div v-if="openId === p.id" class="flex flex-wrap gap-1 px-3 pb-2">
+          <div v-if="openId === p.id" class="flex flex-wrap gap-1 border-t border-line bg-surface-2 px-2.5 py-2">
             <button class="btn btn-sm" data-testid="library-import" @click="importOverlay(p)">{{ t('library.import') }}</button>
             <button class="btn btn-sm" :disabled="!fits(p)" @click="presetEdit.changePreset(selectionIds, p.id)">{{ t('library.applySelection') }}</button>
-            <button v-for="k in presetEdit.canDraw(p)" :key="k" class="btn btn-sm" :data-draw="k" @click="presetEdit.drawWith(p.id, k)">{{ t('library.draw') }}: {{ t(`draw.${k}`) }}</button>
+            <button v-for="k in presetEdit.canDraw(p)" :key="k" class="btn btn-sm" :data-draw="k" @click="presetEdit.drawWith(p.id, k)">{{ t('library.draw') }}: {{ drawLabel(k) }}</button>
             <button class="btn btn-sm" @click="bulkFor = p.id">{{ t('library.bulk') }}</button>
           </div>
         </div>
       </template>
       <template v-else>
-        <div v-for="c in categories" :key="c.id" class="border-b border-line/60">
-          <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-2" @click="openCat = openCat === c.id ? null : c.id">
-            <PresetIcon :icon="c.icon" :size="26" />
-            <span class="flex-1 truncate text-[12.5px]">{{ c.name }}</span>
-            <span class="text-[11px] text-fg-3">{{ c.members.length }}</span>
+        <div v-for="c in categories" :key="c.id" class="mx-3 mb-2 overflow-hidden rounded-md border border-line-strong bg-surface">
+          <button class="row-btn px-2.5 py-1.5" @click="openCat = openCat === c.id ? null : c.id">
+            <PresetIcon :icon="c.icon" :size="28" />
+            <span class="flex-1 truncate text-[12.5px] font-bold">{{ c.name }}</span>
+            <span class="chip bg-surface-3 text-fg-2">{{ c.members.length }}</span>
             <Icon :name="openCat === c.id ? 'chevron-up' : 'chevron-down'" :size="12" class="text-fg-3" />
           </button>
-          <div v-if="openCat === c.id" class="pb-1 pl-5">
+          <div v-if="openCat === c.id" class="border-t border-line py-1">
             <div v-for="p in members(c)" :key="p.id" :data-id-preset="p.id">
-              <button class="flex w-full items-center gap-2 px-3 py-1 text-left hover:bg-surface-2" @click="openId = openId === p.id ? null : p.id">
-                <PresetIcon :icon="p.icon" :size="22" />
+              <button class="row-btn py-1 pr-2.5 pl-6" @click="openId = openId === p.id ? null : p.id">
+                <PresetIcon :icon="p.icon" :size="24" />
                 <span class="flex-1 truncate text-[12px]">{{ p.name }}</span>
               </button>
-              <div v-if="openId === p.id" class="flex flex-wrap gap-1 px-3 pb-2">
+              <div v-if="openId === p.id" class="flex flex-wrap gap-1 border-t border-line bg-surface-2 px-2.5 py-2">
                 <button class="btn btn-sm" @click="importOverlay(p)">{{ t('library.import') }}</button>
                 <button class="btn btn-sm" :disabled="!fits(p)" @click="presetEdit.changePreset(selectionIds, p.id)">{{ t('library.applySelection') }}</button>
-                <button v-for="k in presetEdit.canDraw(p)" :key="k" class="btn btn-sm" @click="presetEdit.drawWith(p.id, k)">{{ t('library.draw') }}: {{ t(`draw.${k}`) }}</button>
+                <button v-for="k in presetEdit.canDraw(p)" :key="k" class="btn btn-sm" @click="presetEdit.drawWith(p.id, k)">{{ t('library.draw') }}: {{ drawLabel(k) }}</button>
                 <button class="btn btn-sm" @click="bulkFor = p.id">{{ t('library.bulk') }}</button>
               </div>
             </div>

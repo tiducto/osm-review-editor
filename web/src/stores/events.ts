@@ -1,4 +1,5 @@
 import type { UiEvent, UiEventRemoteCommand } from '@/generated/models'
+import { useMirrorStore } from './mirror'
 import { EventStream } from '@/api/events'
 import { useAppStore } from './app'
 import { useMapStore } from './map'
@@ -9,6 +10,8 @@ import { useRuleFilesStore } from './ruleFiles'
 import { useScansStore } from './scans'
 import { usePushView } from './pushView'
 import { usePresetsStore } from './presets'
+import { usePanelStore } from './panel'
+import { t, tn } from '@/i18n'
 
 export function connectEvents(): () => void {
   const app = useAppStore()
@@ -24,7 +27,7 @@ export function connectEvents(): () => void {
   function remote(cmd: UiEventRemoteCommand) {
     if (cmd.imagery) {
       mapStore.addImagery(cmd.imagery)
-      app.toast(`Imagery added: ${cmd.imagery.name}`)
+      app.toast(t('app.imageryAdded', { name: cmd.imagery.name }))
     }
     if (cmd.message) app.toast(cmd.message, 'info', 9000)
     const ids = cmd.draftIds.length ? cmd.draftIds : cmd.draftId ? [cmd.draftId] : []
@@ -34,10 +37,10 @@ export function connectEvents(): () => void {
       return
     }
     if (ids.length > 1) {
-      app.toast(`Remote control created ${ids.length} drafts`, 'success')
+      app.toast(tn('app.remoteDrafts', ids.length), 'success')
       drafts.statusFilter = 'open'
       drafts.drawerTab = 'drafts'
-      drafts.drawerOpen = true
+      usePanelStore().open('drafts')
       void drafts.loadDrafts()
     }
     if (drafts.reviewing) drafts.stopReview()
@@ -56,6 +59,7 @@ export function connectEvents(): () => void {
         break
       case 'draft_updated':
         void drafts.onDraftUpdated(e.draftId)
+        useMirrorStore().overlayVersion++
         break
       case 'merge_progress':
         drafts.onMergeProgress(e.progress)
@@ -63,9 +67,16 @@ export function connectEvents(): () => void {
       case 'mirror_swapped':
         app.setMirror(e.status)
         void rules.refresh()
-        mapStore.refreshTiles()
-        app.toast('Local mirror updated')
+        {
+          const mirror = useMirrorStore()
+          const wasPending = mirror.pendingReload
+          if (mirror.onSwapped(e.status)) mapStore.refreshTiles()
+          else if (!wasPending) app.toast(t('shell.mirror.reloadHint'))
+        }
         void highlights.load()
+        break
+      case 'mirror_status':
+        useMirrorStore().onStatus(e.status)
         break
       case 'rules_changed':
         void highlights.load()

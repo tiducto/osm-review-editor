@@ -5,6 +5,7 @@ import { usePresetsStore } from '@/stores/presets'
 import { fold } from '@/presets/catalog'
 import type { CategoryDef, Geometry, PresetDef } from '@/presets/types'
 import PresetIcon from './PresetIcon.vue'
+import { useI18n } from '@/i18n'
 import Icon from '../Icon.vue'
 
 const props = withDefaults(defineProps<{ geometries: Geometry[]; currentId?: string | null; smart?: SmartPreset[]; closable?: boolean }>(), {
@@ -15,7 +16,7 @@ const props = withDefaults(defineProps<{ geometries: Geometry[]; currentId?: str
 const emit = defineEmits<{ choose: [id: string]; smart: [preset: SmartPreset]; close: [] }>()
 
 const presets = usePresetsStore()
-const t = presets.t
+const { t } = useI18n()
 const query = ref('')
 const category = ref<CategoryDef | null>(null)
 const input = ref<HTMLInputElement | null>(null)
@@ -124,45 +125,50 @@ function subtitle(p: PresetDef): string {
 
 <template>
   <div class="flex min-h-0 flex-col" data-testid="preset-picker">
-    <div class="flex items-center gap-1.5 border-b border-line px-3 py-2">
-      <button v-if="category" class="btn btn-ghost btn-icon btn-sm w-6" :title="t('preset.back')" @click="category = null"><Icon name="chevron-left" :size="14" /></button>
+    <div class="flex items-center gap-1.5 border-b border-line-strong bg-surface-2 px-3 py-2.5">
+      <button v-if="category" class="btn btn-icon h-8 w-8" :title="t('preset.back')" @click="category = null"><Icon name="chevron-left" :size="14" /></button>
+      <div class="relative min-w-0 flex-1">
+      <Icon name="search" :size="14" class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-fg-3" />
       <input
         ref="input"
         v-model="query"
-        class="input"
+        class="input h-8 pl-8"
         :placeholder="t('preset.search')"
         data-testid="preset-search"
         @input="onInput"
         @keydown="onKey"
       />
-      <button v-if="closable" class="btn btn-ghost btn-icon btn-sm w-6" :title="t('preset.back')" @click="emit('close')"><Icon name="x" :size="14" /></button>
+      </div>
+      <button v-if="closable" class="btn btn-ghost btn-icon h-8 w-8" :title="t('common.close')" :aria-label="t('common.close')" @click="emit('close')"><Icon name="x" :size="14" /></button>
     </div>
-    <div class="scroll-thin min-h-0 flex-1 overflow-y-auto pb-2">
+    <div class="scroll-thin flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto bg-surface-2 px-3 pt-1 pb-3">
       <div v-if="!presets.catalog" class="px-4 py-6 text-center text-fg-3">{{ t('inspector.loading') }}</div>
       <template v-for="g in groups" :key="g.key">
-        <div v-if="g.items.length" class="px-3 pt-2.5 pb-1 text-[10.5px] font-semibold tracking-wide text-fg-3 uppercase">{{ g.title }}</div>
+        <div v-if="g.items.length" class="section-title -mb-1 pt-1.5">{{ g.title }}</div>
         <button
           v-for="item in g.items"
           :key="item.kind === 'preset' ? item.p.id : item.kind === 'category' ? item.c.id : `smart:${item.s.id}`"
-          class="flex w-full items-center gap-2.5 px-3 py-1.5 text-left hover:bg-surface-3"
-          :class="[indexOf(item) === active && 'bg-surface-3', item.kind === 'preset' && item.p.id === currentId && 'font-semibold']"
+          class="flex min-h-12 w-full shrink-0 items-stretch overflow-hidden rounded-md border text-left transition-colors hover:bg-surface-3"
+          :class="[indexOf(item) === active ? 'bg-surface-3' : 'bg-surface', item.kind === 'preset' && item.p.id === currentId ? 'border-accent' : 'border-line-strong']"
           :data-preset="item.kind === 'preset' ? item.p.id : item.kind === 'smart' ? `smart:${item.s.id}` : item.c.id"
           @click="pick(item)"
           @mouseenter="active = indexOf(item)"
         >
-          <PresetIcon v-if="item.kind === 'preset'" :icon="item.p.icon" :size="28" />
-          <PresetIcon v-else-if="item.kind === 'category'" :icon="item.c.icon" :size="28" />
-          <PresetIcon v-else :icon="null" :size="28" smart />
-          <span class="min-w-0 flex-1">
-            <span class="block truncate text-[12.5px]">
+          <span class="grid w-12 shrink-0 place-items-center border-r border-line-strong">
+          <PresetIcon v-if="item.kind === 'preset'" :icon="item.p.icon" :size="30" />
+          <PresetIcon v-else-if="item.kind === 'category'" :icon="item.c.icon" :size="30" />
+          <PresetIcon v-else :icon="null" :size="30" smart />
+          </span>
+          <span class="flex min-w-0 flex-1 flex-col justify-center px-2.5 py-1.5">
+            <span class="block truncate text-[12.5px] font-bold text-fg">
               {{ item.kind === 'preset' ? item.p.name : item.kind === 'category' ? item.c.name : item.s.name }}
             </span>
-            <span class="block truncate font-mono text-[10.5px] text-fg-3">
+            <span class="block truncate font-mono text-[11px] text-fg-3">
               {{ item.kind === 'preset' ? subtitle(item.p) : item.kind === 'category' ? `${item.c.members.length}` : item.s.description ?? item.s.id }}
             </span>
           </span>
-          <Icon v-if="item.kind === 'category'" name="chevron-right" :size="13" class="text-fg-3" />
-          <span v-if="item.kind === 'preset' && item.p.origin === 'user'" class="chip bg-accent-soft text-accent">{{ t('preset.user') }}</span>
+          <Icon v-if="item.kind === 'category'" name="chevron-right" :size="14" class="mr-2.5 self-center text-fg-3" />
+          <span v-if="item.kind === 'preset' && item.p.origin === 'user'" class="chip mr-2.5 self-center bg-accent-soft text-accent">{{ t('preset.user') }}</span>
         </button>
       </template>
       <div v-if="presets.catalog && !flat.length" class="px-4 py-6 text-center text-fg-3">{{ t('preset.noResults') }}</div>

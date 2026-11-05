@@ -9,7 +9,9 @@ import { refString } from '@/lib/osm'
 import { plural } from '@/lib/format'
 import Icon from './Icon.vue'
 import Spinner from './Spinner.vue'
+import { useI18n } from '@/i18n'
 
+const { t, tn } = useI18n()
 const mapStore = useMapStore()
 const rules = useRulesStore()
 const drafts = useDraftsStore()
@@ -107,13 +109,13 @@ defineExpose({ focus: () => input.value?.focus() })
 <template>
   <div class="relative w-full max-w-[440px] min-w-[110px] flex-1 sm:min-w-[180px]">
     <div class="relative">
-      <Icon name="search" :size="14" class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-fg-3" />
+      <Icon name="search" :size="16" class="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-fg-2" />
       <input
         id="search-input"
         ref="input"
         v-model="q"
-        class="input h-8 pr-16 pl-8"
-        placeholder="Search place, OSM ID (w123) or tag query (w[highway=footway][!surface])"
+        class="input h-8 border-transparent pr-16 pl-8"
+        :placeholder="t('search.placeholder')"
         autocomplete="off"
         spellcheck="false"
         @focus="open = true"
@@ -123,53 +125,53 @@ defineExpose({ focus: () => input.value?.focus() })
       <div class="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-1.5">
         <Spinner v-if="loading" :size="12" class="text-fg-3" />
         <span v-else-if="!q" class="kbd">/</span>
-        <button v-else class="text-fg-3 hover:text-fg" title="Clear" @mousedown.prevent="q = ''"><Icon name="x" :size="14" /></button>
+        <button v-else class="text-fg-3 hover:text-fg" :title="t('common.clear')" @mousedown.prevent="q = ''"><Icon name="x" :size="14" /></button>
       </div>
     </div>
 
     <Transition name="pop">
       <div
         v-if="showPanel"
-        class="absolute top-full right-0 left-0 z-40 mt-1.5 overflow-hidden rounded-lg border border-line bg-surface shadow-pop max-sm:fixed max-sm:inset-x-2 max-sm:top-12"
+        class="absolute top-full right-0 left-0 z-40 mt-1.5 overflow-hidden rounded-md border border-line-strong bg-surface text-fg shadow-pop max-sm:fixed max-sm:inset-x-2 max-sm:top-12"
         @mousedown.prevent
       >
         <div v-if="error" class="flex items-center gap-2 px-3 py-2.5 text-[12.5px] text-error"><Icon name="alert" :size="14" />{{ error }}</div>
-        <div v-else-if="!hits.length" class="px-3 py-2.5 text-[12.5px] text-fg-3">No results</div>
+        <div v-else-if="!hits.length" class="px-3 py-2.5 text-[12.5px] text-fg-3">{{ t('search.noResults') }}</div>
         <ul v-else class="scroll-thin max-h-[360px] overflow-y-auto py-1">
           <li v-for="(h, i) in hits" :key="i">
             <button
               class="flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
-              :class="i === active ? 'bg-accent-soft' : 'hover:bg-surface-2'"
+              :class="i === active ? 'bg-surface-3' : 'hover:bg-surface-3'"
               @mouseenter="active = i"
               @click="pick(h)"
             >
               <Icon :name="kindIcon[h.kind]" :size="14" class="text-fg-3" />
               <span class="min-w-0 flex-1">
-                <span class="block truncate font-medium">{{ h.label }}</span>
+                <span class="block truncate font-bold">{{ h.label }}</span>
                 <span v-if="h.detail || h.ref" class="block truncate text-[11.5px] text-fg-3">
                   <span v-if="h.ref" class="font-mono">{{ refString(h.ref) }}</span>
                   <span v-if="h.ref && h.detail"> · </span>{{ h.detail }}
                 </span>
               </span>
-              <span v-if="h.kind === 'query'" class="chip bg-surface-3 text-fg-2">{{ plural(h.refs.length, 'match', 'matches') }}</span>
-              <span v-else-if="h.kind === 'area'" class="chip bg-surface-3 text-fg-2">Area</span>
+              <span v-if="h.kind === 'query'" class="chip bg-surface-3 text-fg-2">{{ plural(h.refs.length, 'common.matches') }}</span>
+              <span v-else-if="h.kind === 'area'" class="chip bg-surface-3 text-fg-2">{{ t('search.area') }}</span>
             </button>
           </li>
         </ul>
-        <div class="border-t border-line bg-surface-2 px-3 py-1.5 text-[11px] text-fg-3">
-          <span class="kbd">↑</span> <span class="kbd">↓</span> to move · <span class="kbd">↵</span> to go
-          <template v-if="rules.scope?.area"> · queries run in {{ rules.scope.area }}</template>
+        <div class="border-t border-line-strong bg-surface-2 px-3 py-1.5 text-[11px] text-fg-2">
+          <span class="kbd">↑</span> <span class="kbd">↓</span> {{ t('search.toMove') }} · <span class="kbd">↵</span> {{ t('search.toGo') }}
+          <template v-if="rules.scope?.area"> · {{ t('search.queriesIn', { area: rules.scope.area }) }}</template>
         </div>
       </div>
     </Transition>
 
     <button
       v-if="mapStore.highlighted.length"
-      class="chip absolute top-1/2 -right-2 translate-x-full -translate-y-1/2 bg-accent-soft text-accent"
-      title="Clear highlighted results"
+      class="chip absolute top-1/2 -right-2 translate-x-full -translate-y-1/2 bg-accent text-white"
+      :title="t('search.clearHighlight')"
       @click="clearHighlight"
     >
-      {{ mapStore.highlighted.length }} highlighted <Icon name="x" :size="11" />
+      {{ tn('search.highlighted', mapStore.highlighted.length) }} <Icon name="x" :size="11" />
     </button>
   </div>
 </template>

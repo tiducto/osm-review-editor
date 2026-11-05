@@ -371,6 +371,7 @@ export interface SmartPreset {
   params: Record<string, SmartParam>
   steps: (Record<string, JsonValue>)[]
   description: string | null
+  names: Record<string, string>
 }
 
 export interface Preset {
@@ -389,6 +390,7 @@ export interface Preset {
   searchable: boolean | null
   extends: string | null
   apply: PresetApplyMode | null
+  names: Record<string, string> | null
 }
 
 export interface HighlightList {

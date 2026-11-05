@@ -66,7 +66,7 @@ defineExpose({ focus: () => first.value?.[0]?.focus() })
 
 <template>
   <div class="min-w-0">
-    <div class="flex flex-wrap gap-1" role="radiogroup">
+    <div class="flex flex-col overflow-hidden rounded-b-md border border-line-strong bg-surface" role="radiogroup">
       <button
         v-for="o in state.options"
         :key="o.value"
@@ -74,10 +74,10 @@ defineExpose({ focus: () => first.value?.[0]?.focus() })
         type="button"
         role="radio"
         :aria-checked="isOn(o)"
-        class="inline-flex h-7 min-w-0 flex-[1_1_auto] items-center justify-center rounded-md border px-2 text-[12.5px] transition-colors"
+        class="flex h-7 min-w-0 items-center gap-2 border-b border-line px-2.5 text-left text-[12px] transition-colors last:border-b-0"
         :class="[
-          isOn(o) ? 'border-accent bg-accent-soft font-medium text-accent' : 'border-line bg-surface text-fg-2',
-          isMixed(o) && !isOn(o) && 'border-dashed border-line-strong text-fg italic',
+          isOn(o) ? 'bg-accent-soft font-bold text-fg' : 'bg-surface text-fg',
+          isMixed(o) && !isOn(o) && 'text-fg-2 italic',
           !readonly && !isOn(o) && 'hover:bg-surface-3',
           o.raw && 'font-mono text-[12px]',
         ]"
@@ -85,12 +85,18 @@ defineExpose({ focus: () => first.value?.[0]?.focus() })
         :title="optionTooltip(o)"
         @click="select(o)"
       >
+        <span
+          class="grid size-3.5 shrink-0 place-items-center rounded-full border"
+          :class="isOn(o) ? 'border-accent bg-surface' : isMixed(o) ? 'border-dashed border-fg-3 bg-surface' : 'border-line-strong bg-surface'"
+        >
+          <span v-if="isOn(o)" class="size-2 rounded-full bg-accent" />
+        </span>
         <span class="truncate">{{ o.title }}</span>
       </button>
     </div>
-    <div v-if="isStructure && (typeField || showsLayer(field, tags))" class="mt-1.5 grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-1.5 rounded-md bg-surface-2 p-1.5">
+    <div v-if="isStructure && (typeField || showsLayer(field, tags))" class="mt-1.5 grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-1.5 rounded-md border border-line-strong bg-surface-2 p-2 [&_.input]:rounded-md!">
       <label v-if="typeField && typeState" class="flex min-w-0 flex-col gap-0.5" :class="!showsLayer(field, tags) && 'col-span-2'">
-        <span class="text-[10.5px] font-medium text-fg-3">{{ tr(locale, 'field.type') }}</span>
+        <span class="text-[11px] font-bold text-fg">{{ tr(locale, 'field.type') }}</span>
         <ComboInput
           :model-value="typeState.display"
           :options="typeOptions"
@@ -102,7 +108,7 @@ defineExpose({ focus: () => first.value?.[0]?.focus() })
         />
       </label>
       <label v-if="showsLayer(field, tags)" class="flex min-w-0 flex-col gap-0.5" :class="!typeField && 'col-span-2'">
-        <span class="text-[10.5px] font-medium text-fg-3">{{ layerField.label || tr(locale, 'field.layer') }}</span>
+        <span class="text-[11px] font-bold text-fg">{{ layerField.label || tr(locale, 'field.layer') }}</span>
         <FieldInput :field="layerField" :tags="tags" :locale="locale" :readonly="readonly" @change="emit('change', $event)" />
       </label>
     </div>

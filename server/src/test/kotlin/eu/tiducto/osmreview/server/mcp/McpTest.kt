@@ -1,11 +1,14 @@
 package eu.tiducto.osmreview.server.mcp
 
+import eu.tiducto.osmreview.rules.MirrorUnavailableException
 import eu.tiducto.osmreview.rules.PolygonScopes
 import eu.tiducto.osmreview.rules.containsLonLat
 import eu.tiducto.osmreview.server.App
 import eu.tiducto.osmreview.server.Config
 import eu.tiducto.osmreview.server.db.RuleRunsTable
 import eu.tiducto.osmreview.server.module
+import eu.tiducto.osmreview.server.presets.PresetTarget
+import eu.tiducto.osmreview.shared.presets.PresetGeometry
 import eu.tiducto.osmreview.shared.BBox
 import eu.tiducto.osmreview.shared.LngLat
 import eu.tiducto.osmreview.shared.OsmRef
@@ -33,7 +36,9 @@ import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -71,6 +76,12 @@ class McpTest {
     private val osm = FakeOsm()
     private var nextId = 1
 
+    private val bulkMirror = mapOf(
+        OsmRef(OsmType.WAY, 55) to PresetTarget(mapOf("highway" to "footway"), PresetGeometry.LINE),
+        OsmRef(OsmType.WAY, 70) to PresetTarget(mapOf("highway" to "footway", "footway" to "sidewalk"), PresetGeometry.LINE),
+        OsmRef(OsmType.NODE, 101) to PresetTarget(mapOf("highway" to "crossing"), PresetGeometry.VERTEX),
+    )
+
     private val opavaTriangle = """{"type":"Polygon","coordinates":[[[17.895,49.935],[17.915,49.935],[17.905,49.95],[17.895,49.935]]]}"""
 
     @BeforeTest
@@ -94,7 +105,10 @@ class McpTest {
             )
             put("DEFAULT_AREAS", presets.toString())
         }
-        app = App(Config.fromEnv(env), HttpClient(MockEngine { req -> osm.handle(this, req) }))
+        app = App(Config.fromEnv(env), HttpClient(MockEngine { req -> osm.handle(this, req) })) { refs ->
+            if (OsmRef(OsmType.WAY, 404) in refs) throw MirrorUnavailableException("No GOL is open yet")
+            bulkMirror.filterKeys { it in refs }
+        }
         val example = listOf(Path.of("../user-rules.example"), Path.of("user-rules.example")).first { Files.isDirectory(it) }
         Files.copy(example.resolve(SURFACES), app.ruleFiles.root.resolve(SURFACES))
         app.ruleFiles.rescan()
@@ -210,7 +224,7 @@ class McpTest {
                 "list_rules", "run_rule", "query_osm", "get_object", "create_draft", "propose_changes", "propose_geometry", "update_change", "list_drafts", "get_draft",
                 "update_mirror_now",
                 "list_rule_files", "read_rule_file", "validate_rule_file", "write_rule_file", "delete_rule_file", "copy_rule_file",
-                "search_presets", "get_preset", "match_preset", "import_preset", "detach_preset",
+                "search_presets", "get_preset", "match_preset", "import_preset", "detach_preset", "apply_preset_bulk",
                 "run_scan", "get_scan", "diff_scans", "draft_from_scan", "list_highlights", "highlight_stats", "evaluate_highlight",
                 "push_view",
             ),
@@ -517,6 +531,78 @@ class McpTest {
         app.events.disconnect()
         assertTrue(app.events.connect().isEmpty())
         app.events.disconnect()
+    }
+
+    @Test
+    fun applyPresetBulkDryRunAndDraft() = mcpTest {
+        val session = initialize()
+        val refs = buildJsonArray {
+            add(JsonPrimitive("w55"))
+            add(buildJsonObject { put("type", "way"); put("id", 70) })
+            add(JsonPrimitive("n101"))
+            add(JsonPrimitive("w999"))
+        }
+        val dry = call(session, "apply_preset_bulk", args("preset_id" to "highway/footway/sidewalk", "refs" to refs, "locale" to "cs"))
+        assertFalse(dry.isError, dry.text)
+        val d = dry.json.jsonObject
+        assertEquals("Chodník podél vozovky", d["preset_name"]!!.jsonPrimitive.content)
+        assertEquals(true, d["dry_run"]!!.jsonPrimitive.booleanOrNull)
+        assertEquals(listOf(4, 1, 1, 2), listOf("total", "changed", "unchanged", "skipped").map { d[it]!!.jsonPrimitive.content.toInt() })
+        assertEquals(listOf("n101", "w999"), d["skipped_objects"]!!.jsonArray.map { it.jsonObject["ref"]!!.jsonPrimitive.content })
+        val row = d["preview"]!!.jsonArray.single().jsonObject
+        assertEquals("w55", row["ref"]!!.jsonPrimitive.content)
+        assertEquals("highway/footway", row["from_preset_id"]!!.jsonPrimitive.content)
+        assertEquals("+footway=sidewalk", row["summary"]!!.jsonPrimitive.content)
+        assertEquals(false, d["truncated"]!!.jsonPrimitive.booleanOrNull)
+        assertNull(d["draft_id"])
+        assertTrue(call(session, "list_drafts", args("author" to "claude")).json.jsonArray.isEmpty())
+
+        val seen = java.util.concurrent.CopyOnWriteArrayList<UiEvent>()
+        val collector = app.scope.launch(start = CoroutineStart.UNDISPATCHED) { app.events.events.collect { seen += it } }
+        val created = call(
+            session, "apply_preset_bulk",
+            args("preset_id" to "highway/footway/sidewalk", "refs" to strings("w55", "w70"), "dry_run" to false, "area" to "Opava", "reason" to "sidewalk on imagery"),
+        )
+        assertFalse(created.isError, created.text)
+        val c = created.json.jsonObject
+        val draftId = c["draft_id"]!!.jsonPrimitive.content
+        assertEquals("Preset Sidewalk · 1 objects", c["title"]!!.jsonPrimitive.content)
+        assertEquals("claude", c["author"]!!.jsonPrimitive.content)
+        assertEquals(1, c["results"]!!.jsonObject["accepted"]!!.jsonPrimitive.content.toInt())
+        var waited = 0
+        while (seen.none { it is UiEvent.DraftUpdated && it.draftId == draftId } && waited < 2000) {
+            delay(20)
+            waited += 20
+        }
+        collector.cancel()
+        assertTrue(seen.any { it is UiEvent.DraftUpdated && it.draftId == draftId }, seen.toString())
+        val detail = call(session, "get_draft", args("draft_id" to draftId)).json.jsonObject
+        assertEquals("Opava", detail["draft"]!!.jsonObject["area"]!!.jsonPrimitive.content)
+        val change = detail["changes"]!!.jsonArray.single().jsonObject
+        assertEquals("sidewalk on imagery", change["reason"]!!.jsonPrimitive.content)
+        assertEquals("sidewalk", change["newTags"]!!.jsonObject["footway"]!!.jsonPrimitive.content)
+
+        val nothing = call(session, "apply_preset_bulk", args("preset_id" to "highway/footway/sidewalk", "refs" to strings("w70"), "dry_run" to false))
+        assertFalse(nothing.isError, nothing.text)
+        assertNull(nothing.json.jsonObject["draft_id"])
+    }
+
+    @Test
+    fun applyPresetBulkErrors() = mcpTest {
+        val session = initialize()
+        val unknown = call(session, "apply_preset_bulk", args("preset_id" to "highway/nope", "refs" to strings("w55")))
+        assertTrue(unknown.isError)
+        assertTrue("Unknown preset 'highway/nope'" in unknown.text && "search_presets" in unknown.text, unknown.text)
+        val badRef = call(session, "apply_preset_bulk", args("preset_id" to "highway/footway", "refs" to strings("w55", "x1")))
+        assertTrue(badRef.isError)
+        assertTrue("refs[1]" in badRef.text, badRef.text)
+        val many = buildJsonArray { repeat(5001) { add(JsonPrimitive("n${it + 1}")) } }
+        val tooMany = call(session, "apply_preset_bulk", args("preset_id" to "highway/footway", "refs" to many))
+        assertTrue(tooMany.isError)
+        assertTrue("at most 5000" in tooMany.text, tooMany.text)
+        val noGol = call(session, "apply_preset_bulk", args("preset_id" to "highway/footway", "refs" to strings("w404")))
+        assertTrue(noGol.isError)
+        assertTrue("No GOL mirror is open" in noGol.text, noGol.text)
     }
 
     private fun strings(vararg s: String) = buildJsonArray { s.forEach { add(JsonPrimitive(it)) } }

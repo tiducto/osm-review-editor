@@ -1,4 +1,4 @@
-import { panels } from './panels'
+import { PANES, panels } from './panels'
 import type { Page } from '@playwright/test'
 import { captureTransition, CENTRE, expect, expectSteady, jumpTo, openMap, renderedCount, settle, test, visibleMapRect } from './helpers'
 
@@ -43,8 +43,10 @@ test('buildings render at every zoom step from 13 to 19', async ({ page }) => {
 test('building count does not depend on the view size', async ({ page }) => {
   await openMap(page, { zoom: 16 })
   const wide = await renderedCount(page, { building: true })
-  await panels.leftToggle(page).click()
-  await panels.bottomCollapse(page).click()
+  await panels.paneButton(page, 'map-data').click()
+  await settle(page)
+  expect(await renderedCount(page, { building: true })).toBe(wide)
+  await panels.paneButton(page, 'map-data').click()
   await settle(page)
   expect(await renderedCount(page, { building: true })).toBe(wide)
   await page.setViewportSize({ width: 900, height: 700 })
@@ -60,39 +62,42 @@ test('panels open and close over a still map without blank frames', async ({ pag
   await openMap(page)
   const buildings = await renderedCount(page, { building: true })
   expect(buildings).toBeGreaterThan(0)
-  const steps: [string, () => Promise<unknown>][] = [
-    ['bottom collapse', () => panels.bottomCollapse(page).click()],
-    ['bottom expand', () => panels.bottomExpand(page).click()],
-    ['left hide', () => panels.leftToggle(page).click()],
-    ['left show', () => panels.leftToggle(page).click()],
-  ]
-  for (const [label, action] of steps) {
-    expectSteady(await captureTransition(page, action), label)
-    expect(await renderedCount(page, { building: true }), `${label}: buildings`).toBe(buildings)
+  for (const name of PANES) {
+    expectSteady(await captureTransition(page, () => panels.paneButton(page, name).click()), `${name} open`)
+    await expect(panels.pane(page, name)).toBeVisible()
+    expect(await renderedCount(page, { building: true }), `${name}: buildings`).toBe(buildings)
+    expectSteady(await captureTransition(page, () => panels.paneButton(page, name).click()), `${name} close`)
+    await expect(panels.pane(page, name)).toHaveCount(0)
   }
   const [x, y] = await featurePoint(page)
-  expectSteady(await captureTransition(page, () => page.mouse.click(x, y)), 'right open')
-  await expect(panels.rightPanel(page)).toHaveCSS('width', '392px')
-  for (const label of ['right collapse', 'right expand']) {
-    expectSteady(await captureTransition(page, () => panels.rightToggle(page).click()), label)
+  expectSteady(await captureTransition(page, () => page.mouse.click(x, y)), 'sidebar open')
+  await expect(panels.sidebar(page)).toHaveCSS('width', '400px')
+  for (const label of ['sidebar hide', 'sidebar show']) {
+    expectSteady(await captureTransition(page, () => panels.sidebarToggle(page).click()), label)
   }
-  expectSteady(await captureTransition(page, () => page.keyboard.press('Escape')), 'right close')
+  expectSteady(await captureTransition(page, () => panels.paneButton(page, 'validation').click()), 'pane over sidebar')
+  expectSteady(await captureTransition(page, () => page.keyboard.press('Escape')), 'pane close by Esc')
+  await expect(panels.pane(page, 'validation')).toHaveCount(0)
+  expectSteady(await captureTransition(page, () => page.keyboard.press('Escape')), 'sidebar close')
+  await expect(panels.sidebar(page)).toHaveCount(0)
   expect(await renderedCount(page, { building: true })).toBe(buildings)
 })
 
-test('phone sheet and left drawer open over a still map', async ({ page }) => {
+test('phone sheet opens over a still map', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await openMap(page, { zoom: 18.5 })
-  expectSteady(await captureTransition(page, () => panels.bottomCollapse(page).click()), 'phone bottom collapse')
   const [x, y] = await featurePoint(page)
   expectSteady(await captureTransition(page, () => page.mouse.click(x, y)), 'phone sheet open')
+  await expect(panels.sheet(page)).toBeVisible()
+  expectSteady(await captureTransition(page, () => panels.paneButton(page, 'drafts').click()), 'phone pane in sheet')
+  expectSteady(await captureTransition(page, () => panels.sheetTab(page, 'left').click()), 'phone sheet tab')
   expectSteady(await captureTransition(page, () => panels.sheetToggle(page).click()), 'phone sheet collapse')
   expectSteady(await captureTransition(page, () => panels.sheetToggle(page).click()), 'phone sheet expand')
 })
 
 test('map features switches hide and show groups and persist', async ({ page }) => {
   await openMap(page, { zoom: 16.5 })
-  await panels.tab(page, 'map').click()
+  await panels.paneButton(page, 'map-data').click()
   await page.getByTestId('map-features-toggle').click()
   const buildings = await renderedCount(page, { building: true })
   const roads = await renderedCount(page, { feat: 'traffic_roads' })
@@ -116,6 +121,7 @@ test('map features switches hide and show groups and persist', async ({ page }) 
   expect(await renderedCount(page, { building: true })).toBe(0)
   expect(await renderedCount(page, { feat: 'points' })).toBe(0)
 
+  await panels.paneButton(page, 'map-data').click()
   await page.getByTestId('features-all').click()
   await settle(page)
   expect(await renderedCount(page, { building: true })).toBe(buildings)
@@ -170,7 +176,7 @@ test('fast pans and zooms keep the map drawn', async ({ page }) => {
 
 test('quick filter highlights draw and clear', async ({ page }) => {
   await openMap(page)
-  await panels.tab(page, 'map').click()
+  await panels.paneButton(page, 'map-data').click()
   const hlLayers = () =>
     page.evaluate(() => {
       const m = (window as unknown as { __oreMap: any }).__oreMap
@@ -207,24 +213,24 @@ test('imagery on and off keeps the data drawn', async ({ page }) => {
   await page.route(/tile\.openstreetmap\.org|\/imagery\//, (r) => r.fulfill({ status: 204 }))
   await openMap(page)
   const buildings = await renderedCount(page, { building: true })
-  const select = panels.tab(page, 'map')
-  await select.click()
-  const options = await page.locator('select').first().locator('option').count()
+  await panels.paneButton(page, 'background').click()
+  const options = await panels.imageryOptions(page).count()
   test.skip(options < 2, 'no imagery sources configured')
-  await page.locator('select').first().selectOption({ index: 1 })
+  await panels.imageryOptions(page).nth(1).check()
   await settle(page)
   expect(await renderedCount(page, { building: true })).toBe(buildings)
-  await page.locator('select').first().selectOption({ index: 0 })
+  await panels.imageryOptions(page).nth(0).check()
   await settle(page)
   expect(await renderedCount(page, { building: true })).toBe(buildings)
 })
 
-test('left tabs switch without disturbing the map', async ({ page }) => {
+test('switching panes does not disturb the map', async ({ page }) => {
   await openMap(page)
   const buildings = await renderedCount(page, { building: true })
-  for (const tab of ['validate', 'rules', 'presets', 'map'] as const) {
-    const c = await captureTransition(page, () => panels.tab(page, tab).click(), 400)
-    expectSteady(c, `tab ${tab}`)
+  for (const name of PANES) {
+    const c = await captureTransition(page, () => panels.paneButton(page, name).click(), 400)
+    expectSteady(c, `pane ${name}`)
+    await expect(panels.pane(page, name)).toBeVisible()
     expect(await renderedCount(page, { building: true })).toBe(buildings)
   }
 })

@@ -37,13 +37,13 @@ defineExpose({ focus: () => inputs.value?.[0]?.focus() })
 </script>
 
 <template>
-  <div class="flex flex-col gap-1">
-    <div v-for="(row, i) in rows" :key="i" class="flex gap-1">
+  <div class="flex flex-col overflow-hidden rounded-b-md [&_.input]:rounded-none!">
+    <div v-for="(row, i) in rows" :key="i" class="-mt-px flex first:mt-0">
       <input
         v-for="sub in row"
         :key="sub.key"
         ref="inputs"
-        class="input min-w-0"
+        class="input -ml-px min-w-0 first:ml-0"
         :style="{ flex: `${sub.width} 1 0` }"
         :value="value(sub.key)"
         :placeholder="mixed(sub.key) ? tr(locale, 'field.multiple') : sub.placeholder"

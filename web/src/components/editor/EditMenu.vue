@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useEditorStore } from '@/stores/editor'
+import { useI18n } from '@/i18n'
 
 const editor = useEditorStore()
+const { t } = useI18n()
 const box = ref<HTMLElement | null>(null)
 
 const style = computed(() => {
@@ -30,19 +32,19 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDoc, true))
 <template>
   <div
     ref="box"
-    class="absolute z-30 w-56 overflow-hidden rounded-lg border border-line bg-surface py-1 text-[12.5px] shadow-pop"
+    class="absolute z-30 w-56 overflow-hidden rounded-md bg-surface py-1.5 text-[12px] shadow-pop"
     :style="style"
     role="menu"
     data-testid="edit-menu"
     @contextmenu.prevent
   >
-    <div v-if="!editor.operations.length" class="px-3 py-1.5 text-fg-3">No operations for this selection</div>
+    <div v-if="!editor.operations.length" class="px-3 py-1.5 text-fg-3">{{ t('menu.empty') }}</div>
     <button
       v-for="op in editor.operations"
       :key="op.id"
       role="menuitem"
-      class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-3"
-      :class="op.disabled ? 'cursor-not-allowed text-fg-3' : 'text-fg'"
+      class="flex h-8 w-full items-center gap-2 px-3 text-left font-bold hover:bg-surface-3"
+      :class="op.disabled ? 'cursor-not-allowed text-black/30' : 'text-fg'"
       :aria-disabled="!!op.disabled"
       :title="op.tooltip"
       :data-op="op.id"

@@ -1,4 +1,5 @@
 import type { OsmRef, OsmType } from '@/generated/models'
+import { t, type MessageKey } from '@/i18n'
 
 const prefix: Record<OsmType, string> = { node: 'n', way: 'w', relation: 'r' }
 const fromPrefix: Record<string, OsmType> = { n: 'node', w: 'way', r: 'relation' }
@@ -20,16 +21,32 @@ export function sameRef(a: OsmRef | null | undefined, b: OsmRef | null | undefin
   return !!a && !!b && a.type === b.type && a.id === b.id
 }
 
-const typeLabel: Record<OsmType, string> = { node: 'Node', way: 'Way', relation: 'Relation' }
+const typeLabel: Record<OsmType, MessageKey> = { node: 'app.osm.node', way: 'app.osm.way', relation: 'app.osm.relation' }
 
 export function refLabel(ref: OsmRef): string {
-  return `${typeLabel[ref.type]} ${ref.id}`
+  return `${t(typeLabel[ref.type])} ${ref.id}`
+}
+
+type PresetNamer = (ref: OsmRef, tags: Record<string, string>) => string | null
+
+let presetNamer: PresetNamer | null = null
+
+export function setPresetNamer(fn: PresetNamer | null) {
+  presetNamer = fn
+}
+
+function presetTypeLabel(ref: OsmRef, tags: Record<string, string>): string | null {
+  if (presetNamer && Object.keys(tags).length) {
+    const n = presetNamer(ref, tags)
+    if (n) return n
+  }
+  return mainTagLabel(tags)
 }
 
 export function featureTitle(ref: OsmRef, tags: Record<string, string>): string {
   if (tags.name) return tags.name
-  if (tags.ref) return `${mainTagLabel(tags) ?? refLabel(ref)} ${tags.ref}`
-  return mainTagLabel(tags) ?? refLabel(ref)
+  if (tags.ref) return `${presetTypeLabel(ref, tags) ?? refLabel(ref)} ${tags.ref}`
+  return presetTypeLabel(ref, tags) ?? refLabel(ref)
 }
 
 const mainKeys = [
@@ -46,6 +63,6 @@ export function mainTagLabel(tags: Record<string, string>): string | null {
 }
 
 export function humanize(s: string): string {
-  const t = s.replace(/[_:]/g, ' ')
-  return t.charAt(0).toUpperCase() + t.slice(1)
+  const out = s.replace(/[_:]/g, ' ')
+  return out.charAt(0).toUpperCase() + out.slice(1)
 }

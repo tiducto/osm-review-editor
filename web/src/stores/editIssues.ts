@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { t } from '@/i18n'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { rulesApi } from '@/api/rules'
 import type { CheckSheet, EditIssue } from '@/editor/validation/issues'
@@ -25,6 +26,7 @@ export const useEditIssuesStore = defineStore('editIssues', () => {
   const issues = shallowRef<EditIssue[]>([])
   const running = ref(false)
   const panelOpen = ref(false)
+  const panelCollapsed = ref(false)
   const focused = ref<string | null>(null)
   const sheetPaths = ref<string[]>([])
   const sheetErrors = ref<string[]>([])
@@ -93,7 +95,7 @@ export const useEditIssuesStore = defineStore('editIssues', () => {
     try {
       await loadSheets()
     } catch (e) {
-      app.fail(e, 'Loading check files')
+      app.fail(e, t('shell.issues.loadingChecks'))
     }
   }
 
@@ -153,11 +155,11 @@ export const useEditIssuesStore = defineStore('editIssues', () => {
   function focus(issue: EditIssue, opts: { select?: boolean; fly?: boolean } = {}) {
     focused.value = issue.id
     panelOpen.value = true
+    panelCollapsed.value = false
     draw()
-    const map = mapStore.instance()
-    if (opts.fly !== false && map && issue.loc) {
-      const b = map.getBounds()
-      if (!b.contains(issue.loc)) map.easeTo({ center: issue.loc, offset: mapStore.visibleOffset(), duration: 500 })
+    if (opts.fly !== false && issue.loc) {
+      const [lng, lat] = issue.loc
+      if (!mapStore.visibleContains(lng, lat)) mapStore.easeTo({ lng, lat }, { duration: 500 })
     }
     if (opts.select !== false && session && issue.entityIds.length) {
       const g = session.adapter.graph()
@@ -175,7 +177,7 @@ export const useEditIssuesStore = defineStore('editIssues', () => {
     if (!session || !mod) return false
     const ok = mod.applyIssueFix(session.adapter, issue, fixId, ignored)
     if (!ok) {
-      app.toast('This fix is no longer available', 'error')
+      app.toast(t('shell.issues.fixGone'), 'error')
       return false
     }
     session.controller.afterUndoRedo()
@@ -215,7 +217,7 @@ export const useEditIssuesStore = defineStore('editIssues', () => {
   }
 
   return {
-    issues, running, panelOpen, focused, sheetPaths, sheetErrors, summary, errors, warnings, others,
+    issues, running, panelOpen, panelCollapsed, focused, sheetPaths, sheetErrors, summary, errors, warnings, others,
     attach, detach, schedule, run, focus, focusById, applyFix, confirmSave, review,
   }
 })

@@ -109,13 +109,14 @@ object PresetFiles {
         val searchable = e["searchable"]?.takeIf { it != JsonNull }?.let { v ->
             (v as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull ?: null.also { sink.error(p("searchable"), "searchable must be true or false") }
         }
-        val name = string("name")
-        if (name != null && name.isBlank()) sink.error(p("name"), "name must not be empty")
+        val localName = LocalizedNames.parse(e["name"], p("name"), sink)
+        val name = localName?.text
+        val names = localName?.names?.takeIf { it.isNotEmpty() }
         val extends = string("extends")
         val tags = tagMap("tags")
         val addTags = tagMap("addTags")
         if (extends == null) {
-            if (name == null) sink.error(path, "A preset without \"extends\" needs a \"name\"")
+            if (name == null && names == null) sink.error(path, "A preset without \"extends\" needs a \"name\"")
             if (geometry == null) sink.error(path, "A preset without \"extends\" needs \"geometry\"")
             if (tags == null) sink.error(path, "A preset without \"extends\" needs \"tags\"")
         }
@@ -138,6 +139,7 @@ object PresetFiles {
             searchable = searchable,
             extends = extends,
             apply = apply,
+            names = names,
         )
     }
 
@@ -196,7 +198,7 @@ object PresetFiles {
     fun toJson(p: Preset): JsonObject = buildJsonObject {
         put("id", p.id)
         p.extends?.let { put("extends", it) }
-        p.name?.let { put("name", it) }
+        p.name?.let { put("name", it) } ?: p.names?.let { put("name", JsonObject(it.mapValues { (_, v) -> JsonPrimitive(v) })) }
         p.apply?.let { put("apply", it.name.lowercase()) }
         p.geometry?.let { g -> put("geometry", buildJsonArray { g.forEach { add(JsonPrimitive(it.wireName)) } }) }
         p.tags?.let { put("tags", tagsJson(it)) }

@@ -10,6 +10,7 @@ import { asGeometry, bboxAround, geometryBBox } from '@/lib/geo'
 import { isDecided } from '@/lib/changes'
 import { refString } from '@/lib/osm'
 import { parseAuthor, type AuthorKind } from '@/lib/authors'
+import { t, tn } from '@/i18n'
 
 export type DrawerTab = 'drafts' | 'changes'
 
@@ -41,7 +42,6 @@ export const useDraftsStore = defineStore('drafts', () => {
   const busy = ref(false)
   const context = shallowRef<ChangeContext | null>(null)
 
-  const drawerOpen = ref(true)
   const drawerTab = ref<DrawerTab>('drafts')
 
   const progress = reactive(new Map<string, MergeProgress>())
@@ -58,7 +58,7 @@ export const useDraftsStore = defineStore('drafts', () => {
     try {
       drafts.value = await api.drafts({ status: statusFilter.value || undefined })
     } catch (e) {
-      app.fail(e, 'Drafts')
+      app.fail(e, t('drafts.err.load'))
     } finally {
       listLoading.value = false
     }
@@ -89,7 +89,7 @@ export const useDraftsStore = defineStore('drafts', () => {
       if (opts.review ?? true) startReview()
       drawerTab.value = 'changes'
     } catch (e) {
-      app.fail(e, 'Opening draft')
+      app.fail(e, t('drafts.err.open'))
     } finally {
       currentLoading.value = false
     }
@@ -187,7 +187,7 @@ export const useDraftsStore = defineStore('drafts', () => {
       if (advance) nextOpen()
       return true
     } catch (e) {
-      app.fail(e, 'Review')
+      app.fail(e, t('drafts.err.review'))
       return false
     } finally {
       busy.value = false
@@ -217,9 +217,9 @@ export const useDraftsStore = defineStore('drafts', () => {
     busy.value = true
     try {
       replaceChange(await api.resolve(c.id, { tags }))
-      app.toast('Conflict resolved; the change is pending again', 'success')
+      app.toast(t('drafts.toast.resolved'), 'success')
     } catch (e) {
-      app.fail(e, 'Resolve')
+      app.fail(e, t('drafts.err.resolve'))
     } finally {
       busy.value = false
     }
@@ -233,10 +233,10 @@ export const useDraftsStore = defineStore('drafts', () => {
       const before = d.changes.filter((c) => c.status === 'approved').length
       setDetail(await api.approveRemaining(d.draft.id, ruleId))
       const after = current.value?.changes.filter((c) => c.status === 'approved').length ?? before
-      app.toast(`Approved ${after - before} deterministic change${after - before === 1 ? '' : 's'}`, 'success')
+      app.toast(tn('drafts.toast.approvedRemaining', after - before), 'success')
       nextOpen()
     } catch (e) {
-      app.fail(e, 'Approve remaining')
+      app.fail(e, t('drafts.err.approveRemaining'))
     } finally {
       busy.value = false
     }
@@ -248,9 +248,9 @@ export const useDraftsStore = defineStore('drafts', () => {
     busy.value = true
     try {
       setDetail(await api.refreshDraft(d.draft.id))
-      app.toast('Live versions refreshed', 'success')
+      app.toast(t('drafts.toast.refreshed'), 'success')
     } catch (e) {
-      app.fail(e, 'Refresh')
+      app.fail(e, t('drafts.err.refresh'))
     } finally {
       busy.value = false
     }
@@ -269,13 +269,13 @@ export const useDraftsStore = defineStore('drafts', () => {
       index.value = 0
       drawerTab.value = 'changes'
       if (d.changes.length) {
-        app.toast(`Draft created with ${d.changes.length} change${d.changes.length === 1 ? '' : 's'}`, 'success')
+        app.toast(tn('drafts.toast.created', d.changes.length), 'success')
         startReview()
       } else {
-        app.toast('The rule found nothing to fix here')
+        app.toast(t('drafts.toast.nothingToFix'))
       }
     } catch (e) {
-      app.fail(e, 'Create draft')
+      app.fail(e, t('drafts.err.create'))
     } finally {
       busy.value = false
     }
@@ -289,7 +289,7 @@ export const useDraftsStore = defineStore('drafts', () => {
       if (current.value?.draft.id === id) current.value = { ...current.value, draft: d }
       if (statusFilter.value && d.status !== statusFilter.value) drafts.value = drafts.value.filter((x) => x.id !== id)
     } catch (e) {
-      app.fail(e, 'Update draft')
+      app.fail(e, t('drafts.err.update'))
     }
   }
 
@@ -299,10 +299,10 @@ export const useDraftsStore = defineStore('drafts', () => {
       const i = drafts.value.findIndex((x) => x.id === id)
       if (i >= 0) drafts.value.splice(i, 1, d)
       if (current.value?.draft.id === id) current.value = { ...current.value, draft: d }
-      app.toast('Changeset details saved', 'success')
+      app.toast(t('drafts.toast.changesetSaved'), 'success')
       return true
     } catch (e) {
-      app.fail(e, 'Changeset details')
+      app.fail(e, t('drafts.err.changeset'))
       return false
     }
   }
@@ -314,7 +314,7 @@ export const useDraftsStore = defineStore('drafts', () => {
       if (i >= 0) drafts.value.splice(i, 1, d)
       if (current.value?.draft.id === id) current.value = { ...current.value, draft: d }
     } catch (e) {
-      app.fail(e, 'Rename')
+      app.fail(e, t('drafts.err.rename'))
     }
   }
 
@@ -331,8 +331,8 @@ export const useDraftsStore = defineStore('drafts', () => {
     progress.set(p.draftId, p)
     if (p.finished) {
       void onDraftUpdated(p.draftId)
-      if (p.failed) app.toast(`Upload failed: ${p.message}`, 'error')
-      else app.toast('Upload finished', 'success')
+      if (p.failed) app.toast(t('drafts.toast.uploadFailed', { message: p.message }), 'error')
+      else app.toast(t('drafts.toast.uploadFinished'), 'success')
     }
   }
 
@@ -366,10 +366,10 @@ export const useDraftsStore = defineStore('drafts', () => {
     try {
       const c = await api.manualEdit({ ref, tags, baseTags, reason: reason || null })
       if (c.status === 'conflict') {
-        app.toast(`${refString(ref)} changed upstream on a key you edited; saved as a conflict to resolve`, 'error', 9000)
+        app.toast(t('drafts.toast.manualConflict', { ref: refString(ref) }), 'error', 9000)
       } else {
         mapStore.patchSelectedTags(c.newTags)
-        app.toast(`Saved ${refString(ref)} to your manual draft`, 'success')
+        app.toast(t('drafts.toast.manualSaved', { ref: refString(ref) }), 'success')
       }
       if (current.value?.draft.id === c.draftId) {
         if (current.value.changes.some((x) => x.id === c.id)) replaceChange(c)
@@ -378,7 +378,7 @@ export const useDraftsStore = defineStore('drafts', () => {
       await loadDrafts()
       return c
     } catch (e) {
-      app.fail(e, 'Save')
+      app.fail(e, t('drafts.err.save'))
       return null
     } finally {
       savingManual.value = false
@@ -397,14 +397,14 @@ export const useDraftsStore = defineStore('drafts', () => {
       }
     } catch (e) {
       w?.close()
-      app.fail(e, 'Open in iD')
+      app.fail(e, t('drafts.err.openInId'))
     }
   }
 
   return {
     drafts, visibleDrafts, listLoading, statusFilter, authorFilter,
     current, currentLoading, reviewing, index, showBefore, busy, context,
-    drawerOpen, drawerTab, progress,
+    drawerTab, progress,
     changes, currentChange, decidedCount, pendingCount, approvedCount, conflictCount,
     loadDrafts, open, startReview, stopReview, close, focusCurrent, goTo, next, prev, nextOpen,
     review, cascadePrompt, approve, reject, editTags, reset, sendToId, resolve, approveRemaining, refreshLive, fromRule,

@@ -1,6 +1,8 @@
 import * as iD from '@openstreetmap/id/modules/index'
 import { JXON } from '@openstreetmap/id/modules/util/jxon'
 import generalEnUrl from '@openstreetmap/id/dist/locales/en.min.json?url'
+import generalCsUrl from '@openstreetmap/id/dist/locales/cs.min.json?url'
+import { t } from '@/i18n'
 import languagesUrl from '@openstreetmap/id/dist/data/languages.min.json?url'
 import type {
   Bounds,
@@ -35,9 +37,14 @@ export const ID_SCHEMA_FILES: Record<string, string> = {
   locale_tagging_en: 'translations/en.json',
 }
 
-const LOCALE_INDEX = { en: { rtl: false, pct: 1 } }
+const LOCALE_INDEX = { en: { rtl: false, pct: 1 }, cs: { rtl: false, pct: 0.99 } }
+
+export type IdLocale = 'en' | 'cs'
 
 let dataReady: Promise<void> | null = null
+let schemaBaseUrl = '/api/presets/id-schema/'
+let activeIdLocale: IdLocale = 'en'
+let csReady: Promise<void> | null = null
 
 let loadedCheck: (loc: LngLatTuple) => boolean = () => true
 
@@ -64,6 +71,7 @@ export async function initIdData(): Promise<void> {
   polyfillIdle()
   iD.localizer.preferredLocaleCodes('en')
   await iD.localizer.ensureLoaded()
+  activeIdLocale = 'en'
   await iD.presetManager.ensureLoaded()
   const registry = iD.services as Record<string, unknown>
   delete registry.nsi
@@ -77,7 +85,43 @@ async function fetchJson(url: string): Promise<unknown> {
   return res.json()
 }
 
+function loadCsLocale(): Promise<void> {
+  csReady ??= (async () => {
+    const cache = iD.fileFetcher.cache() as Record<string, unknown>
+    if (cache.locale_general_cs && cache.locale_tagging_cs) return
+    const [general, tagging] = await Promise.all([
+      fetchJson(generalCsUrl),
+      fetchJson(schemaBaseUrl + 'translations/cs.json').catch(() => ({ cs: {} })),
+    ])
+    Object.assign(iD.fileFetcher.cache(), { locale_general_cs: general, locale_tagging_cs: tagging })
+  })().catch((e) => {
+    csReady = null
+    throw e
+  })
+  return csReady
+}
+
+export function idLocale(): IdLocale {
+  return activeIdLocale
+}
+
+export async function setIdLocale(locale: IdLocale): Promise<boolean> {
+  if (locale === activeIdLocale) return false
+  if (locale === 'cs') await loadCsLocale()
+  iD.localizer.preferredLocaleCodes(locale)
+  try {
+    await iD.localizer.ensureLoaded()
+  } catch (e) {
+    iD.localizer.preferredLocaleCodes(activeIdLocale)
+    await iD.localizer.ensureLoaded()
+    throw e
+  }
+  activeIdLocale = locale
+  return true
+}
+
 export function loadIdData(schemaBase = '/api/presets/id-schema/'): Promise<void> {
+  schemaBaseUrl = schemaBase
   dataReady ??= (async () => {
     const keys = Object.keys(ID_SCHEMA_FILES)
     const [general, languages, ...schema] = await Promise.all([
@@ -180,7 +224,7 @@ function elementToEntity(el: Element, versionFallback?: string): any {
 
 function parseXml(text: string): Document {
   const doc = new DOMParser().parseFromString(text, 'application/xml')
-  if (doc.getElementsByTagName('parsererror').length) throw new Error('Invalid OSM XML')
+  if (doc.getElementsByTagName('parsererror').length) throw new Error(t('edit.invalidXml'))
   return doc
 }
 
@@ -272,6 +316,7 @@ export interface IdIssueFix {
   id: string
   title: string
   disabled: string | null
+  ignore?: boolean
 }
 
 export interface IdIssue {
@@ -426,7 +471,7 @@ export class IdAdapter {
         message: message || issue.type,
         entityIds: [...(issue.entityIds ?? [])],
         loc,
-        fixes: this.issueFixes(issue).map((f: any, i: number) => ({ id: String(i), title: idText(f.title), disabled: f.disabledReason ? String(f.disabledReason) : null })),
+        fixes: this.issueFixes(issue).map((f: any, i: number) => ({ id: String(i), title: idText(f.title), disabled: f.disabledReason ? String(f.disabledReason) : null, ignore: f.icon === 'iD-icon-close' })),
       })
     }
     return out
@@ -644,7 +689,7 @@ export class IdAdapter {
     }, annotation)
   }
 
-  applyOsmChange(text: string, annotation = 'Loaded the draft'): RehydrateReport {
+  applyOsmChange(text: string, annotation = t('edit.ann.loadedDraft')): RehydrateReport {
     const doc = parseOsmChange(text)
     const base = this.history.base()
     const missing: string[] = []
@@ -684,7 +729,7 @@ export class IdAdapter {
     return { created: doc.create.length, modified: doc.modify.length, deleted: doc.delete.length, missing: [...new Set(missing)], stale }
   }
 
-  remapIds(remaps: IdRemap[], annotation = 'Saved to the draft') {
+  remapIds(remaps: IdRemap[], annotation = t('edit.ann.savedToDraft')) {
     const map = new Map(remaps.filter((r) => r.from !== r.to).map((r) => [r.from, r.to]))
     this.reserveIds(remaps.map((r) => r.to))
     if (!map.size) return

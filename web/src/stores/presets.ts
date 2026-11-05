@@ -4,22 +4,13 @@ import type { ResolvedPreset, SmartPreset } from '@/generated/models'
 import { presetsApi } from '@/api/presets'
 import { ApiError } from '@/api/client'
 import { PresetCatalog, type RawSchema, type UserPresetData } from '@/presets/catalog'
-import { tr } from '@/presets/i18n'
-import '@/presets/appStrings'
+import { locale as appLocale, setLocale, translate, type MessageKey } from '@/i18n'
 import type { Geometry, Locale } from '@/presets/types'
 import { useAppStore } from './app'
+import { setPresetNamer } from '@/lib/osm'
 
-const LOCALE_KEY = 'ore.presetLocale'
 const RECENT_KEY = 'ore.recentPresets'
 const MAX_RECENT = 12
-
-function readLocale(): Locale {
-  try {
-    const v = localStorage.getItem(LOCALE_KEY)
-    if (v === 'cs' || v === 'en') return v
-  } catch {}
-  return (navigator.language ?? '').toLowerCase().startsWith('cs') ? 'cs' : 'en'
-}
 
 function readRecent(): string[] {
   try {
@@ -59,12 +50,21 @@ export function toUserData(list: Partial<Record<Locale, ResolvedPreset[]>>, loca
   })
 }
 
+export function localizedName(names: Record<string, string> | null | undefined, l: string): string | null {
+  if (!names) return null
+  return names[l] ?? Object.entries(names).find(([k]) => k.split('-')[0] === l)?.[1] ?? names.en ?? Object.values(names)[0] ?? null
+}
+
 export const usePresetsStore = defineStore('presets', () => {
   const app = useAppStore()
-  const locale = ref<Locale>(readLocale())
+  const locale = computed<Locale>({
+    get: () => appLocale.value,
+    set: (l) => setLocale(l),
+  })
   const raw = shallowRef<RawSchema | null>(null)
   const user = shallowRef<Partial<Record<Locale, ResolvedPreset[]>>>({})
-  const smart = shallowRef<SmartPreset[]>([])
+  const smartRaw = shallowRef<SmartPreset[]>([])
+  const smart = computed<SmartPreset[]>(() => smartRaw.value.map((p) => ({ ...p, name: localizedName(p.names, locale.value) ?? p.name })))
   const recent = ref<string[]>(readRecent())
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -76,11 +76,25 @@ export const usePresetsStore = defineStore('presets', () => {
     return new PresetCatalog(r, toUserData(user.value, locale.value), locale.value)
   })
 
-  watch(locale, (l) => {
-    try {
-      localStorage.setItem(LOCALE_KEY, l)
-    } catch {}
-    void loadUser()
+  setPresetNamer((ref, tags) => {
+    const cat = catalog.value
+    if (!cat) return null
+    let p
+    if (ref.type === 'node') {
+      const point = cat.match(tags, 'point')
+      const vertex = cat.match(tags, 'vertex')
+      p = cat.scoreOf(vertex, tags) > cat.scoreOf(point, tags) ? vertex : point
+    } else if (ref.type === 'relation') {
+      p = cat.match(tags, tags.type === 'multipolygon' ? 'area' : 'relation')
+    } else {
+      p = cat.match(tags, cat.isArea(tags) ? 'area' : 'line')
+      if (cat.isFallback(p)) p = cat.match(tags, 'area')
+    }
+    return cat.isFallback(p) ? null : p.name
+  })
+
+  watch(locale, () => {
+    if (raw.value) void loadUser()
   })
 
   watch(
@@ -110,15 +124,15 @@ export const usePresetsStore = defineStore('presets', () => {
       const [en, cs] = await Promise.all([presetsApi.user('en'), presetsApi.user('cs')])
       user.value = { en, cs }
     } catch (e) {
-      if (!(e instanceof ApiError && e.status === 404)) app.fail(e, 'Loading your presets')
+      if (!(e instanceof ApiError && e.status === 404)) app.fail(e, translate(locale.value, 'library.loadUserFailed'))
     }
   }
 
   async function loadSmart() {
     try {
-      smart.value = await presetsApi.smart()
+      smartRaw.value = await presetsApi.smart()
     } catch (e) {
-      app.fail(e, 'Loading smart presets')
+      app.fail(e, translate(locale.value, 'library.loadSmartFailed'))
     }
   }
 
@@ -154,7 +168,7 @@ export const usePresetsStore = defineStore('presets', () => {
     recent.value = [id, ...recent.value.filter((x) => x !== id)].slice(0, MAX_RECENT)
   }
 
-  const t = (key: string, vars?: Record<string, string | number>) => tr(locale.value, key, vars)
+  const t = (key: MessageKey | (string & {}), vars?: Record<string, string | number>) => translate(locale.value, key, vars)
 
   return { locale, raw, user, smart, recent, loading, error, catalog, ensure, loadUser, onRulesChanged, reloadUser, useRecent, t }
 })

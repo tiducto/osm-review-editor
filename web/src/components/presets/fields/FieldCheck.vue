@@ -41,12 +41,12 @@ defineExpose({ focus: () => btn.value?.focus() })
 </script>
 
 <template>
-  <div class="flex min-w-0 items-stretch gap-1">
+  <div class="flex min-w-0 items-stretch">
     <button
       ref="btn"
       type="button"
       class="input flex min-w-0 flex-1 items-center gap-2 text-left"
-      :class="readonly ? 'cursor-default' : 'hover:bg-surface-2'"
+      :class="[readonly ? 'cursor-default' : 'hover:bg-surface-3', field.type === 'onewayCheck' && state.canReverse && 'rounded-br-none']"
       :disabled="readonly"
       :title="tooltip"
       role="checkbox"
@@ -72,13 +72,13 @@ defineExpose({ focus: () => btn.value?.focus() })
     <button
       v-if="field.type === 'onewayCheck' && state.canReverse"
       type="button"
-      class="btn btn-sm h-7 shrink-0 text-fg-2"
-      :class="state.reversed && 'border-accent text-accent'"
+      class="btn h-7 shrink-0 -ml-px rounded-none rounded-br-md"
+      :class="state.reversed && 'bg-accent-soft text-accent'"
       :disabled="readonly"
       :title="tr(locale, 'field.reverseTitle')"
       @click="reverse"
     >
-      <Icon name="swap" :size="12" />
+      <Icon name="swap" :size="14" />
       {{ tr(locale, 'field.reverse') }}
     </button>
   </div>

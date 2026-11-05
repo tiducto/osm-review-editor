@@ -6,9 +6,9 @@ import { currentEditSession, useEditorStore, EDIT_MIN_ZOOM } from './editor'
 import { useMapStore } from './map'
 import { useAppStore } from './app'
 import { usePresetsStore, toUserData } from './presets'
-import '@/presets/appStrings'
 import type { Geometry, PresetDef, TagPatch, Tags } from '@/presets/types'
 import type { SmartPreview } from '@/editor/id/presetOps'
+import { t, tn } from '@/i18n'
 
 type SessionModule = typeof import('@/editor/session')
 let sessionModule: SessionModule | null = null
@@ -48,7 +48,7 @@ export const useEditPresetsStore = defineStore('presetEdit', () => {
     async ([active]) => {
       if (!active) return
       const o = await ops()
-      o.mergeUserPresets(toUserData(presets.user, 'en'))
+      o.mergeUserPresets(toUserData(presets.user, presets.locale))
     },
     { immediate: true },
   )
@@ -76,8 +76,6 @@ export const useEditPresetsStore = defineStore('presetEdit', () => {
     },
   )
 
-  const t = presets.t
-
   function presetOf(tags: Tags, geometry: Geometry): PresetDef | null {
     return presets.catalog?.match(tags, geometry) ?? null
   }
@@ -101,7 +99,7 @@ export const useEditPresetsStore = defineStore('presetEdit', () => {
       }
       await s.loader.idle()
       if (!s.adapter.graph().hasEntity(id)) {
-        app.toast(`${id} is not in the loaded data; zoom to it and try again`, 'error')
+        app.toast(t('smart.notLoaded', { id }), 'error')
         return false
       }
     }
@@ -125,7 +123,7 @@ export const useEditPresetsStore = defineStore('presetEdit', () => {
     const n = o.changePreset(s.adapter, {
       ids,
       toId,
-      annotation: t(ids.length > 1 ? 'ann.applyPresetMulti' : 'ann.changePreset', { name: to.name, n: ids.length }),
+      annotation: ids.length > 1 ? tn('ann.applyPresetMulti', ids.length, { name: to.name }) : t('ann.changePreset', { name: to.name }),
       useIdAction: to.apply === 'merge',
       computeTags: (_id, tags, geometry) => cat.changePreset(tags, geometry, cat.match(tags, geometry), to),
     })

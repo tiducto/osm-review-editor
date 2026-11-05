@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import { useI18n } from '@/i18n'
 import Icon from './Icon.vue'
+
+const { t } = useI18n()
 
 type Tags = Record<string, string>
 interface Row {
@@ -46,12 +49,12 @@ watch(
 )
 
 function commit() {
-  const t = build(rows.value)
-  if (!same(t, model.value)) model.value = t
+  const next = build(rows.value)
+  if (!same(next, model.value)) model.value = next
 }
 
-function toText(t: Tags): string {
-  return Object.entries(t)
+function toText(tags: Tags): string {
+  return Object.entries(tags)
     .map(([k, v]) => `${k}=${v}`)
     .join('\n')
 }
@@ -130,16 +133,16 @@ function onValueKey(e: KeyboardEvent, i: number) {
 <template>
   <div>
     <div class="mb-1.5 flex items-center gap-2">
-      <slot name="title"><span class="section-title">Tags</span></slot>
+      <slot name="title"><span class="section-title">{{ t('tags.title') }}</span></slot>
       <span class="text-[11px] text-fg-3">{{ Object.keys(model).length }}</span>
       <div class="ml-auto flex items-center gap-0.5">
         <button
           v-if="!readonly"
-          class="btn btn-ghost btn-sm text-fg-3"
-          :title="textMode ? 'Edit as a table' : 'Edit as text (key=value per line)'"
+          class="btn btn-sm"
+          :title="textMode ? t('tags.editAsTable') : t('tags.editAsText')"
           @click="toggleText"
         >
-          {{ textMode ? 'Table' : 'Text' }}
+          {{ textMode ? t('tags.table') : t('tags.text') }}
         </button>
       </div>
     </div>
@@ -147,17 +150,17 @@ function onValueKey(e: KeyboardEvent, i: number) {
     <textarea
       v-if="textMode"
       v-model="text"
-      class="input h-auto min-h-40 py-1.5 font-mono text-[12px] leading-5"
+      class="input h-auto min-h-40 py-1.5 font-mono text-[12px] leading-5 whitespace-pre"
       :rows="Math.max(6, rows.length + 1)"
       spellcheck="false"
       @input="onText"
     />
 
-    <div v-else ref="listEl" class="overflow-hidden rounded-md border border-line font-mono text-[12px]">
+    <div v-else ref="listEl" class="overflow-hidden rounded-md border border-line-strong bg-surface text-[12px]">
       <div
         v-for="(r, i) in rows"
         :key="r.id"
-        class="group grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_24px] border-b border-line last:border-b-0"
+        class="group grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_32px] border-b border-line-strong last:border-b-0"
         :class="{
           'bg-added-soft': state(r) === 'added',
           'bg-changed-soft': state(r) === 'changed',
@@ -167,7 +170,7 @@ function onValueKey(e: KeyboardEvent, i: number) {
         <input
           v-model="r.k"
           data-key
-          class="min-w-0 border-r border-line bg-transparent px-2 py-1 text-fg-2 outline-none focus:bg-surface-2"
+          class="h-[30px] min-w-0 border-r border-line-strong bg-surface-2 px-2.5 font-bold text-fg outline-none focus:bg-active"
           :class="state(r) === 'added' && 'text-added'"
           :readonly="readonly"
           spellcheck="false"
@@ -176,7 +179,7 @@ function onValueKey(e: KeyboardEvent, i: number) {
         <div class="relative min-w-0">
           <input
             v-model="r.v"
-            class="w-full min-w-0 bg-transparent px-2 py-1 text-fg outline-none focus:bg-surface-2"
+            class="h-[30px] w-full min-w-0 bg-transparent px-2.5 text-fg outline-none focus:bg-active"
             :readonly="readonly"
             spellcheck="false"
             @input="commit"
@@ -188,28 +191,28 @@ function onValueKey(e: KeyboardEvent, i: number) {
         </div>
         <button
           v-if="!readonly"
-          class="grid place-items-center text-fg-3 opacity-0 group-hover:opacity-100 hover:text-removed focus:opacity-100"
-          title="Remove tag"
+          class="grid place-items-center border-l border-line-strong text-fg opacity-50 transition-opacity hover:bg-surface-3 hover:opacity-100 focus:opacity-100"
+          :title="t('tags.remove')"
           tabindex="-1"
           @click="removeRow(r.id)"
         >
-          <Icon name="x" :size="12" />
+          <Icon name="trash" :size="16" />
         </button>
       </div>
       <div
         v-for="k in removed"
         :key="`rm-${k}`"
-        class="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_24px] border-b border-line bg-removed-soft text-removed last:border-b-0"
+        class="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_32px] border-b border-line-strong bg-removed-soft text-removed last:border-b-0"
       >
-        <span class="truncate border-r border-line px-2 py-1 line-through">{{ k }}</span>
-        <span class="truncate px-2 py-1 line-through">{{ base?.[k] }}</span>
-        <button class="grid place-items-center text-fg-3 hover:text-fg" title="Restore" @click="restore(k)"><Icon name="undo" :size="12" /></button>
+        <span class="truncate border-r border-line-strong px-2.5 py-1 leading-[22px] font-bold line-through">{{ k }}</span>
+        <span class="truncate px-2.5 py-1 leading-[22px] line-through">{{ base?.[k] }}</span>
+        <button class="grid place-items-center border-l border-line-strong text-fg-2 hover:bg-surface-3 hover:text-fg" :title="t('tags.restore')" @click="restore(k)"><Icon name="undo" :size="12" /></button>
       </div>
-      <div v-if="!rows.length && !removed.length" class="px-2 py-2 font-sans text-fg-3">No tags</div>
+      <div v-if="!rows.length && !removed.length" class="px-2.5 py-2 text-fg-3">{{ t('tags.empty') }}</div>
     </div>
 
-    <button v-if="!readonly && !textMode" class="btn btn-ghost btn-sm mt-1 text-fg-3" @click="addRow()">
-      <Icon name="plus" :size="12" /> Add tag
+    <button v-if="!readonly && !textMode" class="btn mt-2.5 border-transparent bg-surface-3 hover:bg-line-strong" :title="t('tags.add')" @click="addRow()">
+      <Icon name="plus" :size="14" /> {{ t('tags.add') }}
     </button>
   </div>
 </template>

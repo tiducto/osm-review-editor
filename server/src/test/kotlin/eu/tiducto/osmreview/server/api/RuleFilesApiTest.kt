@@ -31,6 +31,7 @@ import eu.tiducto.osmreview.shared.presets.PresetMatch
 import eu.tiducto.osmreview.shared.presets.PresetMatchRequest
 import eu.tiducto.osmreview.shared.presets.PresetSummary
 import eu.tiducto.osmreview.shared.presets.ResolvedPreset
+import eu.tiducto.osmreview.shared.presets.SmartPreset
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -237,6 +238,21 @@ class RuleFilesApiTest {
         val detached = send("POST", "/api/presets/detach", enc(DetachPresetRequest.serializer(), DetachPresetRequest(path = "presets/custom-bench.json")))
         assertEquals(HttpStatusCode.OK, detached.status, detached.bodyAsText())
         assertFalse("extends" in dir.resolve("presets/custom-bench.json").readText())
+    }
+
+    @Test
+    fun smartPresetsInTheLocale() = api {
+        val saved = folder.write(
+            "presets/smart/x.json",
+            """{"id":"smart/x","name":{"cs":"Přechod","en":"Crossing"},"geometry":["line"],"match":"way[highway=footway]",
+               "steps":[{"op":"tag","target":"self","set":{"footway":"crossing"}}]}""",
+        )
+        assertTrue(saved.saved, saved.toString())
+        val en = send("GET", "/api/presets/smart").body(ListSerializer(SmartPreset.serializer())).single()
+        assertEquals("Crossing", en.name)
+        assertEquals(mapOf("cs" to "Přechod", "en" to "Crossing"), en.names)
+        val cs = send("GET", "/api/presets/smart?locale=cs").body(ListSerializer(SmartPreset.serializer())).single()
+        assertEquals("Přechod", cs.name)
     }
 
     @Test

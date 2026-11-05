@@ -20,8 +20,8 @@ watch(
 
 <template>
   <span
-    class="grid shrink-0 place-items-center rounded-lg text-fg-2"
-    :class="smart ? 'bg-claude-soft text-claude' : 'bg-surface-3'"
+    class="grid shrink-0 place-items-center rounded-md border bg-surface"
+    :class="smart ? 'border-claude/50 text-claude' : 'border-line-strong text-fg'"
     :style="{ width: `${size}px`, height: `${size}px`, padding: `${Math.round(size / 6)}px` }"
   >
     <span v-if="svg" class="block size-full" v-html="svg" />

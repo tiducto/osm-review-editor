@@ -1,4 +1,5 @@
 import type { BBox, HighlightEvaluation, OsmRef, PresetBulkApplyRequest, ScanIssue } from '@/generated/models'
+import { formatNumber, t } from '@/i18n'
 
 export const MAX_BULK_REFS = 5000
 const CHUNK_W = 0.08
@@ -57,16 +58,16 @@ export interface BulkInput {
 
 export function buildBulkRequest(input: BulkInput): PresetBulkApplyRequest {
   const refs = uniqueRefs(input.refs)
-  if (!input.presetId) throw new Error('Pick a preset')
-  if (!refs.length) throw new Error('No features to apply the preset to')
-  if (refs.length > MAX_BULK_REFS) throw new Error(`At most ${MAX_BULK_REFS} features at once (got ${refs.length})`)
+  if (!input.presetId) throw new Error(t('bulk.pick'))
+  if (!refs.length) throw new Error(t('bulk.noRefs'))
+  if (refs.length > MAX_BULK_REFS) throw new Error(t('bulk.tooMany', { max: formatNumber(MAX_BULK_REFS), count: formatNumber(refs.length) }))
   const title = input.title?.trim() || null
   return {
     presetId: input.presetId,
     refs,
     dryRun: input.dryRun,
     title: input.dryRun ? null : title,
-    reason: input.source ? `Preset applied to ${input.source}` : null,
+    reason: input.source ? t('bulk.reason', { source: input.source }) : null,
     area: input.area ?? null,
     locale: input.locale ?? null,
   }

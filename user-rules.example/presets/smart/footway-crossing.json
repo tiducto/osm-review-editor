@@ -1,6 +1,6 @@
 {
   "id": "smart/footway-crossing",
-  "name": "Footway → crossing",
+  "name": { "en": "Footway → crossing", "cs": "Chodník → přechod" },
   "geometry": ["line"],
   "match": "way[highway=footway][!footway]",
   "params": {

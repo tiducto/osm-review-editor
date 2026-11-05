@@ -20,13 +20,13 @@ defineExpose({ focus: () => combos.value?.[0]?.focus() })
 </script>
 
 <template>
-  <div class="overflow-visible rounded-md border border-line">
+  <div class="overflow-visible rounded-b-md border border-line-strong bg-surface [&_.input]:rounded-none! [&_.input]:border-0 [&_.input]:border-l [&_.input]:border-line">
     <div
       v-for="row in rows"
       :key="row.key"
-      class="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-center gap-2 border-b border-line px-1.5 py-1 last:border-b-0"
+      class="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-center border-b border-line last:border-b-0"
     >
-      <span class="truncate text-[12px] text-fg-2" :title="row.key">{{ row.label }}</span>
+      <span class="truncate px-2.5 text-[12px] text-fg-2" :title="row.key">{{ row.label }}</span>
       <div class="min-w-0">
         <ComboInput
           ref="combos"

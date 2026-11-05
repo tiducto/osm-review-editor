@@ -1,10 +1,12 @@
 import type { Map as MlMap } from 'maplibre-gl'
 import { api, errorMessage, isAbort } from '@/api/client'
-import { createIdAdapter, ID_EDITOR_VERSION, loadIdData, OPERATION_KEYS, type IdAdapter } from './id/adapter'
+import { getLocale, t } from '@/i18n'
+import { createIdAdapter, ID_EDITOR_VERSION, loadIdData, OPERATION_KEYS, setIdLocale, type IdAdapter } from './id/adapter'
 import { EditController, type ControllerHooks } from './controller'
 import type { Bounds } from './types'
 
 export * as presetOps from './id/presetOps'
+export { setIdLocale } from './id/adapter'
 
 export const LOAD_ZOOM = 15
 const TILE_ZOOM = 15
@@ -102,7 +104,7 @@ export class TileLoader {
         .catch((e) => {
           if (isAbort(e)) return
           this.failed.set(key, Date.now())
-          this.hooks.error(`Loading OSM data failed: ${errorMessage(e)}`)
+          this.hooks.error(t('edit.loadFailed', { error: errorMessage(e) }))
         })
         .finally(() => {
           this.running.delete(key)
@@ -125,6 +127,7 @@ export interface EditSession {
 
 export async function createEditSession(map: MlMap, hooks: ControllerHooks & LoaderHooks): Promise<EditSession> {
   await loadIdData()
+  await setIdLocale(getLocale()).catch(() => false)
   const adapter = createIdAdapter()
   const controller = new EditController(map, adapter, hooks)
   const loader = new TileLoader(adapter, {

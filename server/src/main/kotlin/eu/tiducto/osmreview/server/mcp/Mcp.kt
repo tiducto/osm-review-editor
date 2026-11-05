@@ -123,9 +123,10 @@ private val INSTRUCTIONS = """
     persist the issues and compare with the previous scan of that area. Highlights are MapCSS map styles:
     list_highlights, highlight_stats (coverage per legend entry) and evaluate_highlight (object ids and styles in an area).
     The user's rules folder holds MapCSS highlights and checks, iD-style presets and smart presets as plain files
-    (list_rule_files, read_rule_file, validate_rule_file, write_rule_file, delete_rule_file). Validate before writing;
+    (list_rule_files, read_rule_file, validate_rule_file, write_rule_file, copy_rule_file, delete_rule_file). Validate before writing;
     a write with errors is refused unless force=true. Presets: search_presets, get_preset, match_preset, and
-    import_preset / detach_preset to customise an iD preset as an overlay file.
+    import_preset / detach_preset to customise an iD preset as an overlay file; apply_preset_bulk applies a preset to many
+    objects (dry run first, then a draft). Smart presets run in the editor only.
     push_view moves the user's open browser tab (area or center, highlights, a scan, a draft, selected objects) to show
     what you found; the user sees a toast "Claude changed the view" with undo, so use it when it helps, with a short message.
 """.trimIndent()

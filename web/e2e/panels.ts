@@ -1,16 +1,20 @@
 import type { Locator, Page } from '@playwright/test'
 
+export type PaneName = 'background' | 'map-data' | 'validation' | 'rules' | 'presets' | 'drafts' | 'settings'
+
+export const PANES: PaneName[] = ['background', 'map-data', 'validation', 'rules', 'presets', 'drafts', 'settings']
+
 export const panels = {
   map: (page: Page): Locator => page.getByTestId('map'),
-  leftPanel: (page: Page): Locator => page.getByTestId('left-panel'),
-  leftToggle: (page: Page): Locator => page.getByTestId('left-toggle'),
-  rightPanel: (page: Page): Locator => page.getByTestId('right-panel'),
-  rightToggle: (page: Page): Locator => page.getByTestId('right-toggle'),
+  sidebar: (page: Page): Locator => page.getByTestId('sidebar-left'),
+  sidebarToggle: (page: Page): Locator => page.getByTestId('sidebar-toggle'),
+  pane: (page: Page, name: PaneName): Locator => page.getByTestId(`pane-${name}`),
+  paneButton: (page: Page, name: PaneName): Locator => page.getByTestId(`pane-button-${name}`),
+  paneClose: (page: Page): Locator => page.getByTestId('pane-close'),
+  sheet: (page: Page): Locator => page.getByTestId('bottom-sheet'),
   sheetToggle: (page: Page): Locator => page.getByTestId('sheet-toggle'),
-  bottomPanel: (page: Page): Locator => page.getByTestId('bottom-panel'),
-  bottomCollapse: (page: Page): Locator => page.getByTestId('bottom-panel').getByTitle('Collapse'),
-  bottomExpand: (page: Page): Locator => page.getByTestId('bottom-panel').getByTitle('Expand'),
-  draftReview: (page: Page): Locator => page.getByTestId('bottom-panel').getByRole('button', { name: 'Review' }).first(),
-  tab: (page: Page, name: 'map' | 'validate' | 'rules' | 'presets'): Locator => page.getByTestId(`tab-${name}`),
+  sheetTab: (page: Page, tab: 'left' | 'pane'): Locator => page.getByTestId(`sheet-tab-${tab}`),
+  draftReview: (page: Page): Locator => page.getByTestId('pane-drafts').getByRole('button', { name: 'Review' }).first(),
   leaveReview: (page: Page): Locator => page.getByTitle('Leave review (Esc)'),
+  imageryOptions: (page: Page): Locator => page.getByTestId('imagery-list').locator('input[type="radio"]'),
 }

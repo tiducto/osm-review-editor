@@ -1,11 +1,24 @@
 import type { RuleKind } from '@/generated/models'
+import { t } from '@/i18n'
 
-export const TEMPLATE_KINDS: { kind: RuleKind; label: string; hint: string }[] = [
-  { kind: 'highlight', label: 'Highlight', hint: 'Style objects on the map, with a legend and coverage stats' },
-  { kind: 'check', label: 'Check', hint: 'A validator rule with a message and an optional fix' },
-  { kind: 'preset', label: 'Preset overlay', hint: 'Extend an iD preset with your own tags and fields' },
-  { kind: 'smart_preset', label: 'Smart preset', hint: 'A multi-step edit with parameters' },
-]
+type TemplateKind = 'highlight' | 'check' | 'preset' | 'smart_preset'
+
+function templateKind(kind: TemplateKind): { kind: RuleKind; readonly label: string; readonly hint: string; readonly newTitle: string } {
+  return {
+    kind,
+    get label() {
+      return t(`template.${kind}.label`)
+    },
+    get hint() {
+      return t(`template.${kind}.hint`)
+    },
+    get newTitle() {
+      return t(`template.${kind}.new`)
+    },
+  }
+}
+
+export const TEMPLATE_KINDS = (['highlight', 'check', 'preset', 'smart_preset'] as const).map(templateKind)
 
 export function slug(name: string): string {
   return name.trim().toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '')

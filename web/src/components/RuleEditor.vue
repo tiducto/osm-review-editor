@@ -7,7 +7,7 @@ import { json } from '@codemirror/lang-json'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { linter, lintGutter, setDiagnostics, type Diagnostic } from '@codemirror/lint'
 import { unifiedMergeView } from '@codemirror/merge'
-import { tags as t } from '@lezer/highlight'
+import { tags } from '@lezer/highlight'
 import type { RuleDiagnostic } from '@/generated/models'
 import { mapcss } from '@/lib/mapcssLanguage'
 import { useRuleFilesStore } from '@/stores/ruleFiles'
@@ -16,9 +16,52 @@ import Icon from './Icon.vue'
 import Spinner from './Spinner.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import Modal from './Modal.vue'
+import { useI18n, type MessageKey } from '@/i18n'
 
 const store = useRuleFilesStore()
 const hl = useHighlightsStore()
+const { t, tn, locale } = useI18n()
+
+const CM_PHRASES: [string, MessageKey][] = [
+  ['Find', 'ruleEditor.cm.find'],
+  ['Replace', 'ruleEditor.cm.replace'],
+  ['next', 'ruleEditor.cm.next'],
+  ['previous', 'ruleEditor.cm.previous'],
+  ['all', 'ruleEditor.cm.all'],
+  ['match case', 'ruleEditor.cm.matchCase'],
+  ['regexp', 'ruleEditor.cm.regexp'],
+  ['by word', 'ruleEditor.cm.byWord'],
+  ['replace', 'ruleEditor.cm.replaceOne'],
+  ['replace all', 'ruleEditor.cm.replaceAll'],
+  ['close', 'ruleEditor.cm.close'],
+  ['Go to line', 'ruleEditor.cm.goToLine'],
+  ['go', 'ruleEditor.cm.go'],
+  ['replaced match on line $', 'ruleEditor.cm.replacedOnLine'],
+  ['replaced $ matches', 'ruleEditor.cm.replacedMatches'],
+  ['current match', 'ruleEditor.cm.currentMatch'],
+  ['on line', 'ruleEditor.cm.onLine'],
+  ['Diagnostics', 'ruleEditor.cm.diagnostics'],
+  ['No diagnostics', 'ruleEditor.cm.noDiagnostics'],
+  ['Control character', 'ruleEditor.cm.controlCharacter'],
+  ['$ unchanged lines', 'ruleEditor.cm.unchangedLines'],
+  ['Revert this chunk', 'ruleEditor.cm.revertChunk'],
+  ['Accept', 'ruleEditor.cm.accept'],
+  ['Reject', 'ruleEditor.cm.reject'],
+  ['Folded lines', 'ruleEditor.cm.foldedLines'],
+  ['Unfolded lines', 'ruleEditor.cm.unfoldedLines'],
+  ['to', 'ruleEditor.cm.to'],
+  ['folded code', 'ruleEditor.cm.foldedCode'],
+  ['unfold', 'ruleEditor.cm.unfold'],
+  ['Fold line', 'ruleEditor.cm.foldLine'],
+  ['Unfold line', 'ruleEditor.cm.unfoldLine'],
+  ['Selection deleted', 'ruleEditor.cm.selectionDeleted'],
+  ['Completions', 'ruleEditor.cm.completions'],
+]
+
+function phrasesExt() {
+  if (locale.value !== 'cs') return []
+  return EditorState.phrases.of(Object.fromEntries(CM_PHRASES.map(([k, key]) => [k, t(key)])))
+}
 
 const host = ref<HTMLDivElement | null>(null)
 const mergeHost = ref<HTMLDivElement | null>(null)
@@ -26,6 +69,8 @@ const view = shallowRef<EditorView | null>(null)
 let mergeView: EditorView | null = null
 const language = new Compartment()
 const readOnly = new Compartment()
+const phrases = new Compartment()
+const mergePhrases = new Compartment()
 const confirmDelete = ref(false)
 const livePreview = ref(true)
 
@@ -36,28 +81,59 @@ const errors = computed(() => store.diagnostics.filter((d) => d.severity === 'er
 const warnings = computed(() => store.diagnostics.filter((d) => d.severity === 'warning').length)
 
 const style = HighlightStyle.define([
-  { tag: t.comment, color: '#8a8f98', fontStyle: 'italic' },
-  { tag: t.string, color: '#0f7b3e' },
-  { tag: [t.number, t.bool], color: '#b45309' },
-  { tag: t.color, color: '#be185d' },
-  { tag: t.keyword, color: '#7c3aed', fontWeight: '600' },
-  { tag: t.typeName, color: '#1d4ed8', fontWeight: '600' },
-  { tag: t.className, color: '#0e7490' },
-  { tag: t.labelName, color: '#0e7490' },
-  { tag: t.attributeName, color: '#9a3412' },
-  { tag: t.propertyName, color: '#1e40af' },
-  { tag: t.macroName, color: '#7c3aed' },
-  { tag: t.regexp, color: '#c2410c' },
-  { tag: t.operator, color: '#475569' },
-  { tag: t.atom, color: '#0f766e' },
+  { tag: tags.comment, color: '#888888', fontStyle: 'italic' },
+  { tag: tags.string, color: '#008800' },
+  { tag: [tags.number, tags.bool], color: '#b15500' },
+  { tag: tags.color, color: '#b15500' },
+  { tag: tags.keyword, color: '#597be7', fontWeight: 'bold' },
+  { tag: tags.typeName, color: '#597be7', fontWeight: 'bold' },
+  { tag: tags.className, color: '#0055bb' },
+  { tag: tags.labelName, color: '#0055bb' },
+  { tag: tags.attributeName, color: '#333333', fontWeight: 'bold' },
+  { tag: tags.propertyName, color: '#0055bb' },
+  { tag: tags.macroName, color: '#7092ff' },
+  { tag: tags.regexp, color: '#b15500' },
+  { tag: tags.operator, color: '#666666' },
+  { tag: tags.atom, color: '#0055bb' },
 ])
 
+const lintDot = (c: string) => `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3Ccircle cx='5' cy='5' r='4' fill='${encodeURIComponent(c)}'/%3E%3C/svg%3E")`
+const lintWave = (c: string) =>
+  `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='3'%3E%3Cpath d='m0 3 l2 -2 l1 0 l2 2 l1 0' stroke='${encodeURIComponent(c)}' fill='none' stroke-width='.9'/%3E%3C/svg%3E")`
+
 const theme = EditorView.theme({
-  '&': { height: '100%', fontSize: '12.5px', backgroundColor: '#ffffff' },
-  '.cm-scroller': { fontFamily: '"JetBrains Mono Variable", ui-monospace, monospace', lineHeight: '1.55' },
-  '.cm-gutters': { backgroundColor: '#f8fafc', borderRight: '1px solid #e5e7eb', color: '#94a3b8' },
-  '.cm-activeLine': { backgroundColor: '#f1f5f9' },
-  '.cm-activeLineGutter': { backgroundColor: '#e2e8f0' },
+  '&': { height: '100%', fontSize: '12px', backgroundColor: '#ffffff', color: '#333333' },
+  '.cm-scroller': { fontFamily: "ui-monospace, 'SF Mono', Menlo, Consolas, monospace", lineHeight: '1.6' },
+  '.cm-content': { caretColor: '#333333' },
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#333333' },
+  '.cm-gutters': { backgroundColor: '#f6f6f6', borderRight: '1px solid #cccccc', color: '#888888' },
+  '.cm-activeLine': { backgroundColor: '#f6f6f6' },
+  '.cm-activeLineGutter': { backgroundColor: '#ececec', color: '#333333' },
+  '.cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-content ::selection': {
+    backgroundColor: '#e8ebff',
+  },
+  '.cm-selectionMatch': { backgroundColor: '#e8ebff' },
+  '&.cm-focused .cm-matchingBracket': { backgroundColor: '#e8ebff', outline: '1px solid #7092ff' },
+  '.cm-searchMatch': { backgroundColor: '#ffffcc', outline: '1px solid #ff9900' },
+  '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: '#e8ebff' },
+  '.cm-foldPlaceholder': { backgroundColor: '#ececec', border: '1px solid #cccccc', color: '#666666', borderRadius: '3px' },
+  '.cm-panels': { backgroundColor: '#f6f6f6', color: '#333333' },
+  '.cm-panels.cm-panels-top': { borderBottom: '1px solid #cccccc' },
+  '.cm-panels.cm-panels-bottom': { borderTop: '1px solid #cccccc' },
+  '.cm-textfield': { border: '1px solid #cccccc', borderRadius: '4px', backgroundColor: '#ffffff', fontSize: '12px' },
+  '.cm-button': { backgroundImage: 'none', backgroundColor: '#ffffff', border: '1px solid #cccccc', borderRadius: '4px', fontWeight: 'bold' },
+  '.cm-tooltip': { border: '1px solid #cccccc', backgroundColor: '#ffffff', borderRadius: '4px', boxShadow: '0 0 4px rgb(0 0 0 / 0.18)' },
+  '.cm-tooltip-autocomplete > ul > li[aria-selected]': { backgroundColor: '#7092ff', color: '#ffffff' },
+  '.cm-diagnostic': { fontFamily: 'inherit' },
+  '.cm-diagnostic-error': { borderLeft: '4px solid #ff0000' },
+  '.cm-diagnostic-warning': { borderLeft: '4px solid #ff9900' },
+  '.cm-diagnostic-info': { borderLeft: '4px solid #0055bb' },
+  '.cm-lintRange-error': { backgroundImage: lintWave('#ff0000') },
+  '.cm-lintRange-warning': { backgroundImage: lintWave('#ff9900') },
+  '.cm-lintRange-info': { backgroundImage: lintWave('#0055bb') },
+  '.cm-lint-marker-error': { content: lintDot('#ff0000') },
+  '.cm-lint-marker-warning': { content: lintDot('#ff9900') },
+  '.cm-lint-marker-info': { content: lintDot('#0055bb') },
   '&.cm-focused': { outline: 'none' },
 })
 
@@ -99,6 +175,7 @@ function create() {
     doc: f.content,
     extensions: [
       basicSetup,
+      phrases.of(phrasesExt()),
       language.of(langFor(f.path)),
       readOnly.of([EditorState.readOnly.of(f.readOnly), EditorView.editable.of(!f.readOnly)]),
       syntaxHighlighting(style),
@@ -166,6 +243,7 @@ watch(
         doc: c.mine,
         extensions: [
           basicSetup,
+          mergePhrases.of(phrasesExt()),
           langFor(file.value?.path ?? ''),
           syntaxHighlighting(style),
           theme,
@@ -177,6 +255,11 @@ watch(
     })
   },
 )
+
+watch(locale, () => {
+  view.value?.dispatch({ effects: phrases.reconfigure(phrasesExt()) })
+  mergeView?.dispatch({ effects: mergePhrases.reconfigure(phrasesExt()) })
+})
 
 function jump(d: RuleDiagnostic) {
   const v = view.value
@@ -201,80 +284,81 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if="file" class="flex h-full min-h-0 flex-col" data-testid="rule-editor">
-    <div class="flex h-10 shrink-0 items-center gap-2 border-b border-line px-2">
-      <button class="btn btn-ghost btn-icon btn-sm w-7" title="Back to files" @click="store.close()"><Icon name="chevron-left" :size="14" /></button>
+    <div class="flex h-10 shrink-0 items-center gap-2 border-b border-line-strong bg-surface px-2">
+      <button class="btn btn-ghost btn-icon btn-sm w-7" :title="t('ruleEditor.back')" @click="store.close()"><Icon name="chevron-left" :size="16" /></button>
       <div class="min-w-0 flex-1">
-        <div class="truncate font-mono text-[12px] font-medium" :title="file.path">
+        <div class="truncate font-mono text-[12px] font-bold" :title="file.path">
           {{ file.path }}<span v-if="store.dirty" class="text-changed"> ●</span>
         </div>
       </div>
       <Spinner v-if="store.validating" :size="12" class="text-fg-3" />
-      <span v-if="errors" class="chip bg-removed-soft text-[11px] text-removed">{{ errors }} error{{ errors === 1 ? '' : 's' }}</span>
-      <span v-else-if="warnings" class="chip bg-changed-soft text-[11px] text-changed">{{ warnings }} warning{{ warnings === 1 ? '' : 's' }}</span>
-      <span v-else-if="!store.validating" class="chip bg-added-soft text-[11px] text-added">valid</span>
+      <span v-if="errors" class="chip bg-removed-soft text-[11px] text-removed">{{ tn('ruleEditor.errors', errors) }}</span>
+      <span v-else-if="warnings" class="chip bg-changed-soft text-[11px] text-changed">{{ tn('ruleEditor.warnings', warnings) }}</span>
+      <span v-else-if="!store.validating" class="chip bg-added-soft text-[11px] text-added">{{ t('ruleEditor.valid') }}</span>
     </div>
 
-    <div class="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-2 py-1.5">
+    <div class="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line-strong bg-surface-2 px-2 py-1.5">
       <template v-if="file.readOnly">
         <span class="chip bg-surface-3 text-[11px] text-fg-2">
           <Icon :name="origin?.builtIn ? 'database' : 'remote'" :size="11" />
-          {{ origin?.builtIn ? 'Built-in' : `Remote · ${origin?.source ?? ''}` }}, read-only
+          {{ origin?.builtIn ? t('ruleEditor.builtInReadOnly') : t('ruleEditor.remoteReadOnly', { source: origin?.source ?? '' }) }}
         </span>
         <button class="btn btn-primary btn-sm" data-testid="copy-to-folder" @click="store.copyToFolder(file.path)">
-          <Icon name="copy" :size="12" /> Copy to my folder
+          <Icon name="copy" :size="12" /> {{ t('ruleEditor.copyToFolder') }}
         </button>
       </template>
       <template v-else>
-        <button class="btn btn-primary btn-sm" :disabled="store.saving || (!store.dirty && !file.isNew)" title="Save (Ctrl/⌘ S)" data-testid="save-rule" @click="store.save()">
-          <Spinner v-if="store.saving" :size="11" /> Save
+        <button class="btn btn-primary btn-sm" :disabled="store.saving || (!store.dirty && !file.isNew)" :title="t('ruleEditor.saveTitle')" data-testid="save-rule" @click="store.save()">
+          <Spinner v-if="store.saving" :size="11" /> {{ t('common.save') }}
         </button>
-        <button v-if="store.forceOffer" class="btn btn-danger btn-sm" @click="store.save(true)">Save with errors</button>
-        <button class="btn btn-ghost btn-sm" title="Move to the folder's .trash" @click="confirmDelete = true"><Icon name="x" :size="12" /> Delete</button>
+        <button v-if="store.forceOffer" class="btn btn-danger btn-sm" @click="store.save(true)">{{ t('ruleEditor.saveWithErrors') }}</button>
+        <button class="btn btn-ghost btn-sm" :title="t('ruleEditor.deleteTitle')" @click="confirmDelete = true"><Icon name="x" :size="12" /> {{ t('common.delete') }}</button>
       </template>
       <template v-if="isHighlight">
-        <button class="btn btn-sm ml-auto" :class="hl.isActive(file.path) && 'bg-accent-soft text-accent'" @click="toggleOnMap">
-          <Icon :name="hl.isActive(file.path) ? 'eye' : 'eye-off'" :size="12" /> {{ hl.isActive(file.path) ? 'On map' : 'Show on map' }}
+        <button class="btn btn-sm ml-auto" :class="hl.isActive(file.path) && 'border-accent bg-accent text-white hover:bg-accent-strong'" @click="toggleOnMap">
+          <Icon :name="hl.isActive(file.path) ? 'eye' : 'eye-off'" :size="12" /> {{ hl.isActive(file.path) ? t('ruleEditor.onMap') : t('ruleEditor.showOnMap') }}
         </button>
-        <label v-if="!file.readOnly" class="flex items-center gap-1 text-[11.5px] text-fg-3" title="Preview unsaved edits on the map">
-          <input v-model="livePreview" type="checkbox" class="accent-[var(--accent)]" /> live
+        <label v-if="!file.readOnly" class="flex items-center gap-1 text-[11.5px] font-bold text-fg-2" :title="t('ruleEditor.livePreviewTitle')">
+          <input v-model="livePreview" type="checkbox" class="accent-[var(--accent)]" /> {{ t('ruleEditor.live') }}
         </label>
       </template>
     </div>
 
-    <div v-if="store.changedOnDisk" class="flex shrink-0 items-center gap-2 border-b border-changed/30 bg-changed-soft px-3 py-1.5 text-[12px] text-changed">
-      <Icon name="alert" :size="13" /> Changed on disk
-      <button class="btn btn-sm ml-auto" @click="store.openFile(file.path)">Reload</button>
-      <button class="btn btn-ghost btn-sm" @click="store.changedOnDisk = false">Keep mine</button>
+    <div v-if="store.changedOnDisk" class="flex shrink-0 items-center gap-2 border-b border-line-strong border-l-4 border-l-warning bg-changed-soft px-3 py-1.5 text-[12px] text-fg">
+      <Icon name="alert" :size="14" class="text-warning" /> {{ t('ruleEditor.changedOnDisk') }}
+      <button class="btn btn-sm ml-auto" @click="store.openFile(file.path)">{{ t('common.reload') }}</button>
+      <button class="btn btn-ghost btn-sm" @click="store.changedOnDisk = false">{{ t('ruleEditor.keepMine') }}</button>
     </div>
 
     <div ref="host" class="min-h-0 flex-1 overflow-hidden" />
 
-    <div class="scroll-thin max-h-[30%] shrink-0 overflow-y-auto border-t border-line" data-testid="rule-diagnostics">
-      <div v-if="!store.diagnostics.length" class="px-3 py-2 text-[12px] text-fg-3">No problems.</div>
+    <div class="scroll-thin max-h-[30%] shrink-0 overflow-y-auto border-t border-line-strong bg-surface-2" data-testid="rule-diagnostics">
+      <div v-if="!store.diagnostics.length" class="px-3 py-2 text-[12px] text-fg-3">{{ t('ruleEditor.noProblems') }}</div>
       <button
         v-for="(d, i) in store.diagnostics"
         :key="i"
-        class="flex w-full items-start gap-2 px-3 py-1 text-left text-[12px] hover:bg-surface-2"
+        class="row-btn items-start border-b border-l-4 border-b-line bg-surface px-3 py-1.5 text-[12px]"
+        :class="d.severity === 'error' ? 'border-l-error' : d.severity === 'warning' ? 'border-l-warning' : 'border-l-info'"
         @click="jump(d)"
       >
-        <span class="mt-1.5 size-2 shrink-0 rounded-full" :class="d.severity === 'error' ? 'bg-error' : d.severity === 'warning' ? 'bg-warning' : 'bg-info'" />
+        <span class="mt-1 size-2 shrink-0 rounded-full" :class="d.severity === 'error' ? 'bg-error' : d.severity === 'warning' ? 'bg-warning' : 'bg-info'" />
         <span class="shrink-0 font-mono text-[11px] text-fg-3">{{ d.line }}:{{ d.column }}</span>
-        <span class="min-w-0 flex-1 text-fg-2">{{ d.message }}</span>
+        <span class="min-w-0 flex-1 text-fg">{{ d.message }}</span>
       </button>
     </div>
 
-    <ConfirmDialog v-if="confirmDelete" title="Delete file" confirm-label="Move to trash" danger @cancel="confirmDelete = false" @confirm="confirmDelete = false; store.remove(file.path)">
-      Move <span class="font-mono">{{ file.path }}</span> to the rules folder's <span class="font-mono">.trash</span>? You can restore it from there.
+    <ConfirmDialog v-if="confirmDelete" :title="t('ruleEditor.deleteFile')" :confirm-label="t('ruleEditor.moveToTrash')" danger @cancel="confirmDelete = false" @confirm="confirmDelete = false; store.remove(file.path)">
+      {{ t('ruleEditor.deleteBefore') }} <span class="font-mono">{{ file.path }}</span> {{ t('ruleEditor.deleteMiddle') }} <span class="font-mono">.trash</span>{{ t('ruleEditor.deleteAfter') }}
     </ConfirmDialog>
 
-    <Modal v-if="store.conflict" title="The file changed since you opened it" width="820px" @close="store.conflict = null">
-      <div class="px-5 pt-3 pb-2 text-[12.5px] text-fg-2">
-        Someone (another editor, Claude or a sync) saved <span class="font-mono">{{ file.path }}</span>. Lines in red are on disk, green are yours.
+    <Modal v-if="store.conflict" :title="t('ruleEditor.conflictTitle')" width="820px" @close="store.conflict = null">
+      <div class="px-5 pt-3 pb-2 text-[12px] text-fg-2">
+        {{ t('ruleEditor.conflictBefore') }} <span class="font-mono font-bold text-fg">{{ file.path }}</span>{{ t('ruleEditor.conflictAfter') }}
       </div>
-      <div ref="mergeHost" class="mx-5 mb-4 h-[50vh] overflow-hidden rounded-md border border-line" data-testid="conflict-diff" />
+      <div ref="mergeHost" class="mx-5 mb-4 h-[50vh] overflow-hidden rounded-md border border-line-strong" data-testid="conflict-diff" />
       <template #footer>
-        <button class="btn" @click="store.takeTheirs()">Reload from disk (discard mine)</button>
-        <button class="btn btn-primary ml-auto" @click="store.keepMine()">Overwrite with mine</button>
+        <button class="btn" @click="store.takeTheirs()">{{ t('ruleEditor.takeTheirs') }}</button>
+        <button class="btn btn-primary ml-auto" @click="store.keepMine()">{{ t('ruleEditor.overwrite') }}</button>
       </template>
     </Modal>
   </div>
