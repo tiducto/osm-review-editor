@@ -1,14 +1,22 @@
 # REST and WebSocket API
 
-The Ktor server on `:3000` serves the UI, this API, the MCP endpoint (`/mcp`) and OAuth (`/auth/*`).
+The Ktor server on `:3000` serves the UI, this API, the WebSocket (`/api/events`), the [MCP endpoint](#mcp-mcp)
+(`/mcp`) and OAuth (`/auth/*`); `:8111` answers [JOSM remote control](#josm-remote-control-8111).
 All bodies are JSON in the shapes of `shared/` (`@Serializable` Kotlin), mirrored as TypeScript in
 `web/src/generated/models.ts` (regenerate with `./gradlew :shared:generateTsModels`).
 
 Responses always carry every field (defaults are encoded). Errors are `ApiError` (`{error, detail, code, openChanges}`;
-`code` is set for errors a client can act on, see below) with 400 (bad input), 401 (no OSM account connected), 404 (unknown id), 409 (state conflict, e.g.
-reviewing an uploaded change, merging a closed draft or with nothing approved, another merge
-running), 502 (OSM API error), 503 (no GOL open yet). The remote-control port `:8111` answers
-errors as `text/plain` instead, like JOSM.
+`code` is set for errors a client can act on, see below) with 400 (bad input), 401 (no OSM account
+connected), 403 (see below), 404 (unknown id), 409 (state conflict, e.g. reviewing an uploaded change,
+merging a closed draft or with nothing approved, another merge running), 413 (live data area too
+large), 422 (a rules file with errors was not written), 429 (OSM rate limit), 502 (OSM API error),
+503 (no GOL open yet). Unknown `/api/...` paths are a 404 `ApiError`. The remote-control port `:8111`
+answers errors as `text/plain` instead, like JOSM.
+
+Everything on `:3000` (UI, API, WebSocket, MCP, OAuth) only answers requests whose `Host` is
+`localhost`, `127.0.0.1`, `[::1]` or the host of `PUBLIC_URL`; other hosts get a 403 asking to set
+`PUBLIC_URL`. Requests other than `GET` and `HEAD` that carry an `Origin` header from another host
+are refused with a 403 (no cross-site writes).
 
 Object refs are `{type: 'node'|'way'|'relation', id}` in bodies and JOSM-style strings (`n123`,
 `w45`, `r6`) in paths. Bboxes in query strings are `west,south,east,north` (WGS84).
@@ -38,6 +46,7 @@ Each run is recorded in `app.rule_runs` with its scope key and scope geometry (s
 | Method | Path | Returns |
 | --- | --- | --- |
 | GET | `/api/status` | `AppStatus` (version, mirror, account, MCP URL, remote-control port); `mirror.sidecar` is the gol sidecar's `SidecarStatus`, `null` without `/data/status.json` |
+| GET | `/api/settings/mcp` | `McpInfo` `{url, token, claudeCodeCommand}`: the MCP endpoint, its bearer token and the `claude mcp add` command shown in Settings |
 | GET | `/api/areas` | `Area[]` presets from `DEFAULT_AREAS` and the built-in names (geometry omitted) |
 | GET | `/api/areas/{name}` | `Area` with GeoJSON geometry (preset polygon from `DEFAULT_AREAS`, else admin boundary from the mirror) |
 | GET | `/api/imagery` | `ImagerySource[]` for the map: the configured list plus Bing when `BING_KEY` is set |
@@ -47,7 +56,7 @@ Each run is recorded in `app.rule_runs` with its scope key and scope geometry (s
 
 | Method | Path | Returns |
 | --- | --- | --- |
-| GET | `/api/features?bbox=&limit=` | `FeatureCollection` of mirror objects in the bbox (nodes with tags, ways, area relations). Refused for bboxes larger than about zoom 14. Default limit 5000. |
+| GET | `/api/features?bbox=&limit=` | `FeatureCollection` of mirror objects in the bbox (nodes with tags, ways, area relations). Refused for bboxes larger than about zoom 14. Default limit 5000, at most 20,000. |
 | GET | `/api/objects/{ref}` | `MapFeature` from the mirror (no version) |
 | GET | `/api/objects/{ref}?live=true` | `MapFeature` from the live OSM API (with version) |
 | GET | `/api/objects/{ref}/links` | `EditorLinks` (iD, osm.org, history) for the current API target |
@@ -127,8 +136,8 @@ and the file path as the rule id.
 | Method | Path | Body | Returns |
 | --- | --- | --- | --- |
 | GET | `/api/drafts?status=&author=` | | `Draft[]`, newest first |
-| POST | `/api/drafts` | `CreateDraftRequest` | `Draft` (author `user`) |
-| POST | `/api/drafts/from-rule` | `DraftFromRuleRequest` `{ruleId, area?, bbox?, polygon?, title?, limit?}` | `DraftDetail` (author `rule:<id>`; every issue with a fix becomes a change, refetched live; the draft's `scope` is the scope geometry) |
+| POST | `/api/drafts` | `CreateDraftRequest` `{title, description?, scope?, area?, changesetComment?, changesetSource?}` | `201` `Draft` (author `user`) |
+| POST | `/api/drafts/from-rule` | `DraftFromRuleRequest` `{ruleId, area?, bbox?, polygon?, title?, limit?}` | `201` `DraftDetail` (author `rule:<id>`; every issue with a fix becomes a change, refetched live; the draft's `scope` is the scope geometry) |
 | POST | `/api/drafts/from-osmchange` | `DraftFromOsmChangeRequest` `{title, osmChange, description?, area?, changesetComment?, changesetSource?, reasons?, reason?, takeOver?}` | `201` `OsmChangeImportResult` (author `user`; nothing is created when the osmChange is invalid) |
 | GET | `/api/drafts/{id}` | | `DraftDetail` |
 | GET | `/api/drafts/{id}/osmchange` | | `application/xml` osmChange of the draft's pending, approved and conflict changes |
@@ -142,7 +151,7 @@ and the file path as the rule id.
 | GET | `/api/drafts/{id}/uploads` | | `Upload[]` |
 | POST | `/api/changes/{id}/review` | `ReviewRequest` | `Change` (`approve`, `edit` with full `tags`, `reject` with `comment`, `send_to_id`, `reset`; `cascade` see [dependencies](#dependencies)) |
 | POST | `/api/changes/{id}/resolve` | `ResolveConflictRequest` `{tags, useLiveGeometry?}` | `Change` (final tags after a three-way pick; back to pending on the live version; a geometry change keeps its geometry unless `useLiveGeometry`) |
-| POST | `/api/manual-edits` | `ManualEditRequest` | `Change` in the open manual draft (created on demand) |
+| POST | `/api/manual-edits` | `ManualEditRequest` `{ref, tags, reason?, baseTags?}` | `Change` in the open manual draft (created on demand) |
 
 ### Geometry drafts (osmChange)
 
@@ -308,7 +317,7 @@ Without `baseTags`, `tags` replace the live tags. A `baseTags` equal to `tags` i
 | PUT | `/api/settings/imagery` | `ImagerySource[]` replaces the whole list → the stored `ImagerySource[]`; 400 listing every problem |
 | POST | `/api/settings/imagery/reset` | `ImagerySource[]` defaults (ČÚZK orthophoto, ČÚZK cadastral map, Esri World Imagery) |
 | GET | `/auth/login` | Redirect to the OSM OAuth 2.0 authorize page (PKCE) |
-| GET | `/auth/callback` | OAuth redirect target; stores the token, redirects to `/` |
+| GET | `/auth/callback` | OAuth redirect target (`code`, `state`; an `error` is a 400); stores the token, redirects to `/?connected=1` |
 
 ### Imagery sources
 
@@ -562,25 +571,101 @@ a selector validator that the MapCSS engine provides.
 
 ## WebSocket `/api/events`
 
-Server → UI messages, one `UiEvent` JSON per frame, discriminated by `type`:
+Server → UI messages, one `UiEvent` JSON per frame, discriminated by `type` (`UiEvent` in
+`shared/src/commonMain/kotlin/eu/tiducto/osmreview/shared/Api.kt`). The server ignores frames from
+the client.
 
-- `remote_command`: a JOSM remote-control request (`load_and_zoom`, `zoom`, `load_object`, `import`,
-  `load_data`, `add_node`, `imagery`). Fly to `bbox`, select `select`, open `draftId` if set, add
-  `imagery`. `draftIds` lists every draft the command created (one per object for `addtags`;
-  `draftId` is the first). `message` reports what an import skipped. Queued while no tab is
-  connected and replayed when one connects.
-- `push_view`: Claude moved the view over MCP (`push_view` tool). Fields, all optional: `bbox`
-  (`{west, south, east, north}`, the resolved area or, with only `select`, the selected objects),
-  `center` (`{lng, lat}`) with `zoom` (0–22, 17 when only a center was given), `areaName` (when the
-  area was given by name), `highlights` (highlight file paths) with `replaceHighlights` (`false`: add
-  to the active highlights, `true`: make exactly these active), `scanId`, `draftId`, `select`
-  (`OsmRef` list) and `message`. The UI shows a toast "Claude changed the view" with undo. Queued
-  while no tab is connected (together with `remote_command`, the 20 most recent, in order) and
-  replayed when one connects.
-- `draft_updated`: a draft changed (e.g. Claude proposed changes over MCP); refetch it.
-- `merge_progress`: upload progress for a draft.
-- `mirror_swapped`: the GOL was updated and swapped; refetch rule layers.
-- `rules_changed`: files in the rules folder or remote sources changed; `changed` and `removed` list
-  their paths. Refetch `/api/rule-files` and presets.
-- `scan_finished`: a validation scan finished (`scanId`, `scope`, `issueCount`), for example the
-  automatic re-run after a mirror swap.
+| `type` | Fields | Meaning |
+| --- | --- | --- |
+| `remote_command` | `command`, `bbox?`, `select`, `draftId?`, `draftIds`, `imagery?`, `message?` | A JOSM remote-control request (`command` is `zoom`, `load_and_zoom`, `load_object`, `import`, `load_data`, `add_node` or `imagery`). Fly to `bbox`, select `select`, open `draftId` if set, add `imagery` (`ImagerySource`). `draftIds` lists every draft the command created (one per object for `addtags`; `draftId` is the first). `message` reports what an import skipped. |
+| `push_view` | `bbox?`, `center?`, `zoom?`, `areaName?`, `highlights`, `replaceHighlights`, `scanId?`, `draftId?`, `select`, `message?` | Claude moved the view with the MCP `push_view` tool. `bbox` is `{west, south, east, north}` (the resolved area or, with only `select`, the selected objects), `center` is `{lng, lat}` with `zoom` (0–22, 17 when only a center was given), `areaName` is set when the area was given by name, `highlights` are highlight file paths (`replaceHighlights: false` adds them to the active ones, `true` makes exactly these active), `select` is an `OsmRef` list. The UI shows a toast "Claude changed the view" with undo. |
+| `draft_updated` | `draftId` | A draft changed (Claude proposed changes, a takeover withdrew changes, a draft was edited); refetch it. |
+| `merge_progress` | `progress`: `MergeProgress` `{draftId, group, done, total, changesetId?, message, finished, failed}` | Upload progress of a draft; `finished` ends it, `failed` with the error in `message`. |
+| `mirror_swapped` | `status`: `MirrorStatus` `{available, file?, openedAt?, dataTimestamp?, message?, sidecar?}` | The GOL was updated and swapped; refetch tiles and rule layers. |
+| `rules_changed` | `changed`, `removed` | Files in the rules folder or remote sources changed (paths). Refetch `/api/rule-files` and presets. |
+| `scan_finished` | `scanId`, `scope`, `issueCount` | A validation scan finished, for example the automatic re-run after a mirror swap. |
+
+`remote_command` and `push_view` events emitted while no tab is connected are queued (the 20 most
+recent, in order) and replayed to the next tab that connects.
+
+## MCP `/mcp`
+
+MCP over Streamable HTTP (JSON responses, sessions in the `mcp-session-id` header): `POST` for
+requests, `DELETE` to close a session, `GET` is a 405. Every request needs `Authorization: Bearer
+<MCP_TOKEN>` (401 otherwise); the token and a ready `claude mcp add` command are at
+`GET /api/settings/mcp`. Tool errors come back as MCP tool errors with the reason.
+
+`area` arguments take an area preset, admin boundary or place name (`"Opava"`), a bbox
+`[west, south, east, north]` or `"w,s,e,n"`, or a GeoJSON Polygon/MultiPolygon (geometry, `Feature`
+or one-feature `FeatureCollection`, as an object or a JSON string) with the [scope](#scopes) limits.
+Refs are `"n123"`, `"w45"`, `"r6"` unless noted.
+
+| Tool | Arguments (required in bold) | Returns |
+| --- | --- | --- |
+| `list_rules` | | Built-in rules and MapCSS check files as `Rule[]` (id, title, severity, confidence, fixes) |
+| `run_rule` | **`rule_id`**, **`area`**, `limit` (200) | `RuleRunResult`; `rule_id` is a built-in id or a check file path |
+| `query_osm` | **`area`**, `goql` or `overpass` | `{scope, truncated, objects}`, at most 500 objects with tags and a geometry summary; GOQL runs on the mirror clipped to the area, Overpass gets the area's bbox and results outside a polygon are dropped |
+| `get_object` | **`type`**, **`id`**, `live` | Tags, geometry summary, `parents` (with member role, at most 50) and `connected_ways`; with `live` the API version, `visible`, `lat`/`lon`, `node_count`, `member_count` |
+| `create_draft` | **`title`**, `description`, `area` | `{draft_id}`; author `claude`, the area name and geometry stored with the draft |
+| `propose_changes` | **`draft_id`**, **`changes`**: `[{type, id, add_tags?, remove_tags?, set_tags?, reason}]` (≤ 2,000) | `ProposalResult[]` (`accepted`, `no_op`, `duplicate`, `error`) |
+| `propose_geometry` | **`draft_id`**, **`elements`**: `[{action, type, id, reason, lat?, lon?, nodes?, insert_nodes?, members?, add_tags?, remove_tags?, set_tags?, if_unused?}]` (≤ 500) | `ProposalResult[]`; negative ids for new elements, relations can only be modified, `if_unused` defaults to `true` |
+| `update_change` | **`change_id`**, `add_tags`, `remove_tags`, `set_tags`, `withdraw`, `reason` | The revised `Change` (back to `pending`); `withdraw` also withdraws its dependents |
+| `list_drafts` | `status`, `author` | `Draft[]` |
+| `get_draft` | **`draft_id`** | `DraftDetail` with changes, reviews and comments |
+| `run_scan` | **`area`**, `files`, `built_in` | The finished `Scan` |
+| `get_scan` | `scan_id`, `severity`, `group`, `rule`, `limit` (100), `offset` | `ScanReport`, or recent `Scan[]` without `scan_id` |
+| `diff_scans` | **`scan_id`**, `against_id`, `limit` (200) | `ScanDiff` |
+| `draft_from_scan` | **`scan_id`**, `issue_ids`, `group`, `rule`, `title`, `draft_id` | `ScanDraftResult`; the draft is authored by `claude` |
+| `list_highlights` | | `{tile_properties, files}` as in `HighlightList`, without the MapLibre filters |
+| `highlight_stats` | **`path`**, **`area`** | `CoverageStats` |
+| `evaluate_highlight` | **`path`**, **`area`**, `limit` (500), `legend` | `{path, scope, count, truncated, took_ms, features: [{ref, style}]}` |
+| `list_rule_files` | `kind` | `{rules_dir, files: RuleFileInfo[]}` |
+| `read_rule_file` | **`path`** | `RuleFileContent` |
+| `validate_rule_file` | **`path`**, **`content`** | `ValidateRuleFileResult` |
+| `write_rule_file` | **`path`**, **`content`**, `force`, `expected_hash` | `WriteRuleFileResult`; refused with the diagnostics when there are errors and `force` is not set |
+| `copy_rule_file` | **`path`**, `to` | `WriteRuleFileResult`, like `POST /api/rule-files/copy` |
+| `delete_rule_file` | **`path`** | `{path, trashed_to}` |
+| `search_presets` | **`query`**, `locale`, `geometry`, `limit` (20) | `PresetSummary[]` |
+| `get_preset` | **`id`**, `locale` | `ResolvedPreset` |
+| `match_preset` | **`tags`**, **`geometry`**, `locale` | `PresetMatch` |
+| `import_preset` | **`preset_id`**, `id`, `path` | `WriteRuleFileResult` of the new overlay file |
+| `detach_preset` | `id` or `path` | `WriteRuleFileResult` |
+| `apply_preset_bulk` | **`preset_id`**, **`refs`** (strings or `{type, id}`, ≤ 5,000), `dry_run` (true), `title`, `draft_id`, `reason`, `area` (name stored on the draft), `locale` | Counts, up to 50 preview rows and 50 skipped objects, and with a draft its `draft_id`, `title`, `author` and `results` per outcome, see [Presets](#presets) |
+| `push_view` | `area` or `center` (`[lon, lat]`) with `zoom`, `highlights`, `replace_highlights`, `scan_id`, `draft_id`, `select`, `message`; at least one | `{delivered, queued, event}`; sends a [`push_view`](#websocket-apievents) event |
+
+Resources: `draft://{id}` (`DraftDetail`), `rule://{id}` (a built-in rule's `Rule`) and
+`area://{name}` (`Area` with its GeoJSON geometry). No tool uploads, and smart presets have no tool:
+they run in the editor only.
+
+## JOSM remote control `:8111`
+
+The app answers JOSM's remote-control protocol on `127.0.0.1:8111` (`REMOTE_CONTROL_PORT`). Every
+response carries `Access-Control-Allow-Origin: *`, and `OPTIONS` preflights are answered (with
+`Access-Control-Allow-Private-Network: true`) so QA websites can call it. Success is `OK` as
+`text/plain`, followed by a second line when an import skipped something; errors are plain text, 400
+for missing or invalid parameters and 500 otherwise. Every command is sent to the UI as a
+[`remote_command`](#websocket-apievents) event.
+
+| Method | Path | Parameters | Effect |
+| --- | --- | --- | --- |
+| GET | `/version` | | JSON `{protocolversion: {major: 1, minor: 13}, application, version, osm_server: {url}}` |
+| GET | `/zoom` | `left`, `right`, `top`, `bottom` | Fly to the bbox |
+| GET | `/load_and_zoom` | `left`, `right`, `top`, `bottom`, `select`, `addtags`, `changeset_comment`, `changeset_source` | Fly to the bbox and select the objects; with `addtags` one draft per selected object |
+| GET | `/load_object` | `objects`, `relation_members`, `addtags`, `changeset_comment`, `changeset_source` | Frame and select the objects (with `relation_members=true` also the members); objects missing from the mirror are fetched live to frame them; `addtags` as above |
+| GET | `/import` | `url`, `changeset_comment`, `changeset_source` | Fetch OSM XML from `url` and turn it into a draft |
+| GET, POST | `/load_data` | `data` (OSM XML), `layer_name`, `changeset_comment`, `changeset_source` | Turn the XML into a draft titled `layer_name`; POST takes form parameters |
+| GET | `/add_node` | `lat`, `lon`, `addtags` | A draft with one new node |
+| GET | `/imagery` | `url`, `title`, `type` (`tms` default, or `wms`) | Add an imagery layer to the open tab (JOSM's `{zoom}`, `{bbox}`, `{proj}`, `{width}`, `{height}` are translated) |
+
+`select` and `objects` are comma-separated refs (`n123`, `w45`, `r6` or `node123`, `way45`,
+`relation6`). `addtags` is `k=v|k2=v2`. `changeset_comment` and `changeset_source` are stored on the
+draft (`changesetComment`, `changesetSource`); with `addtags` the comment is also the change's
+reason. When an object already has an open change elsewhere, the `addtags` draft is closed and that
+change's draft is opened instead.
+
+`/import` and `/load_data` keep tag changes of existing objects (a full tag set per object; with
+`action` attributes only `action="modify"` elements count) and new tagged nodes with a position.
+They do not import geometry: moved nodes, changed way node lists or relation members, deletions, new
+ways, new relations and untagged new nodes are skipped, counted in the draft description and in the
+response (`OK` then `Skipped (geometry editing is not supported yet): ...`). To bring geometry edits
+into a draft, use `POST /api/drafts/from-osmchange` or the in-browser editor.
