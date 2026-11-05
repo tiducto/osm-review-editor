@@ -10,6 +10,7 @@ import eu.tiducto.osmreview.shared.BBox
 import eu.tiducto.osmreview.shared.CreateDraftRequest
 import eu.tiducto.osmreview.shared.DraftFromRuleRequest
 import eu.tiducto.osmreview.shared.DraftStatus
+import eu.tiducto.osmreview.shared.ImagerySource
 import eu.tiducto.osmreview.shared.ManualEditRequest
 import eu.tiducto.osmreview.shared.MapFeature
 import eu.tiducto.osmreview.shared.OsmRef
@@ -56,10 +57,14 @@ fun Route.apiRoutes(app: App) {
         get("/areas") { call.respond(app.areas.presets()) }
         get("/areas/{name}") {
             val name = call.parameters["name"]!!
-            val (area, _) = queries.area(name) ?: throw eu.tiducto.osmreview.server.core.NotFoundException("Unknown area '$name'")
+            val area = app.areas.find(name) ?: queries.area(name)?.first
+                ?: throw eu.tiducto.osmreview.server.core.NotFoundException("Unknown area '$name'")
             call.respond(area)
         }
-        get("/imagery") { call.respond(app.imagery) }
+        get("/imagery") { call.respond(app.imagery.all()) }
+        get("/settings/imagery") { call.respond(app.imagery.configured()) }
+        put("/settings/imagery") { call.respond(app.imagery.replace(call.receive<List<ImagerySource>>())) }
+        post("/settings/imagery/reset") { call.respond(app.imagery.reset()) }
         get("/search") {
             val q = call.request.queryParameters["q"].orEmpty()
             call.respond(app.search.search(q, call.bboxParam()))

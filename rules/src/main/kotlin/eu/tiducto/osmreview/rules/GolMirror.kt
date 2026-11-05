@@ -38,6 +38,7 @@ class GolMirror(private val dataDir: Path, private val fallbackFile: Path? = nul
             openedAt = openedAt?.toString(),
             dataTimestamp = file?.let { runCatching { it.getLastModifiedTime().toInstant().toString() }.getOrNull() },
             message = lastError,
+            sidecar = SidecarStatusFile.read(dataDir),
         )
     }
 
