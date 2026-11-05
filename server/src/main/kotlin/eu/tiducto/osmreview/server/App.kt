@@ -20,6 +20,7 @@ import eu.tiducto.osmreview.shared.SearchHitKind
 import eu.tiducto.osmreview.shared.UiEvent
 import eu.tiducto.osmreview.shared.WireJson
 import io.ktor.client.HttpClient
+import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
 import kotlinx.coroutines.CoroutineScope
@@ -37,11 +38,11 @@ import java.security.SecureRandom
 import java.util.Base64
 import kotlin.io.path.readText
 
-class App(val config: Config) : AutoCloseable {
+class App(val config: Config, httpEngine: HttpClientEngine? = null) : AutoCloseable {
     private val log = LoggerFactory.getLogger(App::class.java)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    val http = HttpClient(CIO) {
+    val http = HttpClient(httpEngine ?: CIO.create()) {
         install(HttpTimeout) {
             requestTimeoutMillis = 120_000
             connectTimeoutMillis = 15_000

@@ -118,7 +118,13 @@ fun Route.apiRoutes(app: App) {
             }
             post {
                 val req = call.receive<CreateDraftRequest>()
-                call.respond(HttpStatusCode.Created, drafts.createDraft(req.title, req.description, Authors.USER, req.scope))
+                call.respond(
+                    HttpStatusCode.Created,
+                    drafts.createDraft(
+                        req.title, req.description, Authors.USER, req.scope,
+                        eu.tiducto.osmreview.server.db.DraftMeta(req.area, req.changesetComment, req.changesetSource),
+                    ),
+                )
             }
             post("/from-rule") { call.respond(HttpStatusCode.Created, drafts.draftFromRule(call.receive<DraftFromRuleRequest>())) }
             route("/{id}") {
@@ -167,7 +173,7 @@ fun Route.apiRoutes(app: App) {
         }
         post("/manual-edits") {
             val req = call.receive<ManualEditRequest>()
-            call.respond(drafts.manualEdit(req.ref, req.tags, req.reason))
+            call.respond(drafts.manualEdit(req.ref, req.tags, req.reason, req.baseTags))
         }
 
         get("/account") { call.respond(app.account.status()) }

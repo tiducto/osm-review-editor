@@ -29,6 +29,7 @@ data class XNode(
     val lat: String? = null,
     val lon: String? = null,
     @XmlElement(true) val tags: List<XTag> = emptyList(),
+    val action: String? = null,
 )
 
 @Serializable
@@ -40,6 +41,7 @@ data class XWay(
     val visible: Boolean? = null,
     @XmlElement(true) val nds: List<XNd> = emptyList(),
     @XmlElement(true) val tags: List<XTag> = emptyList(),
+    val action: String? = null,
 )
 
 @Serializable
@@ -51,6 +53,7 @@ data class XRelation(
     val visible: Boolean? = null,
     @XmlElement(true) val members: List<XMember> = emptyList(),
     @XmlElement(true) val tags: List<XTag> = emptyList(),
+    val action: String? = null,
 )
 
 @Serializable
@@ -118,6 +121,7 @@ data class OsmElement(
     val lon: String? = null,
     val nodeIds: List<Long> = emptyList(),
     val members: List<XMember> = emptyList(),
+    val action: String? = null,
 ) {
     val ref: OsmRef get() = OsmRef(type, id)
 }
@@ -135,11 +139,11 @@ object OsmXml {
     fun parseElements(text: String): List<OsmElement> {
         val doc = xml.decodeFromString(XOsm.serializer(), text)
         return doc.nodes.map {
-            OsmElement(OsmType.NODE, it.id, it.version ?: 0, it.visible ?: true, it.tags.toMap(), it.lat, it.lon)
+            OsmElement(OsmType.NODE, it.id, it.version ?: 0, it.visible ?: true, it.tags.toMap(), it.lat, it.lon, action = it.action)
         } + doc.ways.map {
-            OsmElement(OsmType.WAY, it.id, it.version ?: 0, it.visible ?: true, it.tags.toMap(), nodeIds = it.nds.map(XNd::ref))
+            OsmElement(OsmType.WAY, it.id, it.version ?: 0, it.visible ?: true, it.tags.toMap(), nodeIds = it.nds.map(XNd::ref), action = it.action)
         } + doc.relations.map {
-            OsmElement(OsmType.RELATION, it.id, it.version ?: 0, it.visible ?: true, it.tags.toMap(), members = it.members)
+            OsmElement(OsmType.RELATION, it.id, it.version ?: 0, it.visible ?: true, it.tags.toMap(), members = it.members, action = it.action)
         }
     }
 

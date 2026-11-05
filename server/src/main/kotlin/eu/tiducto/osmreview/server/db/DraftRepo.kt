@@ -64,11 +64,23 @@ data class NewChange(
     val confidence: Confidence,
 )
 
+data class DraftMeta(
+    val area: String? = null,
+    val changesetComment: String? = null,
+    val changesetSource: String? = null,
+)
+
 val OPEN_CHANGE_STATES = listOf(ChangeStatus.PENDING, ChangeStatus.APPROVED, ChangeStatus.CONFLICT)
 
 class DraftRepo(private val db: Db) {
 
-    suspend fun createDraft(title: String, description: String, author: String, scope: JsonElement?): Draft = db.tx {
+    suspend fun createDraft(
+        title: String,
+        description: String,
+        author: String,
+        scope: JsonElement?,
+        meta: DraftMeta = DraftMeta(),
+    ): Draft = db.tx {
         val id = UUID.randomUUID()
         val t = now()
         DraftsTable.insert {
@@ -77,6 +89,9 @@ class DraftRepo(private val db: Db) {
             it[DraftsTable.description] = description
             it[DraftsTable.author] = author
             it[scopeGeom] = scope
+            it[area] = meta.area
+            it[changesetComment] = meta.changesetComment
+            it[changesetSource] = meta.changesetSource
             it[status] = DraftStatus.OPEN.wire
             it[createdAt] = t
             it[updatedAt] = t
@@ -151,6 +166,9 @@ class DraftRepo(private val db: Db) {
         createdAt = this[DraftsTable.createdAt].toInstant().toString(),
         updatedAt = this[DraftsTable.updatedAt].toInstant().toString(),
         counts = counts,
+        area = this[DraftsTable.area],
+        changesetComment = this[DraftsTable.changesetComment],
+        changesetSource = this[DraftsTable.changesetSource],
     )
 
     suspend fun insertChange(c: NewChange): Change = db.tx {
@@ -240,12 +258,19 @@ class DraftRepo(private val db: Db) {
         var osmId: Long? = null
     }
 
-    suspend fun addReview(changeId: UUID, decision: ReviewDecision, comment: String?, editedTags: Map<String, String>?) = db.tx {
+    suspend fun addReview(
+        changeId: UUID,
+        decision: ReviewDecision,
+        comment: String?,
+        editedTags: Map<String, String>?,
+        imagery: String? = null,
+    ) = db.tx {
         ReviewsTable.insert {
             it[ReviewsTable.changeId] = changeId
             it[ReviewsTable.decision] = decision.wire
             it[ReviewsTable.comment] = comment
             it[ReviewsTable.editedTags] = editedTags
+            it[ReviewsTable.imagery] = imagery
             it[createdAt] = now()
         }
     }
@@ -272,6 +297,7 @@ class DraftRepo(private val db: Db) {
         comment = this[ReviewsTable.comment],
         editedTags = this[ReviewsTable.editedTags],
         createdAt = this[ReviewsTable.createdAt].toInstant().toString(),
+        imagery = this[ReviewsTable.imagery],
     )
 
     private fun ResultRow.toChange(reviews: List<Review>): Change {

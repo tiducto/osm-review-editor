@@ -43,6 +43,9 @@ data class CreateDraftRequest(
     val title: String,
     val description: String = "",
     val scope: JsonElement? = null,
+    val area: String? = null,
+    val changesetComment: String? = null,
+    val changesetSource: String? = null,
 )
 
 @Serializable
@@ -62,13 +65,19 @@ data class ReviewRequest(
     val decision: ReviewDecision,
     val comment: String? = null,
     val tags: Map<String, String>? = null,
+    val imagery: String? = null,
 )
 
 @Serializable
 data class ResolveConflictRequest(val tags: Map<String, String>)
 
 @Serializable
-data class ManualEditRequest(val ref: OsmRef, val tags: Map<String, String>, val reason: String? = null)
+data class ManualEditRequest(
+    val ref: OsmRef,
+    val tags: Map<String, String>,
+    val reason: String? = null,
+    val baseTags: Map<String, String>? = null,
+)
 
 @Serializable
 data class ChangesetGroup(
@@ -165,6 +174,8 @@ sealed interface UiEvent {
         val select: List<OsmRef> = emptyList(),
         val draftId: String? = null,
         val imagery: ImagerySource? = null,
+        val draftIds: List<String> = emptyList(),
+        val message: String? = null,
     ) : UiEvent
 
     @Serializable

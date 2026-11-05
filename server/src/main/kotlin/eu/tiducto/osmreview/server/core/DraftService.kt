@@ -5,6 +5,7 @@ import eu.tiducto.osmreview.rules.MirrorQueries
 import eu.tiducto.osmreview.rules.RuleEngine
 import eu.tiducto.osmreview.rules.Scope
 import eu.tiducto.osmreview.rules.Geo
+import eu.tiducto.osmreview.server.db.DraftMeta
 import eu.tiducto.osmreview.server.db.DraftRepo
 import eu.tiducto.osmreview.server.db.NewChange
 import eu.tiducto.osmreview.server.osm.OsmElement
@@ -47,8 +48,23 @@ class DraftService(
 ) {
     private val log = LoggerFactory.getLogger(DraftService::class.java)
 
-    suspend fun createDraft(title: String, description: String, author: String, scope: kotlinx.serialization.json.JsonElement? = null): Draft =
-        repo.createDraft(title.ifBlank { "Untitled draft" }, description, author, scope).also { emitUpdated(it.id) }
+    suspend fun createDraft(
+        title: String,
+        description: String,
+        author: String,
+        scope: kotlinx.serialization.json.JsonElement? = null,
+        meta: DraftMeta = DraftMeta(),
+    ): Draft = repo.createDraft(
+        title.ifBlank { "Untitled draft" },
+        description,
+        author,
+        scope,
+        DraftMeta(
+            area = meta.area?.trim()?.ifBlank { null },
+            changesetComment = meta.changesetComment?.trim()?.ifBlank { null },
+            changesetSource = meta.changesetSource?.trim()?.ifBlank { null },
+        ),
+    ).also { emitUpdated(it.id) }
 
     suspend fun detail(id: String): DraftDetail {
         val uuid = parseId(id)
@@ -67,6 +83,7 @@ class DraftService(
             description = "${run.issueCount} issues found by rule ${def.id}; ${withFix.size} with a proposed fix.",
             author = Authors.rule(def.id),
             scope = scopeGeom,
+            meta = DraftMeta(area = req.area?.let { scopeKey.takeIf { k -> k.startsWith("area:") }?.removePrefix("area:") ?: it }),
         )
         val proposals = withFix.map { issue ->
             ProposedChange(
@@ -212,7 +229,13 @@ class DraftService(
             ReviewDecision.REJECT, ReviewDecision.SEND_TO_ID -> repo.updateChange(id) { status = ChangeStatus.REJECTED }
             ReviewDecision.RESET -> repo.updateChange(id) { status = if (c.liveVersion != null) ChangeStatus.CONFLICT else ChangeStatus.PENDING }
         }
-        repo.addReview(id, req.decision, req.comment?.takeIf { it.isNotBlank() }, req.tags.takeIf { req.decision == ReviewDecision.EDIT })
+        repo.addReview(
+            id,
+            req.decision,
+            req.comment?.takeIf { it.isNotBlank() },
+            req.tags.takeIf { req.decision == ReviewDecision.EDIT },
+            req.imagery?.trim()?.ifBlank { null },
+        )
         emitUpdated(c.draftId)
         return repo.change(id)!!
     }
@@ -250,15 +273,40 @@ class DraftService(
         return detail(draftId)
     }
 
-    suspend fun manualEdit(ref: OsmRef, tags: Map<String, String>, reason: String?): Change {
+    suspend fun manualEdit(ref: OsmRef, tags: Map<String, String>, reason: String?, baseTags: Map<String, String>? = null): Change {
+        val diff = baseTags?.let { TagDiff.between(it, tags) }
+        if (diff != null && diff.isNoOp) throw IllegalArgumentException("The edit leaves the tags unchanged")
+        val edit = diff?.let {
+            TagEdit(set = it.added + it.changed.mapValues { (_, v) -> v[1] }, remove = it.removed.keys.toList())
+        } ?: TagEdit(replaceAll = tags)
+        val live = if (baseTags != null && ref.id > 0) account.api().fetchOne(ref)?.takeIf { it.visible } else null
+        val clashing = if (diff == null || baseTags == null || live == null) {
+            emptySet()
+        } else {
+            diff.touchedKeys.filter { k -> live.tags[k] != baseTags[k] && live.tags[k] != tags[k] }.toSet()
+        }
         val draft = repo.findOpenDraft(Authors.USER, MANUAL_TITLE)
             ?: repo.createDraft(MANUAL_TITLE, "Edits made in the inspector", Authors.USER, null)
-        val r = proposeChanges(draft.id, listOf(ProposedChange(ref, TagEdit(replaceAll = tags), reason ?: "manual edit")))
-            .single()
+        val r = proposeChanges(draft.id, listOf(ProposedChange(ref, edit, reason ?: "manual edit"))).single()
         if (r.outcome == ProposalOutcome.ERROR || r.changeId == null) {
             throw IllegalArgumentException(r.message ?: "Could not record the edit (${r.outcome})")
         }
-        return repo.change(UUID.fromString(r.changeId))!!
+        val id = UUID.fromString(r.changeId)
+        if (clashing.isNotEmpty() && live != null && baseTags != null) {
+            val fresh = r.outcome == ProposalOutcome.ACCEPTED
+            repo.updateChange(id) {
+                if (fresh) {
+                    this.baseTags = baseTags
+                    newTags = tags
+                }
+                status = ChangeStatus.CONFLICT
+                liveVersion = live.version
+                liveTags = live.tags
+            }
+            repo.addReview(id, ReviewDecision.RESET, "edited on an outdated base: ${clashing.sorted().joinToString(", ")} changed upstream", null)
+            emitUpdated(draft.id)
+        }
+        return repo.change(id)!!
     }
 
     suspend fun refresh(draftId: String): DraftDetail {
