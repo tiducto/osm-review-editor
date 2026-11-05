@@ -89,7 +89,7 @@ with `as`; `self` is the matched object.
 | `tag` | `target`, `set`, `remove` | nothing |
 
 `distance` is metres (`2`, `"2.5m"`) or `width(name)` / `half_width(name)` of a bound way. Smart
-presets are checked when saved; running them comes with the editing core.
+presets are checked when saved and run in the editor (inspector or Presets tab) with a preview.
 
 ## Remote sources
 

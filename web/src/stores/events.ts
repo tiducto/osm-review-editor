@@ -7,6 +7,7 @@ import { useDraftsStore } from './drafts'
 import { useHighlightsStore } from './highlights'
 import { useRuleFilesStore } from './ruleFiles'
 import { useScansStore } from './scans'
+import { usePresetsStore } from './presets'
 
 export function connectEvents(): () => void {
   const app = useAppStore()
@@ -16,6 +17,7 @@ export function connectEvents(): () => void {
   const highlights = useHighlightsStore()
   const ruleFiles = useRuleFilesStore()
   const scans = useScansStore()
+  const presets = usePresetsStore()
 
   function remote(cmd: UiEventRemoteCommand) {
     if (cmd.imagery) {
@@ -66,6 +68,7 @@ export function connectEvents(): () => void {
       case 'rules_changed':
         void highlights.load()
         void ruleFiles.onRulesChanged(e.changed, e.removed)
+        void presets.onRulesChanged([...e.changed, ...e.removed])
         break
       case 'scan_finished':
         void scans.onScanFinished(e)

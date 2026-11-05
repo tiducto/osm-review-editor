@@ -100,7 +100,7 @@ editor, in the app, or through Claude over MCP:
 | `highlights/*.mapcss` | MapCSS map highlights |
 | `checks/*.validator.mapcss` | MapCSS validator checks |
 | `presets/*.json` | iD-style presets and overlays of iD presets (`extends`, `apply`) |
-| `presets/smart/*.json` | Smart presets: multi-step edits (schema and validation now, execution later) |
+| `presets/smart/*.json` | Smart presets: multi-step edits run in the editor |
 | `sources.json` | Remote rule files, fetched read-only |
 
 ```sh
@@ -115,10 +115,11 @@ and MCP are validated first and written atomically; deletes move the file to `.t
 in the folder. Paths that leave the folder, symlinks pointing out of it and other file types are
 refused.
 
-The highlights and checks in `user-rules.example` also ship inside the server as a read-only
-built-in source, so a new install with an empty `RULES_DIR` already has them. They are listed under
-their usual paths (`highlights/sidewalks.mapcss`, `checks/surfaces.validator.mapcss`, ...) with
-`origin.builtIn` and are used by highlights and validation scans like your own files. A file of yours
+The highlights, checks and smart presets in `user-rules.example` also ship inside the server as a
+read-only built-in source, so a new install with an empty `RULES_DIR` already has them. They are
+listed under their usual paths (`highlights/sidewalks.mapcss`, `checks/surfaces.validator.mapcss`,
+`presets/smart/footway-crossing.json`, ...) with `origin.builtIn` and are used by highlights,
+validation scans and the smart preset list like your own files. A file of yours
 with the same path overrides the built-in one; delete it and the built-in comes back. Built-in files
 cannot be deleted; copy one into your folder (`POST /api/rule-files/copy`, MCP `copy_rule_file`) to
 edit it. The same copy action turns a remote file into a local one.
@@ -342,7 +343,7 @@ when chosen, replaces the light grey background under the data. Above the data a
 overlays (scope, issues, drafts) the style keeps an empty `ore-highlight-slot` layer, and highlight
 layers are inserted before it.
 
-The left panel has three tabs:
+The left panel has four tabs:
 
 - **Map**: imagery, a quick tag filter (`highway=footway !surface`, drawn at once and saved as a
   highlight file with one click) and the highlight files. Each active file is drawn per rule with its
@@ -363,6 +364,10 @@ The left panel has three tabs:
   overwrite), templates for highlights, checks, preset overlays and smart presets, delete to the
   trash, copy of built-in and remote files into the folder, and a live map preview of unsaved
   highlight edits. Everything reloads on `rules_changed`.
+- **Presets**: iD presets by category or search, your presets and smart presets. Import an iD
+  preset as an overlay file (opens in the Rules editor), detach an overlay, create a preset from the
+  selected feature's tags, apply a preset to the selection, draw a point, line or area with it, or
+  bulk apply it (see [Presets in the editor](#presets-in-the-editor)).
 
 
 ### Editing
@@ -390,6 +395,41 @@ other drafts are moved over with `takeOver` after a confirm. The editor keeps th
 assigned and never reuses a negative id the draft already uses. "Edit draft" loads the draft's
 osmChange over the live data, so a stale modify keeps its old version and comes back as a conflict.
 The editor chunk adds about 650 kB gzip and is only fetched on entering edit mode.
+
+### Presets in the editor
+
+The inspector works like iD's sidebar, in Czech or English (the `CS`/`EN` switch, remembered per
+browser): a preset header with icon and name, "Change preset" with a picker (search over names,
+terms and aliases without diacritics, English names too in Czech, categories, recently used, your
+presets first, smart presets in their own group), the preset's fields from id-tagging-schema with
+their labels, placeholders, options and translations, an "Add field" list for `moreFields` and
+universal fields, and the raw tag editor (list and text) below. Fields follow iD: `prerequisiteTag`,
+`geometry`, `default` and region (`locationSet`, Czechia) filters; field types without an editor
+fall back to the tag editor. The browser builds its preset catalog from the same
+`/api/presets/id-schema/` files plus `/api/presets/user`, and matches and changes presets with iD's
+rules (old preset's `removeTags` and field defaults out, new `addTags` and defaults in). In edit
+mode a preset change goes through iD's `actionChangePreset` (your presets are merged into iD's
+preset index) as one undoable step, for one feature or the whole multi-selection. Outside edit mode,
+editing a field or the preset of the selected feature starts edit mode with it selected; below
+zoom 15 the change goes to the manual draft as before.
+
+Drawing with a preset (Presets tab, "Draw") starts point, line or area mode and the new feature is
+born with the preset's tags. Bulk apply takes the features of a highlight (in the area or map view)
+or the picked scan issues, shows the count and a per-object tag preview from
+`POST /api/presets/apply/bulk` with `dryRun`, and creates a draft for review; nothing is uploaded.
+
+Smart presets that match the selected feature appear in the inspector and the picker. Running one
+shows its `params` form; Preview runs the steps with iD actions on the current graph and draws the
+result (the new pieces are selected), Apply keeps it as one history step annotated with what it did,
+Cancel removes it. Steps: `findCrossing` (ways matching the MapCSS `with` selector, evaluated by the
+shared MapCSS engine, that cross the feature or share an inner node with it), `findConnected`,
+`findNearby`, `ensureSharedNode` (reuses the shared node or inserts one at the intersection into
+both ways), `splitAround` (splits the way at `distance` on both sides of the node, reusing a vertex
+within 0.5 m, and binds the middle piece) and `tag` (`set`/`remove` with `{param}`). A step that
+cannot run stops the preset with a message (no crossing road, more than one, unknown width) and
+leaves the data unchanged. `half_width(road)` uses the same table on the server and in the browser
+(`HalfWidth` in `shared/`, exported to JS): `width`, else `lanes` × lane width, else a default per
+`highway` class, halved.
 
 ### Layout
 

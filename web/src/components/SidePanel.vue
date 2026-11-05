@@ -9,6 +9,7 @@ import HighlightsPanel from './HighlightsPanel.vue'
 import ValidationPanel from './ValidationPanel.vue'
 import RuleFilesPanel from './RuleFilesPanel.vue'
 import RuleEditor from './RuleEditor.vue'
+import PresetsLibrary from './presets/PresetsLibrary.vue'
 import HighlightMapLayers from '@/map/HighlightMapLayers.vue'
 import ScanMapLayers from '@/map/ScanMapLayers.vue'
 import Icon from './Icon.vue'
@@ -19,10 +20,11 @@ const ruleFiles = useRuleFilesStore()
 const scans = useScansStore()
 const mapStore = useMapStore()
 
-const tabs: { id: PanelTab; label: string; icon: 'layers' | 'rule' | 'edit' }[] = [
+const tabs: { id: PanelTab; label: string; icon: 'layers' | 'rule' | 'edit' | 'sparkle' }[] = [
   { id: 'map', label: 'Map', icon: 'layers' },
   { id: 'validate', label: 'Validate', icon: 'rule' },
   { id: 'rules', label: 'Rules', icon: 'edit' },
+  { id: 'presets', label: 'Presets', icon: 'sparkle' },
 ]
 
 function edit(path: string) {
@@ -59,12 +61,12 @@ onMounted(() => {
   <div class="flex h-full flex-col">
     <HighlightMapLayers />
     <ScanMapLayers />
-    <nav class="flex h-10 shrink-0 items-stretch gap-1 border-b border-line px-2" role="tablist">
+    <nav class="flex h-10 shrink-0 items-stretch gap-0.5 border-b border-line px-1.5" role="tablist">
       <button
         v-for="t in tabs"
         :key="t.id"
         role="tab"
-        class="flex items-center gap-1.5 border-b-2 px-2 text-[12.5px] font-medium transition-colors"
+        class="flex items-center gap-1 border-b-2 px-1.5 text-[12.5px] font-medium transition-colors"
         :class="panel.tab === t.id ? 'border-accent text-fg' : 'border-transparent text-fg-3 hover:text-fg-2'"
         :aria-selected="panel.tab === t.id"
         :data-testid="`tab-${t.id}`"
@@ -78,6 +80,7 @@ onMounted(() => {
     <div class="min-h-0 flex-1">
       <div v-if="panel.tab === 'map'" class="scroll-thin h-full overflow-y-auto"><HighlightsPanel @edit="edit" /></div>
       <ValidationPanel v-else-if="panel.tab === 'validate'" />
+      <PresetsLibrary v-else-if="panel.tab === 'presets'" />
       <template v-else>
         <RuleEditor v-if="ruleFiles.open" />
         <RuleFilesPanel v-else />

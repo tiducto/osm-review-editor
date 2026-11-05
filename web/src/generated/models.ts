@@ -324,6 +324,19 @@ export interface PresetApplyResult {
   tags: Record<string, string>
 }
 
+export interface PresetBulkApplyResult {
+  presetId: string
+  presetName: string
+  total: number
+  changed: number
+  unchanged: number
+  skipped: PresetBulkSkip[]
+  preview: PresetBulkItem[]
+  truncated: boolean
+  draft: DraftDetail | null
+  results: ProposalResult[]
+}
+
 export interface IdSchemaInfo {
   version: string
   locales: string[]
@@ -570,6 +583,17 @@ export interface DetachPresetRequest {
   path?: string | null
 }
 
+export interface PresetBulkApplyRequest {
+  presetId: string
+  refs: OsmRef[]
+  dryRun?: boolean
+  title?: string | null
+  draftId?: string | null
+  reason?: string | null
+  area?: string | null
+  locale?: string | null
+}
+
 export interface RunScanRequest {
   area?: string | null
   bbox?: BBox | null
@@ -736,6 +760,20 @@ export interface PresetFieldInfo {
   placeholder: string | null
   options: string[]
   optionLabels: Record<string, string>
+}
+
+export interface PresetBulkSkip {
+  ref: OsmRef
+  message: string
+}
+
+export interface PresetBulkItem {
+  ref: OsmRef
+  name: string | null
+  fromPresetId: string | null
+  before: Record<string, string>
+  after: Record<string, string>
+  summary: string
 }
 
 export interface SmartParam {

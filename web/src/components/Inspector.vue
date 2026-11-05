@@ -6,17 +6,22 @@ import { useMapStore } from '@/stores/map'
 import { useRulesStore } from '@/stores/rules'
 import { useDraftsStore } from '@/stores/drafts'
 import { featureTitle, refLabel, refString } from '@/lib/osm'
-import { matchPreset } from '@/lib/presets'
+import { usePresetsStore } from '@/stores/presets'
+import { useEditPresetsStore } from '@/stores/presetEdit'
+import { EDIT_MIN_ZOOM, useEditorStore } from '@/stores/editor'
+import type { Geometry, TagPatch } from '@/presets/types'
 import { applyTagEdit, diffSize, tagDiff, tagDiffSummary } from '@/lib/tagdiff'
 import { severityColor } from '@/lib/colors'
-import TagEditor from './TagEditor.vue'
-import PresetFields from './PresetFields.vue'
+import PresetEditor, { type EditableEntity } from './presets/PresetEditor.vue'
 import Icon from './Icon.vue'
 import Spinner from './Spinner.vue'
 
 const mapStore = useMapStore()
 const rules = useRulesStore()
 const drafts = useDraftsStore()
+const presets = usePresetsStore()
+const presetEdit = useEditPresetsStore()
+const editor = useEditorStore()
 
 const feature = computed(() => mapStore.selectedFeature)
 const base = computed<Record<string, string>>(() => feature.value?.tags ?? {})
@@ -54,7 +59,54 @@ watch(
 const diff = computed(() => tagDiff(base.value, edited.value))
 const dirty = computed(() => diffSize(diff.value) > 0)
 const summary = computed(() => tagDiffSummary(base.value, edited.value))
-const preset = computed(() => matchPreset(edited.value))
+const geometry = computed<Geometry>(() => {
+  const f = feature.value
+  if (!f) return 'point'
+  const g = f.geometry as { type?: string; coordinates?: unknown } | null
+  const type = g?.type
+  if (f.ref.type === 'node') return 'point'
+  if (f.ref.type === 'relation') return f.tags.type === 'multipolygon' ? 'area' : 'relation'
+  if (type === 'Polygon' || type === 'MultiPolygon') return 'area'
+  const c = (g?.coordinates ?? []) as number[][]
+  const closed = c.length > 3 && c[0][0] === c[c.length - 1][0] && c[0][1] === c[c.length - 1][1]
+  return closed && presets.catalog?.isArea(f.tags) ? 'area' : 'line'
+})
+
+const entities = computed<EditableEntity[]>(() =>
+  mapStore.selected && feature.value
+    ? [{ id: refString(mapStore.selected), tags: edited.value, geometry: geometry.value, baseTags: base.value, title: featureTitle(feature.value.ref, edited.value) }]
+    : [],
+)
+
+const editable = computed(() => mapStore.zoom >= EDIT_MIN_ZOOM && !dirty.value)
+
+async function onPatch(patch: TagPatch) {
+  const ref = mapStore.selected
+  if (!ref) return
+  if (editable.value && (await presetEdit.ensureEditing(ref))) {
+    await presetEdit.patch([editor.selected[0]], patch)
+    return
+  }
+  const next = { ...edited.value }
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined || v === '') delete next[k]
+    else next[k] = v
+  }
+  edited.value = next
+}
+
+async function onPreset(id: string) {
+  const ref = mapStore.selected
+  const cat = presets.catalog
+  const to = cat?.preset(id)
+  if (!ref || !cat || !to) return
+  if (editable.value && (await presetEdit.ensureEditing(ref))) {
+    await presetEdit.changePreset([editor.selected[0]], id)
+    return
+  }
+  edited.value = cat.changePreset(edited.value, geometry.value, cat.match(edited.value, geometry.value), to)
+  presets.useRecent(id)
+}
 const issues = computed(() => (mapStore.selected ? rules.issuesFor(mapStore.selected) : []))
 
 function applyFix(i: Issue) {
@@ -125,7 +177,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       <div class="space-y-2.5 border-b border-line px-4 py-3">
         <div>
           <div class="flex items-center gap-2">
-            <span v-if="preset" class="chip bg-surface-3 text-fg-2">{{ preset.name }}</span>
             <Spinner v-if="mapStore.selectedLoading" :size="12" class="text-fg-3" />
           </div>
           <h3 class="mt-1 text-[16px] leading-snug font-semibold break-words">
@@ -178,14 +229,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       </section>
 
       <template v-if="feature">
-        <section v-if="preset" class="border-b border-line px-4 py-3">
-          <div class="section-title mb-2">{{ preset.name }}</div>
-          <PresetFields v-model="edited" :preset="preset" />
-        </section>
-
-        <section class="px-4 py-3">
-          <TagEditor v-model="edited" :base="base" />
-        </section>
+        <PresetEditor :entities="entities" @patch="onPatch" @preset="onPreset" @tags="edited = $event">
+          <template #before-fields>
+            <p v-if="!editable && !dirty" class="border-b border-line px-4 py-1.5 text-[11px] text-fg-3">{{ presets.t('inspector.notEditable') }}</p>
+          </template>
+        </PresetEditor>
       </template>
       <div v-else-if="!mapStore.selectedLoading" class="px-4 py-6 text-center text-fg-3">This object is not in the local copy.</div>
     </div>

@@ -36,3 +36,6 @@ export const operationReverse: any
 export const operationRotate: any
 export const operationSplit: any
 export const operationStraighten: any
+export const actionChangePreset: any
+export const actionSplit: any
+export const coreGraph: any

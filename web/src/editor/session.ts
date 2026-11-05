@@ -4,6 +4,8 @@ import { createIdAdapter, ID_EDITOR_VERSION, loadIdData, OPERATION_KEYS, type Id
 import { EditController, type ControllerHooks } from './controller'
 import type { Bounds } from './types'
 
+export * as presetOps from './id/presetOps'
+
 export const LOAD_ZOOM = 15
 const TILE_ZOOM = 15
 const CONCURRENCY = 3

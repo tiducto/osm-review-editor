@@ -1,0 +1,160 @@
+import { defineStore } from 'pinia'
+import { computed, ref, shallowRef, watch } from 'vue'
+import type { ResolvedPreset, SmartPreset } from '@/generated/models'
+import { presetsApi } from '@/api/presets'
+import { ApiError } from '@/api/client'
+import { PresetCatalog, type RawSchema, type UserPresetData } from '@/presets/catalog'
+import { tr } from '@/presets/i18n'
+import '@/presets/appStrings'
+import type { Geometry, Locale } from '@/presets/types'
+import { useAppStore } from './app'
+
+const LOCALE_KEY = 'ore.presetLocale'
+const RECENT_KEY = 'ore.recentPresets'
+const MAX_RECENT = 12
+
+function readLocale(): Locale {
+  try {
+    const v = localStorage.getItem(LOCALE_KEY)
+    if (v === 'cs' || v === 'en') return v
+  } catch {}
+  return (navigator.language ?? '').toLowerCase().startsWith('cs') ? 'cs' : 'en'
+}
+
+function readRecent(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]')
+    if (Array.isArray(v)) return v.filter((x) => typeof x === 'string')
+  } catch {}
+  return []
+}
+
+export function toUserData(list: Partial<Record<Locale, ResolvedPreset[]>>, locale: Locale): UserPresetData[] {
+  const main = list[locale] ?? list.en ?? list.cs ?? []
+  return main.map((p) => {
+    const names: Partial<Record<Locale, string>> = {}
+    for (const l of ['en', 'cs'] as Locale[]) {
+      const n = list[l]?.find((x) => x.id === p.id)?.name
+      if (n) names[l] = n
+    }
+    return {
+      id: p.id,
+      name: p.name,
+      names,
+      geometry: p.geometry as Geometry[],
+      tags: p.tags,
+      addTags: p.addTags,
+      removeTags: p.removeTags,
+      fields: p.fields,
+      moreFields: p.moreFields,
+      icon: p.icon,
+      terms: p.terms,
+      aliases: p.aliases,
+      matchScore: p.matchScore,
+      searchable: p.searchable,
+      extends: p.extends,
+      apply: p.apply,
+      file: p.file,
+    }
+  })
+}
+
+export const usePresetsStore = defineStore('presets', () => {
+  const app = useAppStore()
+  const locale = ref<Locale>(readLocale())
+  const raw = shallowRef<RawSchema | null>(null)
+  const user = shallowRef<Partial<Record<Locale, ResolvedPreset[]>>>({})
+  const smart = shallowRef<SmartPreset[]>([])
+  const recent = ref<string[]>(readRecent())
+  const loading = ref(false)
+  const error = ref<string | null>(null)
+  let loadPromise: Promise<void> | null = null
+
+  const catalog = computed<PresetCatalog | null>(() => {
+    const r = raw.value
+    if (!r) return null
+    return new PresetCatalog(r, toUserData(user.value, locale.value), locale.value)
+  })
+
+  watch(locale, (l) => {
+    try {
+      localStorage.setItem(LOCALE_KEY, l)
+    } catch {}
+    void loadUser()
+  })
+
+  watch(
+    recent,
+    (r) => {
+      try {
+        localStorage.setItem(RECENT_KEY, JSON.stringify(r))
+      } catch {}
+    },
+    { deep: true },
+  )
+
+  async function loadRaw(): Promise<RawSchema> {
+    const [presets, fields, categories, defaults, en, cs] = await Promise.all([
+      presetsApi.schemaFile<RawSchema['presets']>('presets.json'),
+      presetsApi.schemaFile<RawSchema['fields']>('fields.json'),
+      presetsApi.schemaFile<RawSchema['categories']>('preset_categories.json'),
+      presetsApi.schemaFile<RawSchema['defaults']>('preset_defaults.json'),
+      presetsApi.schemaFile<Record<string, unknown>>('translations/en.json'),
+      presetsApi.schemaFile<Record<string, unknown>>('translations/cs.json'),
+    ])
+    return { presets, fields, categories, defaults, translations: { en, cs } }
+  }
+
+  async function loadUser() {
+    try {
+      const [en, cs] = await Promise.all([presetsApi.user('en'), presetsApi.user('cs')])
+      user.value = { en, cs }
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 404)) app.fail(e, 'Loading your presets')
+    }
+  }
+
+  async function loadSmart() {
+    try {
+      smart.value = await presetsApi.smart()
+    } catch (e) {
+      app.fail(e, 'Loading smart presets')
+    }
+  }
+
+  function ensure(): Promise<void> {
+    loadPromise ??= (async () => {
+      loading.value = true
+      try {
+        const [r] = await Promise.all([loadRaw(), loadUser(), loadSmart()])
+        raw.value = r
+        error.value = null
+      } catch (e) {
+        error.value = e instanceof Error ? e.message : String(e)
+        loadPromise = null
+        throw e
+      } finally {
+        loading.value = false
+      }
+    })()
+    return loadPromise
+  }
+
+  async function onRulesChanged(paths: string[]) {
+    if (!raw.value) return
+    if (paths.some((p) => p.startsWith('presets/smart/'))) await loadSmart()
+    if (paths.some((p) => p.startsWith('presets/') && !p.startsWith('presets/smart/'))) await loadUser()
+  }
+
+  async function reloadUser() {
+    await Promise.all([loadUser(), loadSmart()])
+  }
+
+  function useRecent(id: string) {
+    recent.value = [id, ...recent.value.filter((x) => x !== id)].slice(0, MAX_RECENT)
+  }
+
+  const t = (key: string, vars?: Record<string, string | number>) => tr(locale.value, key, vars)
+
+  return { locale, raw, user, smart, recent, loading, error, catalog, ensure, loadUser, onRulesChanged, reloadUser, useRecent, t }
+})

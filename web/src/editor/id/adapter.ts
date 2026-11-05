@@ -277,6 +277,7 @@ export class IdAdapter {
   readonly projection: any
   selected: string[] = []
   drawing: DrawingState | null = null
+  drawTags: Tags | null = null
   onEnter: (mode: EnteredMode) => void = () => {}
   private view: ViewState
   private loadedBounds: Bounds[] = []
@@ -674,7 +675,7 @@ export class IdAdapter {
     return { graph: graph.replace(node), id: node.id }
   }
 
-  addPoint(target: SnapTarget, tags: Tags = {}): string {
+  addPoint(target: SnapTarget, tags: Tags = this.drawTags ?? {}): string {
     this.tagEdit = null
     if (target.kind === 'node') {
       this.selected = [target.id]
@@ -695,7 +696,7 @@ export class IdAdapter {
     let wayId = ''
     this.history.perform((graph: any) => {
       const r = this.resolveNode(target, graph)
-      const way = new iD.osmWay({ tags: kind === 'area' ? { area: 'yes' } : {}, nodes: kind === 'area' ? [r.id, r.id] : [r.id] })
+      const way = new iD.osmWay({ tags: this.drawTags ? { ...this.drawTags } : kind === 'area' ? { area: 'yes' } : {}, nodes: kind === 'area' ? [r.id, r.id] : [r.id] })
       wayId = way.id
       return r.graph.replace(way)
     }, idText(iD.t(`operations.start.annotation.${kind}`)))
