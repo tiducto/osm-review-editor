@@ -231,6 +231,7 @@ fun Route.apiRoutes(app: App) {
         }
         ruleFileRoutes(app.ruleFiles, app.ruleSources)
         presetRoutes(app.presets)
+        mapCssRoutes(app)
 
         put("/settings/target") {
             val req = call.receive<SetTargetRequest>()
@@ -253,7 +254,11 @@ fun Route.apiRoutes(app: App) {
 }
 
 fun App.runRule(ruleId: String, resolved: ResolvedScope, limit: Int?): RuleRunResult {
-    val result = rules.run(ruleId, resolved.scope, resolved.key, limit ?: 5000)
+    val result = if (scans.isCheckFile(ruleId)) {
+        scans.runCheck(ruleId, resolved, limit ?: 5000)
+    } else {
+        rules.run(ruleId, resolved.scope, resolved.key, limit ?: 5000)
+    }
     launchRecord(ruleId, resolved, result.issueCount, result.tookMs)
     return result
 }

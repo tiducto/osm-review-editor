@@ -22,6 +22,38 @@ File names use letters, digits, `_`, `.` and `-`. Other files (like this README)
 is everything starting with a dot. Files must be UTF-8 and at most 2 MB. Deleting a file from the app
 or over MCP moves it to `.trash/<timestamp>/` here, so you can restore it by hand.
 
+## Highlights
+
+A highlight is a MapCSS style sheet. The `meta` block names it (`title`, `description`) and adds our
+extensions: `-ore-dim-others: true` greys out everything the file does not style, and
+`-ore-stats: length` (or `count`, `area`) is what coverage numbers sum up. `-ore-legend: "label"` on a
+rule puts it in the legend; an object counts under the last legend rule it matches.
+
+- `highlights/sidewalks.mapcss`: how sidewalks are tagged on streets, with a legend and length stats.
+- `highlights/missing-surface.mapcss`: streets and paths without `surface`, and segments whose
+  surface differs from both neighbours (`odd_segment`, evaluated on the server).
+- `highlights/footways.mapcss`: sidewalk ways and crossings without a type.
+
+## Checks
+
+A check is a JOSM-style validator file: a rule with `throwError`, `throwWarning` or `throwOther` reports
+an issue, `group` sorts it, and `fixAdd`, `fixRemove`, `fixChangeKey` and `fixDeleteObject` propose a
+fix that you review in a draft. Every `assertMatch` / `assertNoMatch` (`"node highway=crossing"`,
+`"closedway building=yes"`) is tested when the file loads.
+
+Besides JOSM's functions, checks can call `odd_segment("maxspeed;surface")`, `network_island_size()`,
+`half_width()`, `connected_value("surface", "footway;path")`, `inside("CZ")` / `outside("CZ")`,
+`waylength()` and `areasize()`, and use `:righthandtraffic`, `⧉` (crossing) and `∈` (inside). The
+main README describes them.
+
+- `checks/crossings.validator.mapcss`: crossings without a type, the type taken from `crossing_ref`.
+- `checks/platforms.validator.mapcss`: closed platform ways without `area=yes`; platforms without
+  shelter, bench or tactile paving.
+- `checks/surfaces.validator.mapcss`: paths without `surface`, with the surface of connected paths
+  when they agree.
+- `checks/street-consistency.validator.mapcss`: street segments that differ from both neighbours
+  of the same street; footways cut off from the network.
+
 ## Presets
 
 A preset uses the keys of iD's tagging schema: `name`, `geometry` (`point`, `vertex`, `line`,

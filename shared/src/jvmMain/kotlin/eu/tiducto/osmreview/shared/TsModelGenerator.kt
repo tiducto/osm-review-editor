@@ -132,6 +132,8 @@ fun main(args: Array<String>) {
         serializer<DeleteRuleFileResult>(), serializer<RuleSource>(),
         serializer<ResolvedPreset>(), serializer<PresetSummary>(), serializer<PresetMatch>(), serializer<PresetApplyResult>(),
         serializer<IdSchemaInfo>(), serializer<SmartPreset>(), serializer<Preset>(),
+        serializer<HighlightList>(), serializer<HighlightEvaluation>(), serializer<CoverageStats>(),
+        serializer<Scan>(), serializer<ScanReport>(), serializer<ScanDiff>(), serializer<ScanIssue>(), serializer<ScanDraftResult>(),
     ).forEach(gen::addResponse)
     listOf(
         serializer<CreateDraftRequest>(), serializer<DraftFromRuleRequest>(), serializer<RuleIssuesRequest>(), serializer<ProposeChangesRequest>(),
@@ -139,6 +141,7 @@ fun main(args: Array<String>) {
         serializer<UpdateDraftRequest>(), serializer<SetTargetRequest>(), serializer<OsmChangeImportRequest>(), serializer<DraftFromOsmChangeRequest>(),
         serializer<WriteRuleFileRequest>(), serializer<CreateRuleFileRequest>(), serializer<ValidateRuleFileRequest>(),
         serializer<PresetMatchRequest>(), serializer<PresetApplyRequest>(), serializer<ImportPresetRequest>(), serializer<DetachPresetRequest>(),
+        serializer<RunScanRequest>(), serializer<ScanDraftRequest>(), serializer<HighlightStatsRequest>(),
     ).forEach(gen::addRequest)
     val out = File(args.firstOrNull() ?: "models.ts")
     out.parentFile.mkdirs()

@@ -62,7 +62,7 @@ class MapCssCompilersTest {
         assertEquals("n[a=no,false,0]", goql("node[a?!]"))
         assertEquals("wa[a=\"b*\"]", goql("way[a^=b]"))
         assertEquals("wa[a=\"*b\"]", goql("way[a\$=b]"))
-        assertEquals("wa[a=\"*b c*\"]", goql("way[a*=\"b c\"]"))
+        assertEquals("wa[a], wa[a=no]", goql("way[a*=\"b c\"]"))
         assertEquals("wa[a], wa[a=no]", goql("way[a*=\"b*\"]"))
         assertEquals("wa[a], wa[a=no]", goql("way[a=\"x*\"]"))
         assertEquals("n[x], n[x=no]", goql("node[x=~/foo/]"))

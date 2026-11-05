@@ -1,0 +1,31 @@
+meta {
+  title: "Public transport platforms";
+  description: "Closed platform ways without area=yes, and platforms without shelter, bench or tactile_paving.";
+}
+
+way:closed[public_transport=platform][!area],
+way:closed[highway=platform][!area],
+way:closed[railway=platform][!area] {
+  throwWarning: "Closed platform way without area=yes";
+  group: "Platforms";
+  fixAdd: "area=yes";
+  assertMatch: "closedway public_transport=platform";
+  assertNoMatch: "closedway public_transport=platform area=yes";
+  assertMatch: "closedway railway=platform";
+}
+
+node[public_transport=platform],
+way[public_transport=platform],
+way[highway=platform],
+way[railway=platform] {
+  set .platform;
+}
+
+*.platform[!shelter],
+*.platform[!bench],
+*.platform[!tactile_paving] {
+  throwOther: concat("Platform missing ", replace(trim(concat(cond(has_tag_key("shelter"), "", "shelter "), cond(has_tag_key("bench"), "", "bench "), cond(has_tag_key("tactile_paving"), "", "tactile_paving"))), " ", ", "));
+  group: "Platform details";
+  assertMatch: "node public_transport=platform bench=yes";
+  assertNoMatch: "node public_transport=platform shelter=yes bench=yes tactile_paving=no";
+}

@@ -246,6 +246,10 @@ sealed interface UiEvent {
     @Serializable
     @SerialName("rules_changed")
     data class RulesChanged(val changed: List<String> = emptyList(), val removed: List<String> = emptyList()) : UiEvent
+
+    @Serializable
+    @SerialName("scan_finished")
+    data class ScanFinished(val scanId: String, val scope: String, val issueCount: Int) : UiEvent
 }
 
 @Serializable

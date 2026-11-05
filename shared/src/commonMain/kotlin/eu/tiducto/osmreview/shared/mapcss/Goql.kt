@@ -104,7 +104,7 @@ internal object Goql {
             TagOp.EQ -> if (c.derefKey != null) presence() else values(listOf(c.value))
             TagOp.PREFIX -> wildcard(c.value + "*")
             TagOp.SUFFIX -> wildcard("*" + c.value)
-            TagOp.CONTAINS -> wildcard("*" + c.value + "*")
+            TagOp.CONTAINS -> presence()
             TagOp.LIST, TagOp.LT, TagOp.LE, TagOp.GT, TagOp.GE -> presence()
             TagOp.MATCH -> {
                 val lits = if (c.ignoreCase) null else c.regex?.let { Regexes.literalAlternatives(it) }

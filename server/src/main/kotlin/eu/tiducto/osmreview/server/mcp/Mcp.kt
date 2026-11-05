@@ -119,6 +119,9 @@ private val INSTRUCTIONS = """
     specific reason. Read get_draft to see the human's decisions and rejection comments, then revise
     with update_change. Areas are admin boundary names (e.g. "Opava", "Kateřinky", "Brno-střed"), a bbox
     [west, south, east, north], or a GeoJSON polygon.
+    Validation scans (run_scan, get_scan, diff_scans) run every MapCSS check file and built-in rule over an area,
+    persist the issues and compare with the previous scan of that area. Highlights are MapCSS map styles:
+    list_highlights, highlight_stats (coverage per legend entry) and evaluate_highlight (object ids and styles in an area).
     The user's rules folder holds MapCSS highlights and checks, iD-style presets and smart presets as plain files
     (list_rule_files, read_rule_file, validate_rule_file, write_rule_file, delete_rule_file). Validate before writing;
     a write with errors is refused unless force=true. Presets: search_presets, get_preset, match_preset, and
@@ -138,15 +141,21 @@ private fun buildServer(app: App): Server {
     )
     val overpass = Overpass(app.http, app.config.overpassUrl, app.config.userAgent)
 
-    server.tool("list_rules", "QA rules: id, title, severity, confidence, whether they propose fixes.", readOnly = true) {
-        ok(app.rules.rules(), ListSerializer(eu.tiducto.osmreview.shared.Rule.serializer()))
+    server.tool(
+        "list_rules",
+        "QA rules: the built-in Kotlin rules (id like deprecated-tags) and the MapCSS check files of the rules folder and remote " +
+            "sources (id is the file path, e.g. checks/crossings.validator.mapcss): id, title, severity, confidence, whether they propose fixes.",
+        readOnly = true,
+    ) {
+        ok(app.rules.rules() + app.scans.checkRules(), ListSerializer(eu.tiducto.osmreview.shared.Rule.serializer()))
     }
 
     server.tool(
         "run_rule",
-        "Run a QA rule in an area. Returns issues with object ref, tags, centroid and the proposed fix.",
+        "Run a QA rule in an area: a built-in rule or a MapCSS check file. Returns issues with object ref, tags (built-in rules), " +
+            "centroid, the proposed fix and, for MapCSS checks, ruleId <file>:<line> and the message with its group in the note.",
         schema(listOf("rule_id", "area")) {
-            str("rule_id", "Rule id from list_rules")
+            str("rule_id", "Rule id from list_rules: a built-in id or a check file path")
             area()
             int("limit", "Max issues to return (default 200)")
         },
@@ -429,10 +438,11 @@ private fun buildServer(app: App): Server {
         ReadResourceResult(listOf(TextResourceContents(WireJson.encodeToString(eu.tiducto.osmreview.shared.Area.serializer(), a), request.uri, "application/json")))
     }
     registerRuleFileTools(server, app)
+    registerMapCssTools(server, app)
     return server
 }
 
-private fun resolveArea(app: App, area: JsonElement?): ResolvedScope = when (area) {
+internal fun resolveArea(app: App, area: JsonElement?): ResolvedScope = when (area) {
     null, JsonNull -> throw IllegalArgumentException("area is required: $AREA_FORMS")
     is JsonObject -> app.drafts.resolveScope(null, null, area)
     is JsonArray -> app.drafts.resolveScope(null, bboxOf(area), null)
@@ -569,7 +579,7 @@ internal fun JsonObjectBuilder.enum(name: String, d: String, values: List<String
     put("description", d)
     putJsonArray("enum") { values.forEach { add(JsonPrimitive(it)) } }
 }
-private fun JsonObjectBuilder.area() = putJsonObject("area") {
+internal fun JsonObjectBuilder.area() = putJsonObject("area") {
     put(
         "description",
         "Area name (admin boundary, e.g. \"Opava\"), bbox [west,south,east,north], or a GeoJSON Polygon/MultiPolygon " +
