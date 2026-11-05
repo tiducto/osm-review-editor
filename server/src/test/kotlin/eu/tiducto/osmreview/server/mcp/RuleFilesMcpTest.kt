@@ -172,9 +172,18 @@ class RuleFilesMcpTest {
 
         val listed = call(session, "list_rule_files", args()).json.jsonObject
         assertEquals(rulesDir.toRealPath().toString(), listed["rules_dir"]!!.jsonPrimitive.content)
-        assertEquals(setOf("highlights/a.mapcss", smart), listed["files"]!!.jsonArray.map { it.str("path") }.toSet())
+        val listedFiles = listed["files"]!!.jsonArray
+        val builtIns = listedFiles.filter { it.jsonObject["origin"]?.toString()?.contains("\"builtIn\":true") == true }.map { it.str("path") }.toSet()
+        assertTrue("checks/surfaces.validator.mapcss" in builtIns, builtIns.toString())
+        assertEquals(setOf("highlights/a.mapcss", smart), listedFiles.map { it.str("path") }.toSet() - builtIns)
         val onlyHighlights = call(session, "list_rule_files", args("kind" to "highlight")).json.jsonObject["files"]!!.jsonArray
-        assertEquals(listOf("highlights/a.mapcss"), onlyHighlights.map { it.str("path") })
+        assertEquals(listOf("highlights/a.mapcss"), onlyHighlights.map { it.str("path") }.filter { it !in builtIns })
+
+        val copied = call(session, "copy_rule_file", args("path" to "checks/surfaces.validator.mapcss"))
+        assertFalse(copied.isError, copied.text)
+        assertTrue(rulesDir.resolve("checks/surfaces.validator.mapcss").exists())
+        assertTrue(call(session, "copy_rule_file", args("path" to "checks/surfaces.validator.mapcss")).isError)
+        assertTrue(call(session, "delete_rule_file", args("path" to "checks/crossings.validator.mapcss")).isError)
 
         val read = call(session, "read_rule_file", args("path" to "highlights/a.mapcss")).json
         assertEquals("way { }", read.str("content"))

@@ -49,6 +49,26 @@ fun mapCssMapLibreFilter(stylesheet: dynamic, ruleIndex: Int, options: dynamic):
 }
 
 @JsExport
+fun mapCssRules(stylesheet: dynamic): dynamic {
+    val s = sheet(stylesheet)
+    val out = kotlinx.serialization.json.buildJsonArray {
+        for (rule in s.rules) {
+            add(
+                kotlinx.serialization.json.buildJsonObject {
+                    put("index", kotlinx.serialization.json.JsonPrimitive(rule.index))
+                    put("line", kotlinx.serialization.json.JsonPrimitive(rule.line))
+                    put("hasStyle", kotlinx.serialization.json.JsonPrimitive(rule.hasStyle))
+                    put("isCheck", kotlinx.serialization.json.JsonPrimitive(rule.isCheck))
+                    put("selectors", kotlinx.serialization.json.JsonArray(rule.selectors.map { kotlinx.serialization.json.JsonPrimitive(it.text) }))
+                    put("style", kotlinx.serialization.json.JsonObject(s.staticStyle(rule.index)))
+                },
+            )
+        }
+    }
+    return toPlain(out)
+}
+
+@JsExport
 fun mapCssSelectorToMapLibre(selector: String, options: dynamic): dynamic {
     val (sel, _) = MapCss.parseSelector(selector)
     return sel?.let { MapCss.toMapLibreFilter(it, null, options(options)) }?.let { toPlain(it) }

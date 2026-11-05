@@ -114,6 +114,14 @@ and MCP are validated first and written atomically; deletes move the file to `.t
 in the folder. Paths that leave the folder, symlinks pointing out of it and other file types are
 refused.
 
+The highlights and checks in `user-rules.example` also ship inside the server as a read-only
+built-in source, so a new install with an empty `RULES_DIR` already has them. They are listed under
+their usual paths (`highlights/sidewalks.mapcss`, `checks/surfaces.validator.mapcss`, ...) with
+`origin.builtIn` and are used by highlights and validation scans like your own files. A file of yours
+with the same path overrides the built-in one; delete it and the built-in comes back. Built-in files
+cannot be deleted; copy one into your folder (`POST /api/rule-files/copy`, MCP `copy_rule_file`) to
+edit it. The same copy action turns a remote file into a local one.
+
 Remote sources in `sources.json` (`[{name, url, kind, refreshHours, licence?}]`) are fetched into
 `DATA_DIR/rule-cache`, refreshed when due, and listed read-only as `remote/<name>.<ext>` with their
 source and a licence note. The repository ships no JOSM rule files (they are GPL); you can point a
@@ -134,8 +142,8 @@ selectors) are evaluated on the server per bbox or tile and cached per mirror ge
 hash. Coverage numbers give, per legend entry, kilometres, count or area and its share over an area,
 e.g. how much of Opava's street length has sidewalks tagged.
 
-A validation scan runs every check file (your own and remote sources) and the built-in Kotlin rules
-over an area, stores the issues, reports counts per group and severity, serves them as GeoJSON
+A validation scan runs every check file (your own, built-in and remote ones) and the built-in
+Kotlin rules over an area, stores the issues, reports counts per group and severity, serves them as GeoJSON
 markers, and diffs against the previous scan of the same area and rule set (new, resolved,
 unchanged). After the mirror is updated, areas scanned in the last `SCAN_RERUN_DAYS` days are scanned
 again. Fixes of selected issues become a draft for review, deletes included. See the

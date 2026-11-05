@@ -16,6 +16,7 @@ import eu.tiducto.osmreview.rules.mapcss.MapCssEngine
 import eu.tiducto.osmreview.server.db.ScanRepo
 import eu.tiducto.osmreview.server.mapcss.HighlightService
 import eu.tiducto.osmreview.server.mapcss.ScanService
+import eu.tiducto.osmreview.server.rulesfolder.BuiltInRules
 import eu.tiducto.osmreview.server.rulesfolder.MapCssLoader
 import eu.tiducto.osmreview.server.rulesfolder.MapCssSelectorValidator
 import eu.tiducto.osmreview.server.rulesfolder.PresetFileLoader
@@ -73,6 +74,7 @@ class App(val config: Config, val http: HttpClient = defaultHttpClient()) : Auto
             MapCssLoader(RuleKind.HIGHLIGHT),
             MapCssLoader(RuleKind.CHECK),
         ),
+        builtInFiles = BuiltInRules.fromResources(),
     )
     val mapCss = MapCssEngine(mirror)
     val highlights = HighlightService(ruleFiles, mapCss)

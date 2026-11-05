@@ -3,11 +3,14 @@ package eu.tiducto.osmreview.server.api
 import eu.tiducto.osmreview.server.installErrorPages
 import eu.tiducto.osmreview.server.presets.PresetService
 import eu.tiducto.osmreview.server.presets.PresetServiceTest
+import eu.tiducto.osmreview.server.rulesfolder.BuiltInRules
+import eu.tiducto.osmreview.server.rulesfolder.MapCssLoader
 import eu.tiducto.osmreview.server.rulesfolder.PresetFileLoader
 import eu.tiducto.osmreview.server.rulesfolder.RemoteRuleSources
 import eu.tiducto.osmreview.server.rulesfolder.RulesFolder
 import eu.tiducto.osmreview.server.rulesfolder.SmartPresetLoader
 import eu.tiducto.osmreview.shared.ApiError
+import eu.tiducto.osmreview.shared.CopyRuleFileRequest
 import eu.tiducto.osmreview.shared.CreateRuleFileRequest
 import eu.tiducto.osmreview.shared.DeleteRuleFileResult
 import eu.tiducto.osmreview.shared.RuleFileContent
@@ -81,6 +84,51 @@ class RuleFilesApiTest {
     private fun api(block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
         application { testModule(folder, sources, presets) }
         block()
+    }
+
+    @Test
+    fun builtInFilesOverRest() {
+        val d = Files.createTempDirectory("rules")
+        RulesFolder(d, null, listOf(MapCssLoader(RuleKind.HIGHLIGHT), MapCssLoader(RuleKind.CHECK)), builtInFiles = BuiltInRules.fromResources()).use { f ->
+            testApplication {
+                application { testModule(f, RemoteRuleSources(f, Files.createTempDirectory("cache"), http, "ua"), PresetService(PresetServiceTest.data, f)) }
+                val path = "checks/surfaces.validator.mapcss"
+                val checks = send("GET", "/api/rule-files?kind=check").body(RuleFileList.serializer()).files
+                val builtIn = checks.single { it.path == path }
+                assertTrue(builtIn.readOnly && builtIn.origin!!.builtIn, builtIn.toString())
+                val json = send("GET", "/api/rule-files/$path").bodyAsText()
+                assertTrue("\"builtIn\":true" in json, json)
+                val content = send("GET", "/api/rule-files/$path").body(RuleFileContent.serializer()).content
+
+                val v = send("POST", "/api/rule-files/validate", enc(ValidateRuleFileRequest.serializer(), ValidateRuleFileRequest(path, content)))
+                assertTrue(v.body(ValidateRuleFileResult.serializer()).valid)
+
+                val refused = send("DELETE", "/api/rule-files/$path")
+                assertEquals(HttpStatusCode.Conflict, refused.status)
+                assertTrue("built in" in refused.bodyAsText())
+
+                val copy = send("POST", "/api/rule-files/copy", enc(CopyRuleFileRequest.serializer(), CopyRuleFileRequest(path)))
+                assertEquals(HttpStatusCode.Created, copy.status)
+                val copied = copy.body(WriteRuleFileResult.serializer()).file!!
+                assertFalse(copied.readOnly)
+                assertEquals(null, copied.origin)
+                assertEquals(content, d.resolve(path).readText())
+                assertEquals(HttpStatusCode.Conflict, send("POST", "/api/rule-files/copy", enc(CopyRuleFileRequest.serializer(), CopyRuleFileRequest(path))).status)
+                assertEquals(
+                    HttpStatusCode.NotFound,
+                    send("POST", "/api/rule-files/copy", enc(CopyRuleFileRequest.serializer(), CopyRuleFileRequest("checks/none.validator.mapcss"))).status,
+                )
+                assertEquals(1, send("GET", "/api/rule-files?kind=check").body(RuleFileList.serializer()).files.count { it.path == path })
+
+                val put = send("PUT", "/api/rule-files/highlights/sidewalks.mapcss", enc(WriteRuleFileRequest.serializer(), WriteRuleFileRequest("way { }")))
+                assertEquals(HttpStatusCode.OK, put.status)
+                assertEquals("way { }", send("GET", "/api/rule-files/highlights/sidewalks.mapcss").body(RuleFileContent.serializer()).content)
+                assertEquals(HttpStatusCode.OK, send("DELETE", "/api/rule-files/highlights/sidewalks.mapcss").status)
+                val restored = send("GET", "/api/rule-files/highlights/sidewalks.mapcss").body(RuleFileContent.serializer())
+                assertTrue(restored.file.origin!!.builtIn)
+                assertTrue(restored.file.readOnly)
+            }
+        }
     }
 
     private suspend inline fun <reified T> HttpResponse.body(s: KSerializer<T>): T = WireJson.decodeFromString(s, bodyAsText())

@@ -75,8 +75,37 @@ val copyIdTaggingSchema by tasks.registering(Sync::class) {
     }
     into(idTaggingSchemaResources)
 }
+val builtInRulesSource = rootProject.layout.projectDirectory.dir("user-rules.example")
+val builtInRulesResources = layout.buildDirectory.dir("generated/builtin-rules")
+val copyBuiltInRules by tasks.registering(Sync::class) {
+    group = "build"
+    description = "Copies the example highlights and checks into the server resources as the read-only built-in rules, with an index."
+    from(builtInRulesSource.dir("highlights")) {
+        include("*.mapcss")
+        exclude("*.validator.mapcss")
+        into("builtin-rules/highlights")
+    }
+    from(builtInRulesSource.dir("checks")) {
+        include("*.validator.mapcss")
+        into("builtin-rules/checks")
+    }
+    into(builtInRulesResources)
+    val out = builtInRulesResources
+    doLast {
+        val base = out.get().dir("builtin-rules").asFile
+        base.mkdirs()
+        val paths = base.walkTopDown()
+            .filter { it.isFile && it.name != "index.txt" }
+            .map { it.relativeTo(base).invariantSeparatorsPath }
+            .sorted()
+            .toList()
+        base.resolve("index.txt").writeText(paths.joinToString("") { "$it\n" })
+    }
+}
+
 sourceSets.main {
     resources.srcDir(files(idTaggingSchemaResources).builtBy(copyIdTaggingSchema))
+    resources.srcDir(files(builtInRulesResources).builtBy(copyBuiltInRules))
 }
 
 val webDist = rootProject.layout.projectDirectory.dir("web/dist")

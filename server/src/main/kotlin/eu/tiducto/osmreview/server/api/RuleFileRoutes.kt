@@ -4,6 +4,7 @@ import eu.tiducto.osmreview.server.core.NotFoundException
 import eu.tiducto.osmreview.server.presets.PresetService
 import eu.tiducto.osmreview.server.rulesfolder.RemoteRuleSources
 import eu.tiducto.osmreview.server.rulesfolder.RulesFolder
+import eu.tiducto.osmreview.shared.CopyRuleFileRequest
 import eu.tiducto.osmreview.shared.CreateRuleFileRequest
 import eu.tiducto.osmreview.shared.RuleFileList
 import eu.tiducto.osmreview.shared.RuleKind
@@ -41,6 +42,10 @@ fun Route.ruleFileRoutes(rules: RulesFolder, sources: RemoteRuleSources) {
         post {
             val req = call.receive<CreateRuleFileRequest>()
             call.respondWrite(rules.write(req.path, req.content, req.force, createOnly = true), HttpStatusCode.Created)
+        }
+        post("/copy") {
+            val req = call.receive<CopyRuleFileRequest>()
+            call.respondWrite(rules.copy(req.path, req.to), HttpStatusCode.Created)
         }
         post("/validate") {
             val req = call.receive<ValidateRuleFileRequest>()

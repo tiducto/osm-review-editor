@@ -51,12 +51,13 @@ object Meta {
     const val JUNCTION = "@junction"
     const val END = "@end"
     const val BUILDING_ONLY = "@bonly"
+    const val CLOSED = "@closed"
 }
 
 class TileBuilder {
     private val gf = GeometryFactory()
 
-    fun build(z: Int, x: Int, y: Int, features: Sequence<SourceFeature>): MvtTile {
+    fun build(z: Int, x: Int, y: Int, features: Sequence<SourceFeature>, extraKeys: Set<String> = emptySet()): MvtTile {
         val extent = TileContent.extent(z)
         val bounds = TileBounds(z, x, y, extent)
         val buffer = TileContent.bufferPx(z) * extent / TileContent.TILE_PX
@@ -82,7 +83,7 @@ class TileBuilder {
         val emitted = HashSet<Long>()
         val geom = GeometryWriter()
         for (f in all) {
-            val props = properties(f, z)
+            val props = properties(f, z, extraKeys)
             val fid = f.id * 4 + f.type.code
             when (val g = f.geometry) {
                 is SourceGeometry.Point -> {
@@ -104,6 +105,7 @@ class TileBuilder {
                 }
                 is SourceGeometry.Line -> {
                     if (f.type == SourceType.WAY && f.inRelation && f.tags.isEmpty()) continue
+                    if (isClosed(g.xy)) props[Meta.CLOSED] = true
                     val parts = Clip.line(bounds.project(g.xy), clip)
                     geom.reset()
                     for (p in parts) {
@@ -130,10 +132,13 @@ class TileBuilder {
         return tile
     }
 
-    private fun properties(f: SourceFeature, z: Int): LinkedHashMap<String, Any> {
+    private fun isClosed(xy: DoubleArray): Boolean =
+        xy.size >= 8 && xy[0] == xy[xy.size - 2] && xy[1] == xy[xy.size - 1]
+
+    private fun properties(f: SourceFeature, z: Int, extraKeys: Set<String>): LinkedHashMap<String, Any> {
         val out = LinkedHashMap<String, Any>()
         val all = TileContent.allTags(z)
-        for ((k, v) in f.tags) if (all || k in TileContent.CURATED_KEYS) out[k] = v
+        for ((k, v) in f.tags) if (all || k in TileContent.CURATED_KEYS || k in extraKeys) out[k] = v
         out[Meta.ID] = f.id
         out[Meta.TYPE] = f.type.label
         return out

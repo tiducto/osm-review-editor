@@ -31,7 +31,8 @@ internal fun registerRuleFileTools(server: Server, app: App) {
 
     server.tool(
         "list_rule_files",
-        "Files in the user's rules folder (${RuleKind.allowedPatterns}) and read-only files from remote sources (remote/...), " +
+        "Files in the user's rules folder (${RuleKind.allowedPatterns}), read-only files from remote sources (remote/...) and " +
+            "read-only built-in highlights and checks (origin.builtIn; a user file with the same path overrides them), " +
             "with kind, hash and diagnostics.",
         schema { enum("kind", "Only files of this kind", KINDS) },
         readOnly = true,
@@ -78,8 +79,19 @@ internal fun registerRuleFileTools(server: Server, app: App) {
     }
 
     server.tool(
+        "copy_rule_file",
+        "Copy a built-in or remote (remote/...) rules file into the user's rules folder so it can be edited. A copy of a built-in " +
+            "file keeps its path and overrides it; a remote file goes to the folder of its kind. Fails when the target already exists.",
+        schema(listOf("path")) {
+            str("path", "Path of the file to copy, e.g. checks/surfaces.validator.mapcss or remote/foo.validator.mapcss")
+            str("to", "Target path relative to the rules folder (default: the same path for built-in files, <kind folder>/<name> for remote files)")
+        },
+    ) { args -> writeResult(rules.copy(args.str("path")!!, args.str("to"))) }
+
+    server.tool(
         "delete_rule_file",
-        "Move a rules file to the folder's .trash/<timestamp>/ (recoverable by hand).",
+        "Move a rules file to the folder's .trash/<timestamp>/ (recoverable by hand). Built-in files cannot be deleted; deleting a local file " +
+            "with the same path as a built-in one restores the built-in.",
         schema(listOf("path")) { str("path", "Path relative to the rules folder") },
     ) { args ->
         val r = rules.delete(args.str("path")!!)

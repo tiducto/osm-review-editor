@@ -26,14 +26,18 @@ class TileService(private val mirror: GolMirror, private val maxCacheBytes: Long
     private val relations = ConcurrentHashMap<Long, List<List<DoubleArray>>>()
     private var relationsGeneration = -1L
 
-    fun etag(z: Int, x: Int, y: Int, generation: Long = mirror.generation) = "\"t${TileContent.SCHEMA}-g$generation-$z-$x-$y\""
+    fun etag(z: Int, x: Int, y: Int, generation: Long = mirror.generation, extraKeys: Set<String> = emptySet()) =
+        "\"t${TileContent.SCHEMA}-g$generation-$z-$x-$y${keysTag(extraKeys)}\""
 
-    fun tile(z: Int, x: Int, y: Int): TileResult {
+    private fun keysTag(keys: Set<String>): String =
+        if (keys.isEmpty()) "" else "-k" + Integer.toHexString(keys.joinToString(",").hashCode())
+
+    fun tile(z: Int, x: Int, y: Int, extraKeys: Set<String> = emptySet()): TileResult {
         require(z in 0..22) { "zoom must be 0-22" }
         val n = 1 shl z
         require(x in 0 until n && y in 0 until n) { "tile $z/$x/$y is out of range" }
         val gen = mirror.generation
-        val key = "$gen/$z/$x/$y"
+        val key = "$gen/$z/$x/$y" + (if (extraKeys.isEmpty()) "" else "?" + extraKeys.joinToString(","))
         synchronized(cache) {
             if (cacheGeneration != gen) {
                 cache.clear()
@@ -46,7 +50,7 @@ class TileService(private val mirror: GolMirror, private val maxCacheBytes: Long
         val existing = inFlight.putIfAbsent(key, mine)
         if (existing != null) return existing.get()
         try {
-            val result = render(gen, z, x, y)
+            val result = render(gen, z, x, y, extraKeys)
             synchronized(cache) {
                 if (cacheGeneration == gen) {
                     cache[key] = result
@@ -68,19 +72,19 @@ class TileService(private val mirror: GolMirror, private val maxCacheBytes: Long
         }
     }
 
-    private fun render(gen: Long, z: Int, x: Int, y: Int): TileResult {
+    private fun render(gen: Long, z: Int, x: Int, y: Int, extraKeys: Set<String>): TileResult {
         val started = System.nanoTime()
-        if (z < TileContent.MIN_ZOOM) return TileResult(gzip(ByteArray(0)), etag(z, x, y, gen), 0, 0, false)
+        if (z < TileContent.MIN_ZOOM) return TileResult(gzip(ByteArray(0)), etag(z, x, y, gen, extraKeys), 0, 0, false)
         val tile = mirror.query { gol ->
             if (relationsGeneration != mirror.generation) {
                 relations.clear()
                 relationsGeneration = mirror.generation
             }
-            builder.build(z, x, y, features(gol, z, x, y))
+            builder.build(z, x, y, features(gol, z, x, y), extraKeys)
         }
         val bytes = tile.encode()
         val ms = (System.nanoTime() - started) / 1_000_000
-        return TileResult(gzip(bytes), etag(z, x, y, gen), tile.featureCount(), ms, false)
+        return TileResult(gzip(bytes), etag(z, x, y, gen, extraKeys), tile.featureCount(), ms, false)
     }
 
     fun features(gol: FeatureLibrary, z: Int, x: Int, y: Int): Sequence<SourceFeature> {

@@ -4,6 +4,8 @@ import eu.tiducto.osmreview.shared.Severity
 import eu.tiducto.osmreview.shared.TagEdit
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 @Serializable
 data class Evaluation(val style: StyleResult, val checks: List<CheckResult>)
@@ -138,6 +140,22 @@ class Stylesheet internal constructor(
                     out += Diagnostic(file, p.line, p.column, Severity.ERROR, "${p.name} failed: rule $verb \"$text\"")
                 }
             }
+        }
+        return out
+    }
+
+    fun staticStyle(ruleIndex: Int): Map<String, JsonElement> {
+        val out = LinkedHashMap<String, JsonElement>()
+        for (p in rules[ruleIndex].properties) {
+            if (p.name in Vocabulary.VALIDATOR) continue
+            val single = p.values.singleOrNull()
+            if (p.name == "text" && single is Ident) {
+                out[p.name] = JsonObject(mapOf("tag" to JsonPrimitive(if (single.name == "auto") "name" else single.name)))
+                continue
+            }
+            if (p.values.isEmpty() || p.values.any { it !is Lit && it !is Ident }) continue
+            val values = p.values.map { if (it is Lit) it.value else (it as Ident).name }
+            out[p.name] = Evaluator.toJson(if (values.size == 1) values[0] else values)
         }
         return out
     }

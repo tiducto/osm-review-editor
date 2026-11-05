@@ -29,6 +29,7 @@ data class HighlightRule(
     val color: String? = null,
     val compiled: Boolean,
     val filter: JsonElement? = null,
+    val style: Map<String, JsonElement> = emptyMap(),
 )
 
 @Serializable

@@ -315,19 +315,27 @@ Anything else is a 400: other extensions, `..`, absolute paths, hidden segments 
 that resolve through a symlink to outside the folder. Remote files are listed as
 `remote/<name>.<ext>` and are read-only (409 on write or delete).
 
+Built-in files (the highlights and checks from `user-rules.example`, shipped with the server) are
+listed under their normal paths with `readOnly: true` and `origin.builtIn: true`, unless a local file
+has the same path: the local file overrides the built-in one. Writing to a built-in path creates
+that override; deleting the override brings the built-in back (`rules_changed` reports the path as
+changed). Deleting a path that only exists as a built-in is a 409.
+
 | Method | Path | Body | Returns |
 | --- | --- | --- | --- |
 | GET | `/api/rule-files?kind=` | | `RuleFileList` `{rulesDir, files: RuleFileInfo[]}`; `kind` is `highlight`, `check`, `preset`, `smart_preset` or `sources` |
 | GET | `/api/rule-files/{path}` | | `RuleFileContent` `{file, content}`; 404 when missing |
 | POST | `/api/rule-files` | `CreateRuleFileRequest` `{path, content, force?}` | 201 `WriteRuleFileResult`; 409 when the file exists |
 | PUT | `/api/rule-files/{path}` | `WriteRuleFileRequest` `{content, force?, expectedHash?}` | `WriteRuleFileResult` (creates or replaces); 409 when `expectedHash` is not the current hash |
+| POST | `/api/rule-files/copy` | `CopyRuleFileRequest` `{path, to?}` | 201 `WriteRuleFileResult`: a built-in or remote file's content written to `to` in the folder (default: the same path for built-in files, `<kind folder>/<name><ext>` for `remote/<name><ext>`); 404 for an unknown `path`, 409 when the target exists |
 | POST | `/api/rule-files/validate` | `ValidateRuleFileRequest` `{path, content}` | `ValidateRuleFileResult` `{path, kind, valid, diagnostics}`; nothing is written |
 | DELETE | `/api/rule-files/{path}` | | `DeleteRuleFileResult` `{path, trashedTo}`: the file moves to `.trash/<UTC timestamp>/<path>` |
 | POST | `/api/rule-files/sources/refresh` | | `RuleFileList` after fetching every source in `sources.json` again |
 
 `RuleFileInfo` is `{path, kind, hash, modifiedAt, size, readOnly, diagnostics, origin}`: `hash` is the
-SHA-256 of the file's bytes, `origin` is `null` for local files and `{source, url, licence,
-fetchedAt, error}` for remote ones. A diagnostic is `{file, line, column, severity, message}` with
+SHA-256 of the file's bytes, `origin` is `null` for local files, `{source, url, licence,
+fetchedAt, error}` for remote ones and `{source: "built-in", url: "builtin:<path>", licence, builtIn:
+true}` for built-in ones. A diagnostic is `{file, line, column, severity, message}` with
 `severity` `error`, `warning` or `info`; lines and columns start at 1.
 
 MapCSS files (`highlights/*.mapcss`, `checks/*.validator.mapcss`) are parsed by the shared MapCSS

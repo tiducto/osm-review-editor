@@ -6,6 +6,7 @@ import eu.tiducto.osmreview.server.core.StateException
 import eu.tiducto.osmreview.shared.DiagnosticSeverity
 import eu.tiducto.osmreview.shared.RuleDiagnostic
 import eu.tiducto.osmreview.shared.RuleKind
+import eu.tiducto.osmreview.shared.RuleOrigin
 import eu.tiducto.osmreview.shared.UiEvent
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.filterIsInstance
@@ -15,6 +16,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Instant
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.readText
@@ -181,5 +183,93 @@ class RulesFolderTest {
         val e = event.await()
         assertEquals(listOf("highlights/external.mapcss"), e.changed)
         assertEquals("way { color: blue; }", folder.read("highlights/external.mapcss").content)
+    }
+
+    private fun withBuiltIns(block: (RulesFolder, Path, MutableList<RulesChange>) -> Unit) {
+        val d = Files.createTempDirectory("rules")
+        val changes = mutableListOf<RulesChange>()
+        RulesFolder(d, null, listOf(MapCssLoader(RuleKind.HIGHLIGHT), MapCssLoader(RuleKind.CHECK)), builtInFiles = BuiltInRules.fromResources()).use { f ->
+            f.onChange { changes += it }
+            f.rescan()
+            block(f, d, changes)
+        }
+    }
+
+    @Test
+    fun anEmptyFolderListsTheBuiltInHighlightsAndChecks() = withBuiltIns { f, _, _ ->
+        val files = f.list()
+        val paths = files.map { it.path }.toSet()
+        assertTrue(
+            paths.containsAll(listOf("highlights/sidewalks.mapcss", "highlights/footways.mapcss", "checks/surfaces.validator.mapcss", "checks/crossings.validator.mapcss")),
+            paths.toString(),
+        )
+        assertTrue(files.all { it.readOnly && it.origin?.builtIn == true })
+        val surfaces = files.first { it.path == "checks/surfaces.validator.mapcss" }
+        assertEquals(RuleOrigin("built-in", "builtin:checks/surfaces.validator.mapcss", BuiltInRules.LICENCE, builtIn = true), surfaces.origin)
+        assertTrue(f.list(RuleKind.HIGHLIGHT).all { it.kind == RuleKind.HIGHLIGHT && it.path.startsWith("highlights/") })
+
+        val checks = f.loaded(RuleKind.CHECK)
+        assertTrue(checks.any { it.path == "checks/surfaces.validator.mapcss" && it.remote && it.value != null }, checks.toString())
+        assertTrue(f.loaded(RuleKind.HIGHLIGHT).any { it.path == "highlights/sidewalks.mapcss" })
+
+        val example = listOf(Path.of("../user-rules.example"), Path.of("user-rules.example")).first { Files.isDirectory(it) }
+        assertEquals(example.resolve("checks/surfaces.validator.mapcss").readText(), f.read("checks/surfaces.validator.mapcss").content)
+        assertTrue(f.validate("checks/surfaces.validator.mapcss", f.read("checks/surfaces.validator.mapcss").content).valid)
+        assertFalse(f.validate("checks/surfaces.validator.mapcss", "way {").valid)
+    }
+
+    @Test
+    fun aLocalFileOverridesABuiltInAndDeletingItRestoresIt() = withBuiltIns { f, d, changes ->
+        val path = "checks/surfaces.validator.mapcss"
+        val builtIn = f.read(path).content
+        changes.clear()
+        val saved = f.write(path, "way[highway][!surface] { throwWarning: \"x\"; }")
+        assertTrue(saved.saved, saved.toString())
+        assertEquals(listOf(RulesChange(listOf(path), emptyList())), changes)
+        val listed = f.list().filter { it.path == path }
+        assertEquals(1, listed.size)
+        assertFalse(listed.single().readOnly)
+        assertNull(listed.single().origin)
+        assertEquals(1, f.loaded(RuleKind.CHECK).count { it.path == path })
+        assertFalse(f.loaded(RuleKind.CHECK).single { it.path == path }.remote)
+        assertTrue("throwWarning: \"x\"" in f.read(path).content)
+
+        changes.clear()
+        f.delete(path)
+        assertFalse(d.resolve(path).exists())
+        assertEquals(listOf(RulesChange(listOf(path), emptyList())), changes)
+        assertEquals(builtIn, f.read(path).content)
+        assertTrue(f.info(path)!!.origin!!.builtIn)
+
+        val refused = assertFailsWith<StateException> { f.delete(path) }
+        assertTrue("built in" in refused.message!!, refused.message)
+        assertFailsWith<NotFoundException> { f.delete("checks/nothing.validator.mapcss") }
+    }
+
+    @Test
+    fun copyingABuiltInOrRemoteFileCreatesALocalFile() = withBuiltIns { f, d, _ ->
+        val path = "highlights/sidewalks.mapcss"
+        val builtIn = f.read(path).content
+        val copied = f.copy(path)
+        assertTrue(copied.saved)
+        assertEquals(path, copied.file!!.path)
+        assertFalse(copied.file!!.readOnly)
+        assertEquals(builtIn, d.resolve(path).readText())
+        assertFailsWith<StateException> { f.copy(path) }
+
+        assertEquals("highlights/mine.mapcss", f.copy(path, "highlights/mine.mapcss").file!!.path)
+        assertEquals(builtIn, d.resolve("highlights/mine.mapcss").readText())
+        assertFailsWith<NotFoundException> { f.copy("checks/nothing.validator.mapcss") }
+
+        val origin = RuleOrigin("ext", "https://example.org/x", "CC0")
+        f.setRemote(
+            listOf(
+                RemoteRuleFile("remote/ext.validator.mapcss", RuleKind.CHECK, "node[a] { throwWarning: \"a\"; }", origin, Instant.EPOCH),
+                RemoteRuleFile("remote/style.mapcss.mapcss", RuleKind.HIGHLIGHT, "way { }", origin, Instant.EPOCH),
+            ),
+        )
+        assertEquals("checks/ext.validator.mapcss", f.copy("remote/ext.validator.mapcss").file!!.path)
+        assertEquals("node[a] { throwWarning: \"a\"; }", d.resolve("checks/ext.validator.mapcss").readText())
+        assertEquals("highlights/style.mapcss", f.copy("remote/style.mapcss.mapcss").file!!.path)
     }
 }

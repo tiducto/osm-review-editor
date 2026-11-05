@@ -58,7 +58,7 @@ class HighlightService(
             val color = byRule[rule.index]?.color ?: listOf("color", "fill-color").firstNotNullOfOrNull { name ->
                 (rule.properties.firstOrNull { it.name == name }?.values?.singleOrNull() as? Lit)?.value as? String
             }
-            HighlightRule(rule.index, rule.line, rule.selectors.map { it.text }, byRule[rule.index]?.label, color, filter != null, filter)
+            HighlightRule(rule.index, rule.line, rule.selectors.map { it.text }, byRule[rule.index]?.label, color, filter != null, filter, sheet.staticStyle(rule.index))
         }
         return HighlightFile(
             path = f.path,

@@ -7,7 +7,8 @@ object TileContent {
     const val MAX_BAND_ZOOM = 20
     const val BAND_PX = 30.0
     const val TILE_PX = 512.0
-    const val SCHEMA = 3
+    const val SCHEMA = 4
+    const val MAX_EXTRA_KEYS = 64
 
     fun extent(z: Int): Int = if (z >= DETAIL_ZOOM) 8192 else 4096
 
@@ -39,6 +40,14 @@ object TileContent {
     }
 
     fun allTags(z: Int): Boolean = z >= DETAIL_ZOOM
+
+    fun extraKeys(param: String?, z: Int): Set<String> {
+        if (param.isNullOrBlank() || allTags(z)) return emptySet()
+        val keys = param.split(',').map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("geodesk:") && it !in CURATED_KEYS }.toSortedSet()
+        require(keys.size <= MAX_EXTRA_KEYS) { "at most $MAX_EXTRA_KEYS keys" }
+        require(keys.all { it.length <= 255 }) { "keys must be at most 255 characters" }
+        return keys
+    }
 
     fun includeVertices(z: Int): Boolean = z >= DETAIL_ZOOM
 

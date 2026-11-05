@@ -93,6 +93,27 @@ class TileBuilderTest {
     }
 
     @Test
+    fun `extra keys below zoom 15 for highlight filters`() {
+        val a = SourceFeature(SourceType.WAY, 1, mapOf("highway" to "primary", "sidewalk" to "both", "maxspeed" to "50"), SourceGeometry.Line(xy(0.1 to 0.5, 0.9 to 0.5)))
+        val keys = TileContent.extraKeys("sidewalk,highway,geodesk:x", 13)
+        assertEquals(setOf("sidewalk"), keys)
+        val props = MvtDecoder.decode(TileBuilder().build(13, tx shr (z - 13), ty shr (z - 13), sequenceOf(a), keys).encode())
+            .getValue(Layers.LINE).features.single().props
+        assertEquals("both", props["sidewalk"])
+        assertFalse("maxspeed" in props)
+        assertEquals(emptySet(), TileContent.extraKeys("sidewalk", 15))
+    }
+
+    @Test
+    fun `closed lines carry the closed flag`() {
+        val ring = SourceFeature(SourceType.WAY, 2, mapOf("highway" to "service"), SourceGeometry.Line(xy(0.2 to 0.2, 0.6 to 0.2, 0.6 to 0.6, 0.2 to 0.2)))
+        val open = SourceFeature(SourceType.WAY, 3, mapOf("highway" to "service"), SourceGeometry.Line(xy(0.1 to 0.8, 0.9 to 0.8)))
+        val lines = build(f = arrayOf(ring, open)).getValue(Layers.LINE).features.associateBy { it.props["@id"] }
+        assertEquals(true, lines.getValue(2L).props["@closed"])
+        assertFalse("@closed" in lines.getValue(3L).props)
+    }
+
+    @Test
     fun `lines are clipped to the tile buffer`() {
         val a = SourceFeature(SourceType.WAY, 1, mapOf("highway" to "primary"), SourceGeometry.Line(xy(-1.0 to 0.5, 2.0 to 0.5)))
         val ring = build(f = arrayOf(a)).getValue(Layers.LINE).features.single().rings().single()

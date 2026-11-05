@@ -97,6 +97,7 @@ data class RuleOrigin(
     val licence: String,
     val fetchedAt: String? = null,
     val error: String? = null,
+    val builtIn: Boolean = false,
 )
 
 @Serializable
@@ -129,6 +130,12 @@ data class CreateRuleFileRequest(
     val path: String,
     val content: String,
     val force: Boolean = false,
+)
+
+@Serializable
+data class CopyRuleFileRequest(
+    val path: String,
+    val to: String? = null,
 )
 
 @Serializable

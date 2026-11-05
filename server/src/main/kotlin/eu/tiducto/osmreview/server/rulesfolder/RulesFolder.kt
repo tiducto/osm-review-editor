@@ -48,6 +48,7 @@ class RulesFolder(
     private val events: EventBus? = null,
     loaders: List<RuleLoader<*>> = emptyList(),
     private val debounceMs: Long = 300,
+    builtInFiles: List<RemoteRuleFile> = emptyList(),
 ) : AutoCloseable {
     private val log = LoggerFactory.getLogger(RulesFolder::class.java)
     val root: Path = configuredRoot.toAbsolutePath().normalize().also { r ->
@@ -88,13 +89,31 @@ class RulesFolder(
         loaders.forEach { this.loaders[it.kind] = it }
     }
 
+    @Volatile private var builtIn: Map<String, Entry> = builtInFiles.sortedBy { it.path }.associate { f ->
+        val (value, diags) = load(f.path, f.kind, f.content)
+        val bytes = f.content.toByteArray()
+        f.path to Entry(f.path, f.kind, sha256(bytes), FileTime.from(f.modifiedAt), bytes.size.toLong(), f.content, value, diags, f.origin)
+    }
+
+    init {
+        if (builtIn.isNotEmpty()) recomputeCross()
+    }
+
+    private fun effective(): List<Entry> {
+        val l = local
+        return l.values + remote.values + builtIn.values.filter { it.path !in l }
+    }
+
+    private fun builtInOnly(path: String): Entry? = if (path in local) null else builtIn[path]
+
     fun register(loader: RuleLoader<*>) {
         val change = synchronized(lock) {
             loaders[loader.kind] = loader
             local = local.mapValues { (_, e) -> if (e.kind == loader.kind) reload(e) else e }
             remote = remote.mapValues { (_, e) -> if (e.kind == loader.kind) reload(e) else e }
+            builtIn = builtIn.mapValues { (_, e) -> if (e.kind == loader.kind) reload(e) else e }
             recomputeCross()
-            RulesChange((local.values + remote.values).filter { it.kind == loader.kind }.map { it.path }, emptyList())
+            RulesChange(effective().filter { it.kind == loader.kind }.map { it.path }, emptyList())
         }
         publish(change)
     }
@@ -120,8 +139,7 @@ class RulesFolder(
     }
 
     private fun recomputeCross() {
-        val all = (local.values + remote.values).map { it.loaded() }
-        cross = crossFor(all)
+        cross = crossFor(effective().map { it.loaded() })
     }
 
     private fun crossFor(all: List<LoadedRuleFile>): Map<String, List<RuleDiagnostic>> {
@@ -191,10 +209,12 @@ class RulesFolder(
             next[rel] = entry
             changed += rel
         }
-        val removed = old.keys.filter { it !in next }
+        val gone = old.keys.filter { it !in next }
+        val restored = gone.filter { it in builtIn }
+        val removed = gone - restored.toSet()
         local = next
-        if (changed.isNotEmpty() || removed.isNotEmpty()) recomputeCross()
-        return RulesChange(changed, removed)
+        if (changed.isNotEmpty() || gone.isNotEmpty()) recomputeCross()
+        return RulesChange(changed + restored, removed)
     }
 
     fun setRemote(files: List<RemoteRuleFile>) {
@@ -241,16 +261,16 @@ class RulesFolder(
     )
 
     fun list(kind: RuleKind? = null): List<RuleFileInfo> =
-        (local.values + remote.values).filter { kind == null || it.kind == kind }.map(::info)
+        effective().filter { kind == null || it.kind == kind }.map(::info)
 
     fun loaded(kind: RuleKind): List<LoadedRuleFile> {
         val c = cross
-        return (local.values + remote.values).filter { it.kind == kind }.map { e ->
+        return effective().filter { it.kind == kind }.map { e ->
             e.loaded().copy(diagnostics = e.diagnostics + c[e.path].orEmpty())
         }
     }
 
-    fun info(path: String): RuleFileInfo? = (local[path] ?: remote[path])?.let(::info)
+    fun info(path: String): RuleFileInfo? = (local[path] ?: remote[path] ?: builtIn[path])?.let(::info)
 
     fun read(path: String): RuleFileContent {
         remote[path]?.let { return RuleFileContent(info(it), it.source) }
@@ -258,12 +278,12 @@ class RulesFolder(
         val e = local[path] ?: run {
             rescan()
             local[path]
-        } ?: throw NotFoundException("No rules file '$path'")
+        } ?: builtIn[path] ?: throw NotFoundException("No rules file '$path'")
         return RuleFileContent(info(e), e.source)
     }
 
     fun validate(path: String, content: String): ValidateRuleFileResult {
-        val kind = if (path in remote) remote.getValue(path).kind else kindOf(path)
+        val kind = (remote[path] ?: builtIn[path])?.kind ?: kindOf(path)
         val diags = diagnosticsFor(path, kind, content)
         return ValidateRuleFileResult(path, kind, !diags.hasErrors(), diags)
     }
@@ -271,7 +291,7 @@ class RulesFolder(
     private fun diagnosticsFor(path: String, kind: RuleKind, content: String): List<RuleDiagnostic> {
         if (content.toByteArray().size > MAX_BYTES) return listOf(error(path, "The file is larger than ${MAX_BYTES / 1024 / 1024} MB"))
         val (value, diags) = load(path, kind, content)
-        val others = (local.values + remote.values).filter { it.kind == kind && it.path != path }.map { it.loaded() }
+        val others = effective().filter { it.kind == kind && it.path != path }.map { it.loaded() }
         val crossDiags = crossFor(others + LoadedRuleFile(path, kind, content, value, diags, false))[path].orEmpty()
         return diags + crossDiags
     }
@@ -308,7 +328,12 @@ class RulesFolder(
         if (path in remote) throw StateException("'$path' comes from a remote source; remove it from ${RuleKind.SOURCES_FILE} instead")
         val dest = synchronized(lock) {
             val target = resolve(path)
-            if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) throw NotFoundException("No rules file '$path'")
+            if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+                if (path in builtIn) {
+                    throw StateException("'$path' is built in and cannot be deleted; save a file with the same path to override it, or copy it")
+                }
+                throw NotFoundException("No rules file '$path'")
+            }
             val stamp = TRASH_STAMP.format(Instant.now())
             var dir = root.resolve(TRASH).resolve(stamp)
             var n = 1
@@ -320,6 +345,21 @@ class RulesFolder(
         }
         rescan()
         return DeleteRuleFileResult(path, root.relativize(dest).joinToString("/"))
+    }
+
+    fun copy(path: String, to: String? = null): WriteRuleFileResult {
+        val source = remote[path] ?: builtIn[path] ?: local[path] ?: throw NotFoundException("No rules file '$path'")
+        val target = to?.takeIf { it.isNotBlank() } ?: defaultCopyTarget(source)
+        return write(target, source.source, force = true, createOnly = true)
+    }
+
+    private fun defaultCopyTarget(e: Entry): String {
+        if (!e.path.startsWith(RemoteRuleSources.PREFIX)) return e.path
+        var name = e.path.removePrefix(RemoteRuleSources.PREFIX).removeSuffix(e.kind.extension)
+        while (name.endsWith(e.kind.extension)) name = name.removeSuffix(e.kind.extension)
+        if (e.kind == RuleKind.CHECK) name = name.removeSuffix(".validator")
+        if (e.kind == RuleKind.HIGHLIGHT) name = name.removeSuffix(".mapcss")
+        return e.kind.pattern.replace("*", name)
     }
 
     private fun kindOf(path: String): RuleKind = RuleKind.forPath(path)
