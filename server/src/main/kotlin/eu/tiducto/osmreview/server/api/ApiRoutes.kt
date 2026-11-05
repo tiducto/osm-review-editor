@@ -142,7 +142,14 @@ fun Route.apiRoutes(app: App) {
                     require(req.status == null || req.status in setOf(DraftStatus.OPEN, DraftStatus.CLOSED)) {
                         "Only open and closed can be set by hand"
                     }
-                    val d = app.repo.updateDraft(DraftService.parseId(call.parameters["id"]!!), req.title, req.description, req.status)
+                    val d = app.repo.updateDraft(
+                        DraftService.parseId(call.parameters["id"]!!),
+                        req.title?.trim()?.ifBlank { null },
+                        req.description,
+                        req.status,
+                        req.changesetComment,
+                        req.changesetSource,
+                    )
                         ?: throw eu.tiducto.osmreview.server.core.NotFoundException("Draft not found")
                     app.events.emit(eu.tiducto.osmreview.shared.UiEvent.DraftUpdated(d.id))
                     call.respond(d)

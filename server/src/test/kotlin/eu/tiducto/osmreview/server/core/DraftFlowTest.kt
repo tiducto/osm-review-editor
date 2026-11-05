@@ -41,6 +41,7 @@ class DraftFlowTest {
     private lateinit var drafts: DraftService
     private lateinit var merge: MergeService
     private lateinit var account: Account
+    private lateinit var repo: DraftRepo
 
     @BeforeTest
     fun setUp() {
@@ -49,7 +50,7 @@ class DraftFlowTest {
         db = Db(pg.jdbcUrl, pg.username, pg.password)
         val config = Config.fromEnv(mapOf("OSM_CLIENT_ID_DEV" to "client", "TOKEN_ENCRYPTION_KEY" to "k"))
         val http = HttpClient(MockEngine { req -> osm.handle(this, req) })
-        val repo = DraftRepo(db)
+        repo = DraftRepo(db)
         account = Account(config, SettingsRepo(db), http)
         val mirror = GolMirror(Files.createTempDirectory("gol"))
         val rules = RuleEngine(mirror)
@@ -226,6 +227,47 @@ class DraftFlowTest {
         assertEquals("Fix crossings after survey", g.comment)
         assertEquals("Fix crossings after survey", g.tags["comment"])
         assertTrue("source" !in g.tags)
+    }
+
+    @Test
+    fun polygonScopedDraftGroupsByRuleAndMetadataIsEditable(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        connect()
+        val polygon = kotlinx.serialization.json.Json.parseToJsonElement(
+            """{"type":"Polygon","coordinates":[[[17.89,49.89],[17.93,49.89],[17.91,49.93],[17.89,49.89]]]}""",
+        )
+        val d = drafts.createDraft("Crossings · drawn area", "", Authors.rule("crossing_ref"), polygon)
+        assertEquals(null, d.area)
+        drafts.proposeChanges(
+            d.id,
+            listOf(
+                ProposedChange(OsmRef(OsmType.NODE, 101), TagEdit(set = mapOf("crossing" to "uncontrolled")), ruleId = "crossing_ref"),
+                ProposedChange(OsmRef(OsmType.NODE, 102), TagEdit(set = mapOf("crossing" to "marked")), ruleId = "crossing_ref"),
+            ),
+        )
+        drafts.approveRemaining(d.id, null)
+        drafts.detail(d.id).changes.filter { it.status == ChangeStatus.PENDING }.forEach {
+            drafts.review(it.id, ReviewRequest(ReviewDecision.APPROVE))
+        }
+        val g = merge.preview(d.id).groups.single()
+        assertEquals("crossing_ref", g.key)
+        assertEquals(2, g.changeIds.size)
+        assertEquals("crossing_ref (rule crossing_ref), reviewed individually", g.comment)
+        assertTrue("source" !in g.tags)
+
+        val id = java.util.UUID.fromString(d.id)
+        val edited = repo.updateDraft(id, changesetComment = " Crossing tags in Kateřinky ", changesetSource = "survey")!!
+        assertEquals("Crossing tags in Kateřinky", edited.changesetComment)
+        assertEquals("survey", edited.changesetSource)
+        val again = merge.preview(d.id).groups.single()
+        assertEquals("Crossing tags in Kateřinky", again.tags["comment"])
+        assertEquals("survey", again.tags["source"])
+
+        val cleared = repo.updateDraft(id, changesetComment = "", title = "Renamed")!!
+        assertEquals(null, cleared.changesetComment)
+        assertEquals("survey", cleared.changesetSource)
+        assertEquals("Renamed", cleared.title)
+        assertEquals("crossing_ref (rule crossing_ref), reviewed individually", merge.preview(d.id).groups.single().comment)
     }
 
     @Test

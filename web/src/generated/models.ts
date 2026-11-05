@@ -264,6 +264,8 @@ export interface UpdateDraftRequest {
   title?: string | null
   description?: string | null
   status?: DraftStatus | null
+  changesetComment?: string | null
+  changesetSource?: string | null
 }
 
 export interface SetTargetRequest {

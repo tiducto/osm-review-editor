@@ -120,12 +120,21 @@ class DraftRepo(private val db: Db) {
             ?.let { draftRow(it[DraftsTable.id]) }
     }
 
-    suspend fun updateDraft(id: UUID, title: String? = null, description: String? = null, status: DraftStatus? = null): Draft? =
+    suspend fun updateDraft(
+        id: UUID,
+        title: String? = null,
+        description: String? = null,
+        status: DraftStatus? = null,
+        changesetComment: String? = null,
+        changesetSource: String? = null,
+    ): Draft? =
         db.tx {
             DraftsTable.update({ DraftsTable.id eq id }) {
                 title?.let { v -> it[DraftsTable.title] = v }
                 description?.let { v -> it[DraftsTable.description] = v }
                 status?.let { v -> it[DraftsTable.status] = v.wire }
+                changesetComment?.let { v -> it[DraftsTable.changesetComment] = v.trim().ifBlank { null } }
+                changesetSource?.let { v -> it[DraftsTable.changesetSource] = v.trim().ifBlank { null } }
                 it[updatedAt] = now()
             }
             draftRow(id)

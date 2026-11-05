@@ -223,6 +223,8 @@ data class UpdateDraftRequest(
     val title: String? = null,
     val description: String? = null,
     val status: DraftStatus? = null,
+    val changesetComment: String? = null,
+    val changesetSource: String? = null,
 )
 
 @Serializable
