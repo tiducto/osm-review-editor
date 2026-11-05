@@ -16,6 +16,7 @@ export interface EditIssueFix {
   id: string
   title: string
   disabled: string | null
+  ignore?: boolean
 }
 
 export interface EditIssue {
@@ -118,7 +119,7 @@ export function runMapCssChecks(adapter: IdAdapter, sheets: CheckSheet[], ids: s
         const tagEdit = isEmptyTagEdit(r.fix) ? null : r.fix
         if (tagEdit) fixes.push({ id: 'tags', title: t('validation.fix', { edit: describeTagEdit(tagEdit) }), disabled: null })
         if (r.deleteObject) fixes.push({ id: 'delete', title: t('validation.deleteFeature'), disabled: null })
-        if (r.severity !== 'error') fixes.push({ id: 'ignore', title: t('validation.ignore'), disabled: null })
+        if (r.severity !== 'error') fixes.push({ id: 'ignore', title: t('validation.ignore'), disabled: null, ignore: true })
         out.push({
           id: issueId,
           source: 'mapcss',

@@ -81,28 +81,59 @@ const errors = computed(() => store.diagnostics.filter((d) => d.severity === 'er
 const warnings = computed(() => store.diagnostics.filter((d) => d.severity === 'warning').length)
 
 const style = HighlightStyle.define([
-  { tag: tags.comment, color: '#8a8f98', fontStyle: 'italic' },
-  { tag: tags.string, color: '#0f7b3e' },
-  { tag: [tags.number, tags.bool], color: '#b45309' },
-  { tag: tags.color, color: '#be185d' },
-  { tag: tags.keyword, color: '#7c3aed', fontWeight: '600' },
-  { tag: tags.typeName, color: '#1d4ed8', fontWeight: '600' },
-  { tag: tags.className, color: '#0e7490' },
-  { tag: tags.labelName, color: '#0e7490' },
-  { tag: tags.attributeName, color: '#9a3412' },
-  { tag: tags.propertyName, color: '#1e40af' },
-  { tag: tags.macroName, color: '#7c3aed' },
-  { tag: tags.regexp, color: '#c2410c' },
-  { tag: tags.operator, color: '#475569' },
-  { tag: tags.atom, color: '#0f766e' },
+  { tag: tags.comment, color: '#888888', fontStyle: 'italic' },
+  { tag: tags.string, color: '#008800' },
+  { tag: [tags.number, tags.bool], color: '#b15500' },
+  { tag: tags.color, color: '#b15500' },
+  { tag: tags.keyword, color: '#597be7', fontWeight: 'bold' },
+  { tag: tags.typeName, color: '#597be7', fontWeight: 'bold' },
+  { tag: tags.className, color: '#0055bb' },
+  { tag: tags.labelName, color: '#0055bb' },
+  { tag: tags.attributeName, color: '#333333', fontWeight: 'bold' },
+  { tag: tags.propertyName, color: '#0055bb' },
+  { tag: tags.macroName, color: '#7092ff' },
+  { tag: tags.regexp, color: '#b15500' },
+  { tag: tags.operator, color: '#666666' },
+  { tag: tags.atom, color: '#0055bb' },
 ])
 
+const lintDot = (c: string) => `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3Ccircle cx='5' cy='5' r='4' fill='${encodeURIComponent(c)}'/%3E%3C/svg%3E")`
+const lintWave = (c: string) =>
+  `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='3'%3E%3Cpath d='m0 3 l2 -2 l1 0 l2 2 l1 0' stroke='${encodeURIComponent(c)}' fill='none' stroke-width='.9'/%3E%3C/svg%3E")`
+
 const theme = EditorView.theme({
-  '&': { height: '100%', fontSize: '12.5px', backgroundColor: '#ffffff' },
-  '.cm-scroller': { fontFamily: '"JetBrains Mono Variable", ui-monospace, monospace', lineHeight: '1.55' },
-  '.cm-gutters': { backgroundColor: '#f8fafc', borderRight: '1px solid #e5e7eb', color: '#94a3b8' },
-  '.cm-activeLine': { backgroundColor: '#f1f5f9' },
-  '.cm-activeLineGutter': { backgroundColor: '#e2e8f0' },
+  '&': { height: '100%', fontSize: '12px', backgroundColor: '#ffffff', color: '#333333' },
+  '.cm-scroller': { fontFamily: "ui-monospace, 'SF Mono', Menlo, Consolas, monospace", lineHeight: '1.6' },
+  '.cm-content': { caretColor: '#333333' },
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#333333' },
+  '.cm-gutters': { backgroundColor: '#f6f6f6', borderRight: '1px solid #cccccc', color: '#888888' },
+  '.cm-activeLine': { backgroundColor: '#f6f6f6' },
+  '.cm-activeLineGutter': { backgroundColor: '#ececec', color: '#333333' },
+  '.cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-content ::selection': {
+    backgroundColor: '#e8ebff',
+  },
+  '.cm-selectionMatch': { backgroundColor: '#e8ebff' },
+  '&.cm-focused .cm-matchingBracket': { backgroundColor: '#e8ebff', outline: '1px solid #7092ff' },
+  '.cm-searchMatch': { backgroundColor: '#ffffcc', outline: '1px solid #ff9900' },
+  '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: '#e8ebff' },
+  '.cm-foldPlaceholder': { backgroundColor: '#ececec', border: '1px solid #cccccc', color: '#666666', borderRadius: '3px' },
+  '.cm-panels': { backgroundColor: '#f6f6f6', color: '#333333' },
+  '.cm-panels.cm-panels-top': { borderBottom: '1px solid #cccccc' },
+  '.cm-panels.cm-panels-bottom': { borderTop: '1px solid #cccccc' },
+  '.cm-textfield': { border: '1px solid #cccccc', borderRadius: '4px', backgroundColor: '#ffffff', fontSize: '12px' },
+  '.cm-button': { backgroundImage: 'none', backgroundColor: '#ffffff', border: '1px solid #cccccc', borderRadius: '4px', fontWeight: 'bold' },
+  '.cm-tooltip': { border: '1px solid #cccccc', backgroundColor: '#ffffff', borderRadius: '4px', boxShadow: '0 0 4px rgb(0 0 0 / 0.18)' },
+  '.cm-tooltip-autocomplete > ul > li[aria-selected]': { backgroundColor: '#7092ff', color: '#ffffff' },
+  '.cm-diagnostic': { fontFamily: 'inherit' },
+  '.cm-diagnostic-error': { borderLeft: '4px solid #ff0000' },
+  '.cm-diagnostic-warning': { borderLeft: '4px solid #ff9900' },
+  '.cm-diagnostic-info': { borderLeft: '4px solid #0055bb' },
+  '.cm-lintRange-error': { backgroundImage: lintWave('#ff0000') },
+  '.cm-lintRange-warning': { backgroundImage: lintWave('#ff9900') },
+  '.cm-lintRange-info': { backgroundImage: lintWave('#0055bb') },
+  '.cm-lint-marker-error': { content: lintDot('#ff0000') },
+  '.cm-lint-marker-warning': { content: lintDot('#ff9900') },
+  '.cm-lint-marker-info': { content: lintDot('#0055bb') },
   '&.cm-focused': { outline: 'none' },
 })
 
@@ -253,10 +284,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if="file" class="flex h-full min-h-0 flex-col" data-testid="rule-editor">
-    <div class="flex h-10 shrink-0 items-center gap-2 border-b border-line px-2">
-      <button class="btn btn-ghost btn-icon btn-sm w-7" :title="t('ruleEditor.back')" @click="store.close()"><Icon name="chevron-left" :size="14" /></button>
+    <div class="flex h-10 shrink-0 items-center gap-2 border-b border-line-strong bg-surface px-2">
+      <button class="btn btn-ghost btn-icon btn-sm w-7" :title="t('ruleEditor.back')" @click="store.close()"><Icon name="chevron-left" :size="16" /></button>
       <div class="min-w-0 flex-1">
-        <div class="truncate font-mono text-[12px] font-medium" :title="file.path">
+        <div class="truncate font-mono text-[12px] font-bold" :title="file.path">
           {{ file.path }}<span v-if="store.dirty" class="text-changed"> ●</span>
         </div>
       </div>
@@ -266,7 +297,7 @@ onBeforeUnmount(() => {
       <span v-else-if="!store.validating" class="chip bg-added-soft text-[11px] text-added">{{ t('ruleEditor.valid') }}</span>
     </div>
 
-    <div class="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-2 py-1.5">
+    <div class="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line-strong bg-surface-2 px-2 py-1.5">
       <template v-if="file.readOnly">
         <span class="chip bg-surface-3 text-[11px] text-fg-2">
           <Icon :name="origin?.builtIn ? 'database' : 'remote'" :size="11" />
@@ -284,34 +315,35 @@ onBeforeUnmount(() => {
         <button class="btn btn-ghost btn-sm" :title="t('ruleEditor.deleteTitle')" @click="confirmDelete = true"><Icon name="x" :size="12" /> {{ t('common.delete') }}</button>
       </template>
       <template v-if="isHighlight">
-        <button class="btn btn-sm ml-auto" :class="hl.isActive(file.path) && 'bg-accent-soft text-accent'" @click="toggleOnMap">
+        <button class="btn btn-sm ml-auto" :class="hl.isActive(file.path) && 'border-accent bg-accent text-white hover:bg-accent-strong'" @click="toggleOnMap">
           <Icon :name="hl.isActive(file.path) ? 'eye' : 'eye-off'" :size="12" /> {{ hl.isActive(file.path) ? t('ruleEditor.onMap') : t('ruleEditor.showOnMap') }}
         </button>
-        <label v-if="!file.readOnly" class="flex items-center gap-1 text-[11.5px] text-fg-3" :title="t('ruleEditor.livePreviewTitle')">
+        <label v-if="!file.readOnly" class="flex items-center gap-1 text-[11.5px] font-bold text-fg-2" :title="t('ruleEditor.livePreviewTitle')">
           <input v-model="livePreview" type="checkbox" class="accent-[var(--accent)]" /> {{ t('ruleEditor.live') }}
         </label>
       </template>
     </div>
 
-    <div v-if="store.changedOnDisk" class="flex shrink-0 items-center gap-2 border-b border-changed/30 bg-changed-soft px-3 py-1.5 text-[12px] text-changed">
-      <Icon name="alert" :size="13" /> {{ t('ruleEditor.changedOnDisk') }}
+    <div v-if="store.changedOnDisk" class="flex shrink-0 items-center gap-2 border-b border-line-strong border-l-4 border-l-warning bg-changed-soft px-3 py-1.5 text-[12px] text-fg">
+      <Icon name="alert" :size="14" class="text-warning" /> {{ t('ruleEditor.changedOnDisk') }}
       <button class="btn btn-sm ml-auto" @click="store.openFile(file.path)">{{ t('common.reload') }}</button>
       <button class="btn btn-ghost btn-sm" @click="store.changedOnDisk = false">{{ t('ruleEditor.keepMine') }}</button>
     </div>
 
     <div ref="host" class="min-h-0 flex-1 overflow-hidden" />
 
-    <div class="scroll-thin max-h-[30%] shrink-0 overflow-y-auto border-t border-line" data-testid="rule-diagnostics">
+    <div class="scroll-thin max-h-[30%] shrink-0 overflow-y-auto border-t border-line-strong bg-surface-2" data-testid="rule-diagnostics">
       <div v-if="!store.diagnostics.length" class="px-3 py-2 text-[12px] text-fg-3">{{ t('ruleEditor.noProblems') }}</div>
       <button
         v-for="(d, i) in store.diagnostics"
         :key="i"
-        class="flex w-full items-start gap-2 px-3 py-1 text-left text-[12px] hover:bg-surface-2"
+        class="row-btn items-start border-b border-l-4 border-b-line bg-surface px-3 py-1.5 text-[12px]"
+        :class="d.severity === 'error' ? 'border-l-error' : d.severity === 'warning' ? 'border-l-warning' : 'border-l-info'"
         @click="jump(d)"
       >
-        <span class="mt-1.5 size-2 shrink-0 rounded-full" :class="d.severity === 'error' ? 'bg-error' : d.severity === 'warning' ? 'bg-warning' : 'bg-info'" />
+        <span class="mt-1 size-2 shrink-0 rounded-full" :class="d.severity === 'error' ? 'bg-error' : d.severity === 'warning' ? 'bg-warning' : 'bg-info'" />
         <span class="shrink-0 font-mono text-[11px] text-fg-3">{{ d.line }}:{{ d.column }}</span>
-        <span class="min-w-0 flex-1 text-fg-2">{{ d.message }}</span>
+        <span class="min-w-0 flex-1 text-fg">{{ d.message }}</span>
       </button>
     </div>
 
@@ -320,10 +352,10 @@ onBeforeUnmount(() => {
     </ConfirmDialog>
 
     <Modal v-if="store.conflict" :title="t('ruleEditor.conflictTitle')" width="820px" @close="store.conflict = null">
-      <div class="px-5 pt-3 pb-2 text-[12.5px] text-fg-2">
-        {{ t('ruleEditor.conflictBefore') }} <span class="font-mono">{{ file.path }}</span>{{ t('ruleEditor.conflictAfter') }}
+      <div class="px-5 pt-3 pb-2 text-[12px] text-fg-2">
+        {{ t('ruleEditor.conflictBefore') }} <span class="font-mono font-bold text-fg">{{ file.path }}</span>{{ t('ruleEditor.conflictAfter') }}
       </div>
-      <div ref="mergeHost" class="mx-5 mb-4 h-[50vh] overflow-hidden rounded-md border border-line" data-testid="conflict-diff" />
+      <div ref="mergeHost" class="mx-5 mb-4 h-[50vh] overflow-hidden rounded-md border border-line-strong" data-testid="conflict-diff" />
       <template #footer>
         <button class="btn" @click="store.takeTheirs()">{{ t('ruleEditor.takeTheirs') }}</button>
         <button class="btn btn-primary ml-auto" @click="store.keepMine()">{{ t('ruleEditor.overwrite') }}</button>

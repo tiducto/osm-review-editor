@@ -316,6 +316,7 @@ export interface IdIssueFix {
   id: string
   title: string
   disabled: string | null
+  ignore?: boolean
 }
 
 export interface IdIssue {
@@ -470,7 +471,7 @@ export class IdAdapter {
         message: message || issue.type,
         entityIds: [...(issue.entityIds ?? [])],
         loc,
-        fixes: this.issueFixes(issue).map((f: any, i: number) => ({ id: String(i), title: idText(f.title), disabled: f.disabledReason ? String(f.disabledReason) : null })),
+        fixes: this.issueFixes(issue).map((f: any, i: number) => ({ id: String(i), title: idText(f.title), disabled: f.disabledReason ? String(f.disabledReason) : null, ignore: f.icon === 'iD-icon-close' })),
       })
     }
     return out

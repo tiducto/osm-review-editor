@@ -23,19 +23,19 @@ function label(k: string) {
 </script>
 
 <template>
-  <section v-if="store.smartRun" class="space-y-2.5 border-b border-claude/40 bg-claude-soft/40 px-4 py-3" data-testid="smart-panel">
+  <section v-if="store.smartRun" class="space-y-2.5 border-b border-line-strong border-l-4 border-l-claude bg-surface px-4 py-3" data-testid="smart-panel">
     <div class="flex items-center gap-2">
       <Icon name="sparkle" :size="14" class="text-claude" />
       <div class="min-w-0 flex-1">
-        <div class="text-[10.5px] font-semibold tracking-wide text-fg-3 uppercase">{{ t('smart.title') }}</div>
-        <div class="truncate font-semibold">{{ store.smartRun.preset.name }}</div>
+        <div class="text-[11px] font-bold text-claude">{{ t('smart.title') }}</div>
+        <div class="truncate text-[13px] font-bold">{{ store.smartRun.preset.name }}</div>
       </div>
-      <span class="text-[11px] text-fg-3">{{ tn('smart.steps', store.smartRun.preset.steps.length) }}</span>
+      <span class="chip bg-surface-3 text-fg-2">{{ tn('smart.steps', store.smartRun.preset.steps.length) }}</span>
     </div>
     <p v-if="store.smartRun.preset.description" class="text-[12px] text-fg-2">{{ store.smartRun.preset.description }}</p>
     <div v-if="Object.keys(store.smartRun.preset.params).length" class="grid grid-cols-2 gap-2">
       <label v-for="(p, k) in store.smartRun.preset.params" :key="k" class="flex min-w-0 flex-col gap-1">
-        <span class="text-[11.5px] font-medium text-fg-2">{{ label(String(k)) }}</span>
+        <span class="text-[12px] font-bold text-fg">{{ label(String(k)) }}</span>
         <select v-if="p.type === 'combo'" v-model="params[k]" class="input" :data-param="k">
           <option v-for="o in p.options" :key="o" :value="o">{{ o }}</option>
         </select>
@@ -47,12 +47,12 @@ function label(k: string) {
       </label>
     </div>
     <div v-if="store.smartRun.error" class="rounded-md border border-removed/40 bg-removed-soft px-2.5 py-2 text-[12px] text-removed" data-testid="smart-error">
-      <div class="font-semibold">{{ t('smart.failed') }}</div>
+      <div class="font-bold">{{ t('smart.failed') }}</div>
       {{ store.smartRun.error }}
     </div>
     <div v-if="store.smartRun.preview" class="space-y-1 text-[12px]" data-testid="smart-preview">
       <p class="text-fg-2">{{ t('smart.previewHint') }}</p>
-      <ul class="list-disc space-y-0.5 pl-4 font-mono text-[11px] text-fg-2">
+      <ul class="card list-disc space-y-0.5 py-1.5 pr-2.5 pl-6 font-mono text-[11px] text-fg-2">
         <li v-for="(s, i) in store.smartRun.summary" :key="i">{{ s }}</li>
       </ul>
     </div>

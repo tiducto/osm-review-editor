@@ -7,6 +7,7 @@ import { PresetCatalog, type RawSchema, type UserPresetData } from '@/presets/ca
 import { locale as appLocale, setLocale, translate, type MessageKey } from '@/i18n'
 import type { Geometry, Locale } from '@/presets/types'
 import { useAppStore } from './app'
+import { setPresetNamer } from '@/lib/osm'
 
 const RECENT_KEY = 'ore.recentPresets'
 const MAX_RECENT = 12
@@ -73,6 +74,23 @@ export const usePresetsStore = defineStore('presets', () => {
     const r = raw.value
     if (!r) return null
     return new PresetCatalog(r, toUserData(user.value, locale.value), locale.value)
+  })
+
+  setPresetNamer((ref, tags) => {
+    const cat = catalog.value
+    if (!cat) return null
+    let p
+    if (ref.type === 'node') {
+      const point = cat.match(tags, 'point')
+      const vertex = cat.match(tags, 'vertex')
+      p = cat.scoreOf(vertex, tags) > cat.scoreOf(point, tags) ? vertex : point
+    } else if (ref.type === 'relation') {
+      p = cat.match(tags, tags.type === 'multipolygon' ? 'area' : 'relation')
+    } else {
+      p = cat.match(tags, cat.isArea(tags) ? 'area' : 'line')
+      if (cat.isFallback(p)) p = cat.match(tags, 'area')
+    }
+    return cat.isFallback(p) ? null : p.name
   })
 
   watch(locale, () => {

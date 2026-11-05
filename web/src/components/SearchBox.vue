@@ -109,12 +109,12 @@ defineExpose({ focus: () => input.value?.focus() })
 <template>
   <div class="relative w-full max-w-[440px] min-w-[110px] flex-1 sm:min-w-[180px]">
     <div class="relative">
-      <Icon name="search" :size="14" class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-fg-3" />
+      <Icon name="search" :size="16" class="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-fg-2" />
       <input
         id="search-input"
         ref="input"
         v-model="q"
-        class="input h-8 pr-16 pl-8"
+        class="input h-8 border-transparent pr-16 pl-8"
         :placeholder="t('search.placeholder')"
         autocomplete="off"
         spellcheck="false"
@@ -132,7 +132,7 @@ defineExpose({ focus: () => input.value?.focus() })
     <Transition name="pop">
       <div
         v-if="showPanel"
-        class="absolute top-full right-0 left-0 z-40 mt-1.5 overflow-hidden rounded-lg border border-line bg-surface shadow-pop max-sm:fixed max-sm:inset-x-2 max-sm:top-12"
+        class="absolute top-full right-0 left-0 z-40 mt-1.5 overflow-hidden rounded-md border border-line-strong bg-surface text-fg shadow-pop max-sm:fixed max-sm:inset-x-2 max-sm:top-12"
         @mousedown.prevent
       >
         <div v-if="error" class="flex items-center gap-2 px-3 py-2.5 text-[12.5px] text-error"><Icon name="alert" :size="14" />{{ error }}</div>
@@ -141,13 +141,13 @@ defineExpose({ focus: () => input.value?.focus() })
           <li v-for="(h, i) in hits" :key="i">
             <button
               class="flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
-              :class="i === active ? 'bg-accent-soft' : 'hover:bg-surface-2'"
+              :class="i === active ? 'bg-surface-3' : 'hover:bg-surface-3'"
               @mouseenter="active = i"
               @click="pick(h)"
             >
               <Icon :name="kindIcon[h.kind]" :size="14" class="text-fg-3" />
               <span class="min-w-0 flex-1">
-                <span class="block truncate font-medium">{{ h.label }}</span>
+                <span class="block truncate font-bold">{{ h.label }}</span>
                 <span v-if="h.detail || h.ref" class="block truncate text-[11.5px] text-fg-3">
                   <span v-if="h.ref" class="font-mono">{{ refString(h.ref) }}</span>
                   <span v-if="h.ref && h.detail"> · </span>{{ h.detail }}
@@ -158,7 +158,7 @@ defineExpose({ focus: () => input.value?.focus() })
             </button>
           </li>
         </ul>
-        <div class="border-t border-line bg-surface-2 px-3 py-1.5 text-[11px] text-fg-3">
+        <div class="border-t border-line-strong bg-surface-2 px-3 py-1.5 text-[11px] text-fg-2">
           <span class="kbd">↑</span> <span class="kbd">↓</span> {{ t('search.toMove') }} · <span class="kbd">↵</span> {{ t('search.toGo') }}
           <template v-if="rules.scope?.area"> · {{ t('search.queriesIn', { area: rules.scope.area }) }}</template>
         </div>
@@ -167,7 +167,7 @@ defineExpose({ focus: () => input.value?.focus() })
 
     <button
       v-if="mapStore.highlighted.length"
-      class="chip absolute top-1/2 -right-2 translate-x-full -translate-y-1/2 bg-accent-soft text-accent"
+      class="chip absolute top-1/2 -right-2 translate-x-full -translate-y-1/2 bg-accent text-white"
       :title="t('search.clearHighlight')"
       @click="clearHighlight"
     >

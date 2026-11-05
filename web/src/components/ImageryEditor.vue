@@ -158,28 +158,28 @@ const textFields: { f: Field; label: MessageKey; placeholder: MessageKey; mono?:
     <div v-if="loading" class="flex items-center gap-2 text-fg-3"><Spinner :size="12" /> {{ t('imagery.loading') }}</div>
     <div v-else-if="loadError" class="flex items-center gap-2 text-error"><Icon name="alert" :size="14" /> {{ loadError }}</div>
     <template v-else>
-      <div v-if="generalErrors.length" class="rounded-md border border-error/40 bg-removed-soft px-3 py-2 text-[12px] text-removed">
+      <div v-if="generalErrors.length" class="rounded-md border border-line-strong border-l-4 border-l-error bg-removed-soft px-3 py-2 text-[12px] text-fg">
         <div v-for="g in generalErrors" :key="g">{{ g }}</div>
       </div>
-      <div class="overflow-hidden rounded-md border border-line">
-        <div v-for="(r, i) in rows" :key="r.uid" class="border-b border-line last:border-b-0" :data-row="i">
-          <div class="flex items-center gap-2 px-3 py-1.5">
+      <div class="card overflow-hidden">
+        <div v-for="(r, i) in rows" :key="r.uid" class="border-b border-line-strong last:border-b-0" :data-row="i">
+          <div class="flex items-center gap-2 px-3 py-1.5 hover:bg-surface-3" :class="expanded === r.uid && 'bg-surface-2'">
             <button class="flex min-w-0 flex-1 items-center gap-2 text-left" @click="expanded = expanded === r.uid ? null : r.uid">
-              <Icon :name="expanded === r.uid ? 'chevron-down' : 'chevron-right'" :size="13" class="shrink-0 text-fg-3" />
-              <span class="truncate" :class="!r.src.name && 'text-fg-3 italic'">{{ r.src.name || t('imagery.newSource') }}</span>
-              <span class="chip shrink-0 bg-surface-3 font-mono text-fg-3 uppercase">{{ r.src.type || '?' }}</span>
+              <Icon :name="expanded === r.uid ? 'chevron-down' : 'chevron-right'" :size="14" class="shrink-0 text-fg-3" />
+              <span class="truncate font-bold" :class="!r.src.name && 'font-normal text-fg-3 italic'">{{ r.src.name || t('imagery.newSource') }}</span>
+              <span class="chip shrink-0 bg-surface-3 text-fg-2 uppercase">{{ r.src.type || '?' }}</span>
               <span v-if="rowHasErrors(i)" class="flex shrink-0 items-center gap-1 text-[11px] text-error"><Icon name="alert" :size="12" /> {{ t('imagery.fixErrors') }}</span>
             </button>
             <button class="btn btn-ghost btn-icon btn-sm hover:text-removed" :title="t('imagery.remove', { name: r.src.name || t('imagery.source') })" @click="remove(i)">
-              <Icon name="x" :size="13" />
+              <Icon name="x" :size="14" />
             </button>
           </div>
-          <div v-if="expanded === r.uid" class="grid grid-cols-1 gap-x-3 gap-y-2 border-t border-line bg-surface-2 px-3 py-2.5 sm:grid-cols-2">
+          <div v-if="expanded === r.uid" class="grid grid-cols-1 gap-x-3 gap-y-2.5 border-t border-line bg-surface-2 px-3 py-2.5 sm:grid-cols-2">
             <label v-for="field in textFields" :key="field.f" class="block text-[11.5px]" :class="field.wide && 'sm:col-span-2'">
-              <span class="text-fg-3">{{ t(field.label) }}</span>
+              <span class="field-label">{{ t(field.label) }}</span>
               <input
                 v-model="(r.src[field.f] as string)"
-                class="input mt-0.5"
+                class="input field-body block rounded-t-none"
                 :class="[field.mono && 'font-mono text-[11.5px]', errs(i, field.f).length > 0 && 'border-error']"
                 :placeholder="t(field.placeholder)"
                 spellcheck="false"
@@ -189,21 +189,21 @@ const textFields: { f: Field; label: MessageKey; placeholder: MessageKey; mono?:
             </label>
             <div class="grid grid-cols-2 gap-3">
               <label class="block text-[11.5px]">
-                <span class="text-fg-3">{{ t('imagery.type') }}</span>
-                <select v-model="r.src.type" class="input mt-0.5" :class="errs(i, 'type').length > 0 && 'border-error'" data-field="type">
+                <span class="field-label">{{ t('imagery.type') }}</span>
+                <select v-model="r.src.type" class="input field-body block rounded-t-none" :class="errs(i, 'type').length > 0 && 'border-error'" data-field="type">
                   <option value="tms">TMS</option>
                   <option value="wms">WMS</option>
                 </select>
                 <span v-for="m in errs(i, 'type')" :key="m" class="mt-0.5 block text-error">{{ m }}</span>
               </label>
               <label class="block text-[11.5px]">
-                <span class="text-fg-3">{{ t('imagery.maxZoom') }}</span>
+                <span class="field-label">{{ t('imagery.maxZoom') }}</span>
                 <input
                   v-model.number="r.src.maxZoom"
                   type="number"
                   min="1"
                   max="24"
-                  class="input mt-0.5"
+                  class="input field-body block rounded-t-none"
                   :class="errs(i, 'maxZoom').length > 0 && 'border-error'"
                   data-field="maxZoom"
                 />

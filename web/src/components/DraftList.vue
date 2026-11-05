@@ -36,13 +36,13 @@ function isCurrent(d: Draft) {
 
 <template>
   <div class="flex h-full flex-col">
-    <div class="flex shrink-0 items-center gap-2 px-3 py-1.5">
-      <div class="flex rounded-md bg-surface-3 p-0.5">
+    <div class="flex shrink-0 items-center gap-2 border-b border-line-strong bg-surface px-3 py-1.5">
+      <div class="seg">
         <button
           v-for="s in statuses"
           :key="s.id"
-          class="rounded px-2 py-0.5 text-[11.5px] font-medium transition-colors"
-          :class="drafts.statusFilter === s.id ? 'bg-surface text-fg shadow-sm' : 'text-fg-3 hover:text-fg-2'"
+          class="seg-btn"
+          :class="drafts.statusFilter === s.id && 'active'"
           @click="drafts.statusFilter = s.id"
         >
           {{ t(s.label) }}
@@ -56,14 +56,14 @@ function isCurrent(d: Draft) {
     </div>
 
     <div class="scroll-thin min-h-0 flex-1 overflow-auto">
-      <table class="w-full border-collapse text-[12.5px]">
-        <thead class="sticky top-0 z-[1] bg-surface text-left text-[11px] text-fg-3">
-          <tr class="border-b border-line">
-            <th class="w-[38%] px-3 py-1 font-medium">{{ t('drafts.col.draft') }}</th>
-            <th class="px-2 py-1 font-medium">{{ t('drafts.col.author') }}</th>
-            <th class="px-2 py-1 font-medium">{{ t('drafts.col.status') }}</th>
-            <th class="px-2 py-1 font-medium">{{ t('drafts.col.changes') }}</th>
-            <th class="px-2 py-1 font-medium">{{ t('drafts.col.updated') }}</th>
+      <table class="w-full border-collapse text-[12px]">
+        <thead class="sticky top-0 z-[1] bg-surface-2 text-left text-[11.5px] text-fg-2">
+          <tr class="border-b border-line-strong">
+            <th class="w-[38%] px-3 py-1 font-bold">{{ t('drafts.col.draft') }}</th>
+            <th class="px-2 py-1 font-bold">{{ t('drafts.col.author') }}</th>
+            <th class="px-2 py-1 font-bold">{{ t('drafts.col.status') }}</th>
+            <th class="px-2 py-1 font-bold">{{ t('drafts.col.changes') }}</th>
+            <th class="px-2 py-1 font-bold">{{ t('drafts.col.updated') }}</th>
             <th class="w-1 px-3 py-1" />
           </tr>
         </thead>
@@ -72,11 +72,11 @@ function isCurrent(d: Draft) {
             v-for="d in drafts.visibleDrafts"
             :key="d.id"
             class="group cursor-pointer border-b border-line"
-            :class="isCurrent(d) ? 'bg-accent-soft' : 'hover:bg-surface-2'"
+            :class="isCurrent(d) ? 'bg-accent-soft' : 'hover:bg-surface-3'"
             @click="drafts.open(d.id)"
           >
             <td class="max-w-0 px-3 py-1.5">
-              <div class="truncate font-medium" :title="d.title">{{ d.title }}</div>
+              <div class="truncate font-bold" :title="d.title">{{ d.title }}</div>
               <div v-if="d.description" class="truncate text-[11.5px] text-fg-3" :title="d.description">{{ d.description }}</div>
             </td>
             <td class="px-2 py-1.5"><AuthorBadge :author="d.author" /></td>

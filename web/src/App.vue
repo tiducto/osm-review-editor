@@ -22,6 +22,7 @@ import Icon from '@/components/Icon.vue'
 import EditInspector from '@/components/editor/EditInspector.vue'
 import EditDialogs from '@/components/editor/EditDialogs.vue'
 import { useEditorStore } from '@/stores/editor'
+import { usePresetsStore } from '@/stores/presets'
 
 const app = useAppStore()
 const mapStore = useMapStore()
@@ -107,6 +108,7 @@ onMounted(async () => {
   syncInset()
   stopEvents = connectEvents()
   await app.init()
+  void usePresetsStore().ensure().catch(() => {})
   await rules.load()
   void drafts.loadDrafts()
   const linked = new URLSearchParams(location.search).get('draft')

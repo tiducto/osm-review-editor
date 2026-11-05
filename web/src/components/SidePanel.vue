@@ -60,23 +60,31 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex h-full flex-col">
+  <div class="flex h-full flex-col bg-surface-2">
     <HighlightMapLayers />
     <ScanMapLayers />
-    <nav class="flex h-10 shrink-0 items-stretch gap-0.5 border-b border-line px-1.5" role="tablist">
+    <nav class="flex shrink-0 items-center border-b border-line-strong bg-surface p-2" role="tablist">
       <button
         v-for="tab in tabs"
         :key="tab.id"
         role="tab"
-        class="flex items-center gap-1 border-b-2 px-1.5 text-[12.5px] font-medium transition-colors"
-        :class="panel.tab === tab.id ? 'border-accent text-fg' : 'border-transparent text-fg-3 hover:text-fg-2'"
+        class="-ml-px flex h-8 min-w-0 flex-auto items-center justify-center gap-1 border border-line-strong px-1 text-[11.5px] font-bold transition-colors first:ml-0 first:rounded-l-md last:rounded-r-md"
+        :class="panel.tab === tab.id ? 'relative z-10 border-accent bg-accent text-white' : 'bg-surface text-fg hover:bg-surface-3'"
         :aria-selected="panel.tab === tab.id"
         :data-testid="`tab-${tab.id}`"
         @click="panel.tab = tab.id"
       >
-        <Icon :name="tab.icon" :size="13" /> {{ t(tab.label) }}
-        <span v-if="tab.id === 'map' && hl.active.length" class="rounded-full bg-accent px-1.5 text-[10px] text-white">{{ hl.active.length }}</span>
-        <span v-if="tab.id === 'validate' && scans.report" class="rounded-full bg-surface-3 px-1.5 text-[10px] text-fg-2">{{ scans.report.scan.issueCount }}</span>
+        <Icon :name="tab.icon" :size="13" class="hidden shrink-0" /> <span class="truncate">{{ t(tab.label) }}</span>
+        <span
+          v-if="tab.id === 'map' && hl.active.length"
+          class="rounded-sm px-1 text-[10px] leading-4"
+          :class="panel.tab === tab.id ? 'bg-white text-accent' : 'bg-accent text-white'"
+        >{{ hl.active.length }}</span>
+        <span
+          v-if="tab.id === 'validate' && scans.report"
+          class="rounded-sm px-1 text-[10px] leading-4"
+          :class="panel.tab === tab.id ? 'bg-white/90 text-fg' : 'bg-surface-3 text-fg-2'"
+        >{{ scans.report.scan.issueCount }}</span>
       </button>
     </nav>
     <div class="min-h-0 flex-1">

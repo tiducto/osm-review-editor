@@ -72,18 +72,18 @@ const shortcuts: [string, MessageKey][] = [
 
 <template>
   <Modal :title="t('settings.title')" width="640px" @close="app.settingsOpen = false">
-    <div class="divide-y divide-line">
+    <div class="divide-y divide-line-strong bg-surface-2">
       <section class="space-y-2 px-5 py-4">
         <h3 class="section-title">{{ t('settings.account') }}</h3>
         <div class="flex items-center gap-3">
-          <span class="grid size-8 place-items-center rounded-full bg-surface-3 text-fg-2"><Icon name="user" /></span>
+          <span class="grid size-8 place-items-center rounded-full border border-line-strong bg-surface text-fg-2"><Icon name="user" /></span>
           <div class="min-w-0 flex-1">
             <template v-if="app.account?.connected">
-              <div class="font-medium">{{ app.account.displayName }}</div>
+              <div class="font-bold">{{ app.account.displayName }}</div>
               <div class="text-[12px] text-fg-3">{{ app.target === 'prod' ? t('settings.connectedProd') : t('settings.connectedDev') }}</div>
             </template>
             <template v-else>
-              <div class="font-medium">{{ t('settings.notConnected') }}</div>
+              <div class="font-bold">{{ t('settings.notConnected') }}</div>
               <div class="text-[12px] text-fg-3">
                 {{ app.account?.configured === false ? t('settings.oauthMissing') : t('settings.connectHint') }}
               </div>
@@ -96,12 +96,11 @@ const shortcuts: [string, MessageKey][] = [
 
       <section class="flex items-center gap-3 px-5 py-4">
         <h3 class="section-title">{{ t('common.language') }}</h3>
-        <div class="ml-auto flex overflow-hidden rounded-md border border-line text-[12px] font-medium" role="group" :aria-label="t('common.language')" data-testid="settings-locale">
+        <div class="seg ml-auto" role="group" :aria-label="t('common.language')" data-testid="settings-locale">
           <button
             v-for="l in LOCALES"
             :key="l"
-            class="h-7 px-3 transition-colors"
-            :class="locale === l ? 'bg-accent text-white' : 'text-fg-2 hover:bg-surface-2'"
+            class="seg-btn h-7 px-3"
             :aria-pressed="locale === l"
             :data-testid="`settings-locale-${l}`"
             @click="setLocale(l)"
@@ -115,19 +114,19 @@ const shortcuts: [string, MessageKey][] = [
         <h3 class="section-title">{{ t('settings.target') }}</h3>
         <div class="grid grid-cols-2 gap-2">
           <button
-            class="rounded-lg border p-3 text-left transition-colors"
-            :class="app.target === 'dev' ? 'border-accent bg-accent-soft' : 'border-line hover:bg-surface-2'"
+            class="rounded-md border p-3 text-left transition-colors"
+            :class="app.target === 'dev' ? 'border-accent bg-accent-soft shadow-[inset_0_0_0_1px_var(--accent)]' : 'border-line-strong bg-surface hover:bg-surface-3'"
             @click="pickTarget('dev')"
           >
-            <div class="font-medium">{{ t('settings.dev') }}</div>
+            <div class="font-bold">{{ t('settings.dev') }}</div>
             <div class="text-[12px] text-fg-3">{{ t('settings.devHint') }}</div>
           </button>
           <button
-            class="rounded-lg border p-3 text-left transition-colors"
-            :class="app.target === 'prod' ? 'border-prod bg-prod-soft' : 'border-line hover:bg-surface-2'"
+            class="rounded-md border p-3 text-left transition-colors"
+            :class="app.target === 'prod' ? 'border-prod bg-prod-soft shadow-[inset_0_0_0_1px_var(--prod)]' : 'border-line-strong bg-surface hover:bg-surface-3'"
             @click="pickTarget('prod')"
           >
-            <div class="flex items-center gap-1.5 font-medium" :class="app.target === 'prod' && 'text-prod'">
+            <div class="flex items-center gap-1.5 font-bold" :class="app.target === 'prod' && 'text-prod'">
               <Icon name="alert" :size="13" /> {{ t('settings.prod') }}
             </div>
             <div class="text-[12px] text-fg-3">{{ t('settings.prodHint') }}</div>
@@ -143,15 +142,15 @@ const shortcuts: [string, MessageKey][] = [
           </button>
         </div>
         <ImageryEditor v-if="editingImagery" @close="editingImagery = false" />
-        <div v-else class="overflow-hidden rounded-md border border-line">
-          <label class="flex cursor-pointer items-center gap-2.5 border-b border-line px-3 py-1.5 hover:bg-surface-2">
+        <div v-else class="card overflow-hidden">
+          <label class="flex cursor-pointer items-center gap-2.5 border-b border-line px-3 py-1.5 transition-colors hover:bg-surface-3">
             <input type="radio" name="imagery" :checked="!mapStore.imageryId" @change="mapStore.setImagery(null)" />
             <span>{{ t('common.none') }}</span>
           </label>
           <label
             v-for="s in mapStore.allImagery"
             :key="s.id"
-            class="flex cursor-pointer items-center gap-2.5 border-b border-line px-3 py-1.5 last:border-b-0 hover:bg-surface-2"
+            class="flex cursor-pointer items-center gap-2.5 border-b border-line px-3 py-1.5 transition-colors last:border-b-0 hover:bg-surface-3"
           >
             <input type="radio" name="imagery" :checked="mapStore.imageryId === s.id" @change="mapStore.setImagery(s.id)" />
             <span class="min-w-0 flex-1 truncate">{{ s.name }}</span>
@@ -163,7 +162,7 @@ const shortcuts: [string, MessageKey][] = [
 
       <section class="space-y-2 px-5 py-4">
         <h3 class="section-title">{{ t('settings.mirror') }}</h3>
-        <div v-if="app.mirror" class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12.5px]">
+        <div v-if="app.mirror" class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12px]">
           <span class="text-fg-3">{{ t('settings.status') }}</span>
           <span class="flex items-center gap-1.5">
             <span class="size-2 rounded-full" :class="app.mirror.available ? 'bg-added' : 'bg-error'" />
@@ -181,13 +180,13 @@ const shortcuts: [string, MessageKey][] = [
           </template>
         </div>
         <div v-if="app.mirror" class="pt-1" data-testid="sidecar-status">
-          <div class="mb-1 text-[11.5px] font-medium text-fg-2">{{ t('settings.sidecar') }}</div>
-          <div v-if="!sidecar" class="text-[12.5px] text-fg-3">{{ t('settings.noSidecar') }}</div>
-          <div v-else class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12.5px]">
+          <div class="mb-1 text-[12px] font-bold text-fg">{{ t('settings.sidecar') }}</div>
+          <div v-if="!sidecar" class="text-[12px] text-fg-3">{{ t('settings.noSidecar') }}</div>
+          <div v-else class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12px]">
             <span class="text-fg-3">{{ t('settings.lastRun') }}</span>
             <span class="flex flex-wrap items-center gap-1.5">
               <span class="size-2 rounded-full" :class="sidecarResultClass" />
-              <span class="font-medium">{{ sidecar.result ?? t('common.unknown') }}</span>
+              <span class="font-bold">{{ sidecar.result ?? t('common.unknown') }}</span>
               <span v-if="sidecar.lastRunKind" class="chip bg-surface-3 text-fg-2">{{ sidecar.lastRunKind }}</span>
               <span class="text-fg-2" :title="dateTime(sidecar.lastRunAt)">{{ sidecar.lastRunAt ? relativeTime(sidecar.lastRunAt) : '—' }}</span>
             </span>
@@ -217,13 +216,13 @@ const shortcuts: [string, MessageKey][] = [
 
       <section class="space-y-2 px-5 py-4">
         <h3 class="section-title">Claude (MCP)</h3>
-        <p class="text-[12.5px] text-fg-2">{{ t('settings.mcpHint') }}</p>
+        <p class="text-[12px] text-fg-2">{{ t('settings.mcpHint') }}</p>
         <div class="flex items-center gap-2">
-          <code class="min-w-0 flex-1 truncate rounded-md border border-line bg-surface-2 px-2.5 py-1.5 font-mono text-[12px]">{{ mcpUrl }}</code>
+          <code class="min-w-0 flex-1 truncate rounded-md border border-line-strong bg-surface px-2.5 py-1.5 font-mono text-[12px]">{{ mcpUrl }}</code>
           <button class="btn" @click="copy(mcpUrl)"><Icon :name="copied === mcpUrl ? 'check' : 'copy'" :size="13" /> {{ t('common.copy') }}</button>
         </div>
         <div v-if="mcp?.token" class="flex items-center gap-2">
-          <code class="min-w-0 flex-1 truncate rounded-md border border-line bg-surface-2 px-2.5 py-1.5 font-mono text-[12px]" :title="t('settings.tokenTitle')">{{ maskedToken }}</code>
+          <code class="min-w-0 flex-1 truncate rounded-md border border-line-strong bg-surface px-2.5 py-1.5 font-mono text-[12px]" :title="t('settings.tokenTitle')">{{ maskedToken }}</code>
           <button class="btn btn-ghost btn-icon" :title="showToken ? t('settings.hideToken') : t('settings.showToken')" @click="showToken = !showToken">
             <Icon :name="showToken ? 'eye-off' : 'eye'" :size="14" />
           </button>
@@ -232,7 +231,7 @@ const shortcuts: [string, MessageKey][] = [
         <div class="space-y-1">
           <div class="text-[11.5px] text-fg-3">{{ t('settings.claudeCmd') }}</div>
           <div class="flex items-start gap-2">
-            <code class="min-w-0 flex-1 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 font-mono text-[12px] break-all">{{ shownCmd }}</code>
+            <code class="min-w-0 flex-1 rounded-md border border-line-strong bg-surface px-2.5 py-1.5 font-mono text-[12px] break-all">{{ shownCmd }}</code>
             <button class="btn" @click="copy(claudeCmd)"><Icon :name="copied === claudeCmd ? 'check' : 'copy'" :size="13" /> {{ t('common.copy') }}</button>
           </div>
         </div>
@@ -240,7 +239,7 @@ const shortcuts: [string, MessageKey][] = [
 
       <section class="space-y-2 px-5 py-4">
         <h3 class="section-title">{{ t('settings.josm') }}</h3>
-        <p class="text-[12.5px] text-fg-2">
+        <p class="text-[12px] text-fg-2">
           {{ t('settings.josmBefore') }}
           <code class="font-mono">{{ app.status?.remoteControlPort ?? 8111 }}</code>{{ t('settings.josmAfter') }}
         </p>
@@ -249,7 +248,7 @@ const shortcuts: [string, MessageKey][] = [
 
       <section class="space-y-2 px-5 py-4">
         <h3 class="section-title">{{ t('settings.keyboard') }}</h3>
-        <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-[12.5px]">
+        <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-[12px]">
           <div v-for="[k, l] in shortcuts" :key="k" class="flex items-center justify-between gap-2">
             <span class="text-fg-2">{{ t(l) }}</span><span class="kbd">{{ k }}</span>
           </div>

@@ -51,25 +51,25 @@ function showArea() {
 </script>
 
 <template>
-  <div class="mt-2 rounded-md border border-line" data-testid="draft-changeset">
-    <button class="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-[12px]" @click="open = !open">
+  <div class="card mt-2" data-testid="draft-changeset">
+    <button class="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-surface-3" @click="open = !open">
       <Icon :name="open ? 'chevron-down' : 'chevron-right'" :size="13" class="shrink-0 text-fg-3" />
-      <span class="text-fg-3">{{ t('drafts.cs.title') }}</span>
+      <span class="font-bold text-fg">{{ t('drafts.cs.title') }}</span>
       <span class="min-w-0 flex-1 truncate" :class="draft.changesetComment ? 'text-fg' : 'text-fg-3'" :title="summary">{{ summary }}</span>
       <span v-if="areaLabel" class="chip max-w-[40%] shrink-0 bg-surface-3 text-fg-2" :title="t('drafts.cs.areaTitle', { area: areaLabel })">
         <Icon name="pin" :size="11" /><span class="truncate">{{ areaLabel }}</span>
       </span>
     </button>
-    <div v-if="open" class="space-y-2 border-t border-line px-2.5 py-2.5">
+    <div v-if="open" class="space-y-2 border-t border-line-strong bg-surface-2 px-2.5 py-2.5">
       <div class="flex items-center gap-2 text-[12px]">
-        <span class="w-16 shrink-0 text-fg-3">{{ t('drafts.cs.area') }}</span>
+        <span class="w-16 shrink-0 font-bold text-fg">{{ t('drafts.cs.area') }}</span>
         <span class="min-w-0 flex-1 truncate">{{ areaLabel ?? t('drafts.cs.noArea') }}</span>
         <button v-if="scopeBBox" class="btn btn-ghost btn-sm" :title="t('drafts.cs.zoomTitle')" @click="showArea">
           <Icon name="target" :size="12" /> {{ t('drafts.cs.show') }}
         </button>
       </div>
       <label class="flex items-start gap-2 text-[12px]">
-        <span class="mt-1.5 w-16 shrink-0 text-fg-3">{{ t('drafts.cs.comment') }}</span>
+        <span class="mt-1.5 w-16 shrink-0 font-bold text-fg">{{ t('drafts.cs.comment') }}</span>
         <textarea
           v-model="comment"
           class="input h-auto min-h-14 flex-1 py-1.5"
@@ -80,7 +80,7 @@ function showArea() {
         />
       </label>
       <label class="flex items-center gap-2 text-[12px]">
-        <span class="w-16 shrink-0 text-fg-3">{{ t('drafts.cs.source') }}</span>
+        <span class="w-16 shrink-0 font-bold text-fg">{{ t('drafts.cs.source') }}</span>
         <input v-model="source" class="input flex-1" maxlength="255" :placeholder="t('drafts.cs.sourcePlaceholder')" @keydown.enter.prevent="save" />
       </label>
       <div class="flex items-center gap-2">

@@ -1,7 +1,7 @@
 import * as iD from '@openstreetmap/id/modules/index'
 import { halfWidthMetres, roadWidthMetres } from 'osm-review-shared'
 import type { JsonValue, SmartPreset } from '../../generated/models'
-import { t, tn } from '@/i18n'
+import { formatNumber, t, tn } from '@/i18n'
 import { selectorMatches, selectorValid } from './selector'
 
 
@@ -547,7 +547,7 @@ class Runner {
 }
 
 function round(n: number): string {
-  return String(Math.round(n * 100) / 100)
+  return formatNumber(Math.round(n * 100) / 100, { maximumFractionDigits: 2, useGrouping: false })
 }
 
 function sameTags(a: Record<string, string>, b: Record<string, string>): boolean {

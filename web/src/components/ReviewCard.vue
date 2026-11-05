@@ -4,7 +4,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDraftsStore } from '@/stores/drafts'
 import { useRulesStore } from '@/stores/rules'
 import { useAppStore } from '@/stores/app'
-import { changeKind, lastReview } from '@/lib/changes'
+import { changeKind, geometrySummaryText, lastReview } from '@/lib/changes'
 import { changeKindColor, changeKindLabel } from '@/lib/colors'
 import { featureTitle, refString } from '@/lib/osm'
 import { diffSize, tagDiff, tagDiffSummary } from '@/lib/tagdiff'
@@ -84,8 +84,7 @@ const changeGeometry = computed<Geometry>(() => {
   if (cur.ref.type === 'node') {
     if (!cat) return 'point'
     const tags = Object.keys(cur.newTags).length ? cur.newTags : cur.baseTags
-    const asPoint = cat.match(tags, 'point')
-    return cat.isFallback(asPoint) && !cat.isFallback(cat.match(tags, 'vertex')) ? 'vertex' : 'point'
+    return cat.scoreOf(cat.match(tags, 'vertex'), tags) > cat.scoreOf(cat.match(tags, 'point'), tags) ? 'vertex' : 'point'
   }
   return geometryOf(cur.ref.type, cur.newTags, {
     closed: isClosed(cur.newGeom ?? cur.baseGeom),
@@ -239,31 +238,33 @@ const shortcuts = computed(() => [
 
 <template>
   <div v-if="draft" class="flex h-full flex-col">
-    <div class="shrink-0 border-b border-line px-4 pt-3 pb-2.5">
-      <div class="flex items-center gap-2">
-        <span class="section-title">{{ t('shell.review.title') }}</span>
+    <div class="panel-header">
+      <button
+        v-if="editable"
+        class="btn btn-sm"
+        :title="t('shell.review.editDraftTitle')"
+        data-testid="edit-draft"
+        @click="editor.editDraft(draft.id)"
+      >
+        <Icon name="edit" :size="12" /> {{ t('shell.review.editDraft') }}
+      </button>
+      <span class="panel-title">{{ t('shell.review.title') }}</span>
+      <button class="btn btn-ghost btn-sm text-fg-2" :title="t('shell.review.leaveTitle')" @click="drafts.stopReview()">
+        {{ t('shell.review.exit') }} <span class="kbd">Esc</span>
+      </button>
+    </div>
+    <div class="shrink-0 border-b border-line-strong bg-surface-2 px-4 pt-3 pb-2.5">
+      <div class="flex min-w-0 items-center gap-2">
+        <h2 class="min-w-0 flex-1 truncate text-[14px] font-bold text-fg" :title="draft.title">{{ draft.title }}</h2>
         <AuthorBadge :author="draft.author" />
-        <button
-          v-if="editable"
-          class="btn btn-sm ml-auto"
-          :title="t('shell.review.editDraftTitle')"
-          data-testid="edit-draft"
-          @click="editor.editDraft(draft.id)"
-        >
-          <Icon name="edit" :size="12" /> {{ t('shell.review.editDraft') }}
-        </button>
-        <button class="btn btn-ghost btn-sm text-fg-3" :class="!editable && 'ml-auto'" :title="t('shell.review.leaveTitle')" @click="drafts.stopReview()">
-          {{ t('shell.review.exit') }} <span class="kbd">Esc</span>
-        </button>
       </div>
-      <h2 class="mt-1 truncate text-[14px] font-semibold" :title="draft.title">{{ draft.title }}</h2>
       <p v-if="draft.description" class="mt-0.5 line-clamp-2 text-[12px] text-fg-2" :title="draft.description">{{ draft.description }}</p>
       <DraftChangeset :draft="draft" />
       <div class="mt-2.5 flex items-center gap-3">
-        <div class="flex h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
+        <div class="flex h-1.5 flex-1 overflow-hidden rounded-sm bg-line">
           <div v-for="s in progressSegments" :key="s.label" :class="s.cls" class="h-full transition-[width] duration-300" :style="{ width: `${s.w * 100}%` }" />
         </div>
-        <span class="font-mono text-[11.5px] text-fg-2 tabular-nums">{{ decided }}/{{ total }}</span>
+        <span class="font-mono text-[11.5px] font-bold text-fg-2 tabular-nums">{{ decided }}/{{ total }}</span>
       </div>
       <div class="mt-2 flex items-center gap-1">
         <button class="btn btn-ghost btn-icon btn-sm" :title="t('shell.review.prevTitle')" @click="drafts.prev()"><Icon name="chevron-up" :size="14" /></button>
@@ -277,15 +278,15 @@ const shortcuts = computed(() => [
       </div>
     </div>
 
-    <div v-if="allDone && mode === 'view' && c?.status !== 'conflict'" class="shrink-0 border-b border-line bg-added-soft px-4 py-3">
-      <div class="flex items-center gap-2 font-semibold text-added"><Icon name="check" :size="15" :stroke="2.4" /> {{ t('shell.review.allDone') }}</div>
+    <div v-if="allDone && mode === 'view' && c?.status !== 'conflict'" class="shrink-0 border-b border-line-strong border-l-4 border-l-added bg-added-soft px-4 py-3">
+      <div class="flex items-center gap-2 font-bold text-added"><Icon name="check" :size="15" :stroke="2.4" /> {{ t('shell.review.allDone') }}</div>
       <p class="mt-0.5 text-[12px] text-fg-2">{{ t('shell.review.allDoneBody', { approved: counts?.approved ?? 0, rejected: counts?.rejected ?? 0 }) }}</p>
       <button class="btn btn-primary mt-2" :disabled="!counts?.approved" @click="app.mergeDraftId = draft.id">
         <Icon name="merge" :size="13" /> {{ t('shell.review.merge') }}
       </button>
     </div>
 
-    <div v-if="c" ref="cardEl" class="scroll-thin min-h-0 flex-1 overflow-y-auto">
+    <div v-if="c" ref="cardEl" class="scroll-thin min-h-0 flex-1 overflow-y-auto bg-surface-2">
       <div class="space-y-3 px-4 py-3">
         <div>
           <div class="flex flex-wrap items-center gap-1.5">
@@ -311,7 +312,7 @@ const shortcuts = computed(() => [
                 </template>
                 <span class="truncate" data-testid="review-preset-name">{{ presetAfter?.name ?? '' }}</span>
               </div>
-              <h3 class="text-[16px] leading-snug font-semibold break-words">{{ featureTitle(c.ref, c.newTags) }}</h3>
+              <h3 class="text-[16px] leading-snug font-bold text-fg break-words">{{ featureTitle(c.ref, c.newTags) }}</h3>
             </div>
           </div>
           <div class="mt-0.5 flex items-center gap-2 font-mono text-[11.5px] text-fg-3">
@@ -320,12 +321,12 @@ const shortcuts = computed(() => [
           </div>
         </div>
 
-        <div class="space-y-1.5 rounded-md border border-line bg-surface-2 p-2.5">
+        <div class="card space-y-1.5 p-2.5">
           <div v-if="c.ruleId" class="flex items-center gap-1.5 text-[12px]">
             <span class="size-2 rounded-full" :style="{ background: rules.colorOf.get(c.ruleId) ?? '#888' }" />
-            <span class="font-medium">{{ rule?.title ?? c.ruleId }}</span>
+            <span class="font-bold">{{ rule?.title ?? c.ruleId }}</span>
           </div>
-          <p v-if="c.reason" class="text-[12.5px] text-fg">{{ c.reason }}</p>
+          <p v-if="c.reason" class="text-[12px] text-fg">{{ c.reason }}</p>
           <p v-else-if="!c.ruleId" class="text-[12px] text-fg-3">{{ t('shell.review.noReason') }}</p>
           <p v-if="drafts.context?.note && !c.reason?.includes(drafts.context.note)" class="text-[12px] text-fg-2">{{ drafts.context.note }}</p>
           <p v-if="drafts.context?.refs.length" class="flex items-center gap-1.5 text-[11.5px] text-fg-3">
@@ -337,12 +338,12 @@ const shortcuts = computed(() => [
 
         <div
           v-if="c.geometryChanged || c.geometrySummary || c.dependsOn.length || c.requiredBy.length"
-          class="space-y-2 rounded-md border border-geom/30 bg-geom-soft p-2.5 text-[12px]"
+          class="space-y-2 rounded-md border border-line-strong border-l-4 border-l-geom bg-geom-soft p-2.5 text-[12px]"
           data-testid="geometry-info"
         >
           <div v-if="c.geometryChanged || c.geometrySummary" class="flex items-center gap-2">
             <span class="section-title">{{ t('shell.review.geometry') }}</span>
-            <span class="font-mono text-[11.5px] text-fg" data-testid="geometry-summary">{{ c.geometrySummary ?? (c.geometryChanged ? t('shell.review.geometryChanged') : '') }}</span>
+            <span class="font-mono text-[11.5px] text-fg" data-testid="geometry-summary">{{ c.geometrySummary ? geometrySummaryText(c.geometrySummary) : (c.geometryChanged ? t('shell.review.geometryChanged') : '') }}</span>
             <span class="ml-auto text-[11px] text-fg-3"><span class="kbd">Space</span> {{ drafts.showBefore ? t('shell.review.showingBefore') : t('shell.review.showingAfter') }}</span>
           </div>
           <div v-if="c.dependsOn.length">
@@ -351,7 +352,7 @@ const shortcuts = computed(() => [
               <button
                 v-for="l in c.dependsOn"
                 :key="l.changeId"
-                class="chip bg-surface font-mono text-fg-2 hover:text-fg"
+                class="chip border border-line-strong bg-surface font-mono text-fg-2 hover:bg-surface-3 hover:text-fg"
                 :disabled="linkIndex(l) < 0"
                 :title="`${actionLabel(l.action)}, ${l.status}`"
                 @click="goToLink(l)"
@@ -366,7 +367,7 @@ const shortcuts = computed(() => [
               <button
                 v-for="l in c.requiredBy"
                 :key="l.changeId"
-                class="chip bg-surface font-mono text-fg-2 hover:text-fg"
+                class="chip border border-line-strong bg-surface font-mono text-fg-2 hover:bg-surface-3 hover:text-fg"
                 :disabled="linkIndex(l) < 0"
                 :title="`${actionLabel(l.action)}, ${l.status}`"
                 @click="goToLink(l)"
@@ -377,8 +378,8 @@ const shortcuts = computed(() => [
           </div>
         </div>
 
-        <div v-if="rejection" class="rounded-md border border-removed/30 bg-removed-soft p-2.5 text-[12px]">
-          <div class="font-semibold text-removed">{{ t('shell.review.rejectedAt', { when: relativeTime(rejection.createdAt) }) }}</div>
+        <div v-if="rejection" class="rounded-md border border-line-strong border-l-4 border-l-removed bg-removed-soft p-2.5 text-[12px]">
+          <div class="font-bold text-removed">{{ t('shell.review.rejectedAt', { when: relativeTime(rejection.createdAt) }) }}</div>
           <p class="mt-0.5 text-fg">{{ rejection.comment || t('shell.review.noComment') }}</p>
         </div>
         <div v-else-if="lastEdit && c.status !== 'pending'" class="text-[11.5px] text-fg-3">{{ t('shell.review.editedAt', { when: relativeTime(lastEdit.createdAt) }) }}</div>
@@ -386,7 +387,7 @@ const shortcuts = computed(() => [
         <ConflictResolver v-if="c.status === 'conflict'" :change="c" />
 
         <template v-if="mode === 'edit'">
-          <div class="-mx-4 flex flex-col border-y border-line" data-testid="review-edit">
+          <div class="-mx-4 flex flex-col border-y border-line-strong bg-surface" data-testid="review-edit">
             <PresetEditor :entities="editEntities" @patch="onEditPatch" @preset="onEditPreset" @tags="editTags = $event" />
           </div>
           <code v-if="editDiff" class="block truncate font-mono text-[11.5px] text-fg-2">{{ tagDiffSummary(c.baseTags, editTags) || t('shell.review.noChangesFromBase') }}</code>
@@ -407,8 +408,8 @@ const shortcuts = computed(() => [
           <TagDiffView :diff="diff" :base="c.baseTags" />
         </div>
 
-        <div v-if="mode === 'reject'" class="space-y-2 rounded-md border border-removed/40 p-2.5">
-          <label class="text-[12px] font-medium" for="reject-comment">{{ t('shell.review.whyReject') }} <span class="font-normal text-fg-3">{{ t('shell.review.whyRejectHint') }}</span></label>
+        <div v-if="mode === 'reject'" class="card space-y-2 border-l-4 border-l-removed p-2.5">
+          <label class="block text-[12px] font-bold text-fg" for="reject-comment">{{ t('shell.review.whyReject') }} <span class="font-normal text-fg-3">{{ t('shell.review.whyRejectHint') }}</span></label>
           <textarea id="reject-comment" ref="commentEl" v-model="comment" class="input h-auto min-h-16 py-1.5" rows="3" :placeholder="t('shell.review.rejectPlaceholder')" />
           <div class="flex items-center gap-2">
             <button class="btn btn-danger" :disabled="drafts.busy" @click="submitReject">{{ t('shell.review.reject') }}</button>
@@ -417,7 +418,7 @@ const shortcuts = computed(() => [
           </div>
         </div>
 
-        <div v-if="remainingSameRule > 1 && mode === 'view'" class="rounded-md border border-dashed border-line-strong p-2.5">
+        <div v-if="remainingSameRule > 1 && mode === 'view'" class="card p-2.5">
           <button class="btn w-full" :disabled="drafts.busy" @click="c.ruleId && drafts.approveRemaining(c.ruleId)">
             <Icon name="bolt" :size="13" /> {{ t('shell.review.approveRemaining', { n: remainingSameRule }) }}
           </button>
@@ -441,19 +442,19 @@ const shortcuts = computed(() => [
       </p>
     </ConfirmDialog>
 
-    <div v-if="c && mode === 'view'" class="shrink-0 border-t border-line bg-surface-2 px-3 py-2.5">
-      <div class="grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-1.5">
+    <div v-if="c && mode === 'view'" class="shrink-0 border-t border-line-strong bg-surface px-3 py-2.5">
+      <div class="@container grid grid-cols-[repeat(4,minmax(0,1fr))] gap-1">
         <button
-          class="btn btn-primary h-8"
+          class="btn btn-primary h-8 min-w-0 gap-1 px-1.5"
           :disabled="drafts.busy || c.status === 'conflict' || c.status === 'uploaded' || c.status === 'approved'"
           @click="drafts.approve()"
         >
-          <Spinner v-if="drafts.busy" :size="12" /><Icon v-else name="check" :size="14" :stroke="2.2" /> {{ t('shell.review.approve') }} <span class="kbd border-white/30 bg-white/15 text-white">↵</span>
+          <Spinner v-if="drafts.busy" :size="12" /><Icon v-else name="check" :size="14" :stroke="2.2" class="shrink-0" /> <span class="truncate">{{ t('shell.review.approve') }}</span> <span class="kbd hidden shrink-0 border-white/40 bg-white/20 text-white shadow-none @[440px]:inline-flex">↵</span>
         </button>
-        <button class="btn h-8" :disabled="c.status === 'uploaded'" :title="t('shell.review.editTitle')" @click="startEdit"><Icon name="edit" :size="13" /> {{ t('common.edit') }}</button>
-        <button class="btn h-8" :title="t('shell.review.skipTitle')" @click="drafts.nextOpen()"><Icon name="skip" :size="13" /> {{ t('shell.review.skip') }}</button>
-        <button class="btn h-8 hover:text-removed" :disabled="c.status === 'uploaded'" :title="t('shell.review.rejectTitle')" @click="startReject">
-          <Icon name="x" :size="13" /> {{ t('shell.review.reject') }}
+        <button class="btn h-8 min-w-0 gap-1 px-1.5" :disabled="c.status === 'uploaded'" :title="t('shell.review.editTitle')" @click="startEdit"><Icon name="edit" :size="13" class="hidden shrink-0 @[420px]:block" /> <span class="truncate">{{ t('common.edit') }}</span></button>
+        <button class="btn h-8 min-w-0 gap-1 px-1.5" :title="t('shell.review.skipTitle')" @click="drafts.nextOpen()"><Icon name="skip" :size="13" class="hidden shrink-0 @[420px]:block" /> <span class="truncate">{{ t('shell.review.skip') }}</span></button>
+        <button class="btn h-8 min-w-0 gap-1 px-1.5 hover:text-removed" :disabled="c.status === 'uploaded'" :title="t('shell.review.rejectTitle')" @click="startReject">
+          <Icon name="x" :size="13" class="hidden shrink-0 @[420px]:block" /> <span class="truncate">{{ t('shell.review.reject') }}</span>
         </button>
       </div>
       <div class="mt-1.5 flex items-center gap-1">
@@ -470,7 +471,7 @@ const shortcuts = computed(() => [
         </button>
         <button class="btn btn-ghost btn-sm ml-auto" :title="t('shell.review.zoomTitle')" @click="drafts.focusCurrent()"><Icon name="target" :size="12" /></button>
       </div>
-      <div class="mt-2 flex flex-wrap gap-x-2.5 gap-y-1 text-[10.5px] text-fg-3">
+      <div class="mt-2 flex flex-wrap gap-x-2.5 gap-y-1 text-[11px] text-fg-3">
         <span v-for="[k, l] in shortcuts" :key="k" class="flex items-center gap-1"><span class="kbd">{{ k }}</span>{{ l }}</span>
       </div>
     </div>

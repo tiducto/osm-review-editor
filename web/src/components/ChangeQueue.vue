@@ -62,16 +62,16 @@ watch(
   <div class="flex h-full flex-col">
     <div v-if="!drafts.current" class="grid flex-1 place-items-center text-fg-3">{{ t('queue.empty') }}</div>
     <template v-else>
-      <div class="flex shrink-0 items-center gap-2 px-3 py-1.5">
-        <div class="flex rounded-md bg-surface-3 p-0.5">
+      <div class="flex shrink-0 items-center gap-2 border-b border-line-strong bg-surface px-3 py-1.5">
+        <div class="seg">
           <button
             v-for="s in statuses"
             :key="s.id"
-            class="rounded px-2 py-0.5 text-[11.5px] font-medium transition-colors"
-            :class="filter === s.id ? 'bg-surface text-fg shadow-sm' : 'text-fg-3 hover:text-fg-2'"
+            class="seg-btn"
+            :class="filter === s.id && 'active'"
             @click="filter = s.id"
           >
-            {{ t(s.label) }} <span class="font-mono text-[10.5px] opacity-70">{{ count(s.id) }}</span>
+            {{ t(s.label) }} <span class="font-mono text-[10.5px] font-normal opacity-80">{{ count(s.id) }}</span>
           </button>
         </div>
         <button v-if="!drafts.reviewing" class="btn btn-sm ml-auto" @click="drafts.startReview()">{{ t('queue.startReview') }}</button>
@@ -80,7 +80,7 @@ watch(
         </button>
       </div>
       <div ref="body" class="scroll-thin min-h-0 flex-1 overflow-auto">
-        <table class="w-full table-fixed border-collapse text-[12.5px]">
+        <table class="w-full table-fixed border-collapse text-[12px]">
           <colgroup>
             <col class="w-10" />
             <col class="w-[26%]" />
@@ -89,14 +89,14 @@ watch(
             <col class="w-24" />
             <col class="w-24" />
           </colgroup>
-          <thead class="sticky top-0 z-[1] bg-surface text-left text-[11px] text-fg-3">
-            <tr class="border-b border-line">
-              <th class="px-3 py-1 font-medium">#</th>
-              <th class="px-2 py-1 font-medium">{{ t('queue.col.object') }}</th>
-              <th class="px-2 py-1 font-medium">{{ t('queue.col.rule') }}</th>
-              <th class="px-2 py-1 font-medium">{{ t('queue.col.change') }}</th>
-              <th class="px-2 py-1 font-medium">{{ t('queue.col.kind') }}</th>
-              <th class="px-2 py-1 font-medium">{{ t('queue.col.status') }}</th>
+          <thead class="sticky top-0 z-[1] bg-surface-2 text-left text-[11.5px] text-fg-2">
+            <tr class="border-b border-line-strong">
+              <th class="px-3 py-1 font-bold">#</th>
+              <th class="px-2 py-1 font-bold">{{ t('queue.col.object') }}</th>
+              <th class="px-2 py-1 font-bold">{{ t('queue.col.rule') }}</th>
+              <th class="px-2 py-1 font-bold">{{ t('queue.col.change') }}</th>
+              <th class="px-2 py-1 font-bold">{{ t('queue.col.kind') }}</th>
+              <th class="px-2 py-1 font-bold">{{ t('queue.col.status') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -105,12 +105,12 @@ watch(
               :key="c.id"
               :data-current="drafts.reviewing && i === drafts.index"
               class="cursor-pointer border-b border-line"
-              :class="drafts.reviewing && i === drafts.index ? 'bg-accent-soft' : 'hover:bg-surface-2'"
+              :class="drafts.reviewing && i === drafts.index ? 'bg-accent-soft' : 'hover:bg-surface-3'"
               @click="open(i)"
             >
               <td class="px-3 py-1 font-mono text-[11px] text-fg-3 tabular-nums">{{ i + 1 }}</td>
               <td class="truncate px-2 py-1">
-                <span class="font-medium">{{ featureTitle(c.ref, c.newTags) }}</span>
+                <span class="font-bold">{{ featureTitle(c.ref, c.newTags) }}</span>
                 <span class="ml-1.5 font-mono text-[11px] text-fg-3">{{ refString(c.ref) }}</span>
               </td>
               <td class="truncate px-2 py-1 text-fg-2">

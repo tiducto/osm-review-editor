@@ -27,10 +27,26 @@ export function refLabel(ref: OsmRef): string {
   return `${t(typeLabel[ref.type])} ${ref.id}`
 }
 
+type PresetNamer = (ref: OsmRef, tags: Record<string, string>) => string | null
+
+let presetNamer: PresetNamer | null = null
+
+export function setPresetNamer(fn: PresetNamer | null) {
+  presetNamer = fn
+}
+
+function presetTypeLabel(ref: OsmRef, tags: Record<string, string>): string | null {
+  if (presetNamer && Object.keys(tags).length) {
+    const n = presetNamer(ref, tags)
+    if (n) return n
+  }
+  return mainTagLabel(tags)
+}
+
 export function featureTitle(ref: OsmRef, tags: Record<string, string>): string {
   if (tags.name) return tags.name
-  if (tags.ref) return `${mainTagLabel(tags) ?? refLabel(ref)} ${tags.ref}`
-  return mainTagLabel(tags) ?? refLabel(ref)
+  if (tags.ref) return `${presetTypeLabel(ref, tags) ?? refLabel(ref)} ${tags.ref}`
+  return presetTypeLabel(ref, tags) ?? refLabel(ref)
 }
 
 const mainKeys = [
