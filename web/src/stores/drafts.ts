@@ -168,9 +168,16 @@ export const useDraftsStore = defineStore('drafts', () => {
     }
   }
 
-  const approve = () => review({ decision: 'approve' })
+  function imageryTag(): string | null {
+    const i = mapStore.activeImagery
+    if (!i) return null
+    return i.sourceTag.trim() || i.name
+  }
+
+  const approve = () => review({ decision: 'approve', imagery: imageryTag() })
   const reject = (comment: string) => review({ decision: 'reject', comment: comment || null })
-  const editTags = (tags: Record<string, string>, comment?: string) => review({ decision: 'edit', tags, comment: comment || null })
+  const editTags = (tags: Record<string, string>, comment?: string) =>
+    review({ decision: 'edit', tags, comment: comment || null, imagery: imageryTag() })
   const reset = () => review({ decision: 'reset' }, false)
 
   async function sendToId() {
@@ -225,11 +232,12 @@ export const useDraftsStore = defineStore('drafts', () => {
 
   async function fromRule(ruleId: string) {
     const area = mapStore.area?.name ?? null
-    const bbox = area ? null : mapStore.bbox
-    if (!area && !bbox) return
+    const polygon = area ? null : mapStore.polygon
+    const bbox = area || polygon ? null : mapStore.bbox
+    if (!area && !polygon && !bbox) return
     busy.value = true
     try {
-      const d = await api.draftFromRule({ ruleId, area, bbox })
+      const d = await api.draftFromRule(polygon ? { ruleId, polygon } : area ? { ruleId, area } : { ruleId, bbox })
       drafts.value = [d.draft, ...drafts.value.filter((x) => x.id !== d.draft.id)]
       current.value = d
       index.value = 0
@@ -256,6 +264,20 @@ export const useDraftsStore = defineStore('drafts', () => {
       if (statusFilter.value && d.status !== statusFilter.value) drafts.value = drafts.value.filter((x) => x.id !== id)
     } catch (e) {
       app.fail(e, 'Update draft')
+    }
+  }
+
+  async function updateChangeset(id: string, comment: string, source: string): Promise<boolean> {
+    try {
+      const d = await api.updateDraft(id, { changesetComment: comment.trim(), changesetSource: source.trim() })
+      const i = drafts.value.findIndex((x) => x.id === id)
+      if (i >= 0) drafts.value.splice(i, 1, d)
+      if (current.value?.draft.id === id) current.value = { ...current.value, draft: d }
+      app.toast('Changeset details saved', 'success')
+      return true
+    } catch (e) {
+      app.fail(e, 'Changeset details')
+      return false
     }
   }
 
@@ -313,12 +335,16 @@ export const useDraftsStore = defineStore('drafts', () => {
   )
 
   const savingManual = ref(false)
-  async function saveManualEdit(ref: OsmRef, tags: Record<string, string>, reason?: string) {
+  async function saveManualEdit(ref: OsmRef, tags: Record<string, string>, baseTags: Record<string, string>, reason?: string) {
     savingManual.value = true
     try {
-      const c = await api.manualEdit({ ref, tags, reason: reason || null })
-      mapStore.patchSelectedTags(c.newTags)
-      app.toast(`Saved ${refString(ref)} to your manual draft`, 'success')
+      const c = await api.manualEdit({ ref, tags, baseTags, reason: reason || null })
+      if (c.status === 'conflict') {
+        app.toast(`${refString(ref)} changed upstream on a key you edited; saved as a conflict to resolve`, 'error', 9000)
+      } else {
+        mapStore.patchSelectedTags(c.newTags)
+        app.toast(`Saved ${refString(ref)} to your manual draft`, 'success')
+      }
       if (current.value?.draft.id === c.draftId) {
         if (current.value.changes.some((x) => x.id === c.id)) replaceChange(c)
         else void onDraftUpdated(c.draftId)
@@ -356,7 +382,7 @@ export const useDraftsStore = defineStore('drafts', () => {
     changes, currentChange, decidedCount, pendingCount, approvedCount, conflictCount,
     loadDrafts, open, startReview, stopReview, close, focusCurrent, goTo, next, prev, nextOpen,
     review, approve, reject, editTags, reset, sendToId, resolve, approveRemaining, refreshLive, fromRule,
-    setStatus, rename, onDraftUpdated, onMergeProgress,
+    setStatus, rename, updateChangeset, onDraftUpdated, onMergeProgress,
     savingManual, saveManualEdit, openInId,
   }
 })

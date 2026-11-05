@@ -7,11 +7,17 @@ import { useMapStore } from '@/stores/map'
 import { dateTime, relativeTime } from '@/lib/format'
 import Modal from './Modal.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
+import ImageryEditor from './ImageryEditor.vue'
 import Icon from './Icon.vue'
 
 const app = useAppStore()
 const mapStore = useMapStore()
 const confirmProd = ref(false)
+const editingImagery = ref(false)
+const sidecar = computed(() => app.mirror?.sidecar ?? null)
+const sidecarResultClass = computed(() =>
+  sidecar.value?.result === 'ok' ? 'bg-added' : sidecar.value?.result === 'failed' ? 'bg-error' : 'bg-fg-3',
+)
 const copied = ref<string | null>(null)
 
 const mcp = ref<McpInfo | null>(null)
@@ -117,8 +123,14 @@ const shortcuts = [
       </section>
 
       <section class="space-y-2 px-5 py-4">
-        <h3 class="section-title">Imagery</h3>
-        <div class="overflow-hidden rounded-md border border-line">
+        <div class="flex items-center">
+          <h3 class="section-title">Imagery</h3>
+          <button v-if="!editingImagery" class="btn btn-ghost btn-sm ml-auto" data-testid="edit-imagery" @click="editingImagery = true">
+            <Icon name="edit" :size="12" /> Edit sources
+          </button>
+        </div>
+        <ImageryEditor v-if="editingImagery" @close="editingImagery = false" />
+        <div v-else class="overflow-hidden rounded-md border border-line">
           <label class="flex cursor-pointer items-center gap-2.5 border-b border-line px-3 py-1.5 hover:bg-surface-2">
             <input type="radio" name="imagery" :checked="!mapStore.imageryId" @change="mapStore.setImagery(null)" />
             <span>None</span>
@@ -154,6 +166,38 @@ const shortcuts = [
             <span class="text-fg-3">Note</span>
             <span class="text-fg-2">{{ app.mirror.message }}</span>
           </template>
+        </div>
+        <div v-if="app.mirror" class="pt-1" data-testid="sidecar-status">
+          <div class="mb-1 text-[11.5px] font-medium text-fg-2">Update sidecar</div>
+          <div v-if="!sidecar" class="text-[12.5px] text-fg-3">No sidecar: the mirror is not updated automatically (no status file found).</div>
+          <div v-else class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12.5px]">
+            <span class="text-fg-3">Last run</span>
+            <span class="flex flex-wrap items-center gap-1.5">
+              <span class="size-2 rounded-full" :class="sidecarResultClass" />
+              <span class="font-medium">{{ sidecar.result ?? 'unknown' }}</span>
+              <span v-if="sidecar.lastRunKind" class="chip bg-surface-3 text-fg-2">{{ sidecar.lastRunKind }}</span>
+              <span class="text-fg-2" :title="dateTime(sidecar.lastRunAt)">{{ sidecar.lastRunAt ? relativeTime(sidecar.lastRunAt) : '—' }}</span>
+            </span>
+            <template v-if="sidecar.error">
+              <span class="text-fg-3">Error</span>
+              <span class="font-mono text-[11.5px] break-words text-error">{{ sidecar.error }}</span>
+            </template>
+            <span class="text-fg-3">Last full build</span>
+            <span :title="dateTime(sidecar.lastFullBuildAt)">{{ sidecar.lastFullBuildAt ? relativeTime(sidecar.lastFullBuildAt) : '—' }}</span>
+            <span class="text-fg-3">Next rebuild due</span>
+            <span :title="dateTime(sidecar.nextFullBuildDue)">{{ sidecar.nextFullBuildDue ? relativeTime(sidecar.nextFullBuildDue) : '—' }}</span>
+            <span class="text-fg-3">Replication</span>
+            <span>
+              <span class="font-mono text-[12px]">{{ sidecar.replicationSequence ?? '—' }}</span>
+              <span v-if="sidecar.replicationTimestamp" class="text-fg-2" :title="dateTime(sidecar.replicationTimestamp)">
+                · {{ relativeTime(sidecar.replicationTimestamp) }}</span
+              >
+            </span>
+            <template v-if="sidecar.current">
+              <span class="text-fg-3">Published</span>
+              <span class="truncate font-mono text-[12px]" :title="sidecar.current">{{ sidecar.current }}</span>
+            </template>
+          </div>
         </div>
         <div v-else class="text-fg-3">{{ app.serverError ?? 'Unknown' }}</div>
       </section>

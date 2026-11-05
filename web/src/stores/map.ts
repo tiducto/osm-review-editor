@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import type { Map as MlMap } from 'maplibre-gl'
+import type { Polygon } from 'geojson'
 import type { Area, BBox, ImagerySource, LngLat, MapFeature, OsmRef } from '@/generated/models'
 import { api, isAbort } from '@/api/client'
 import { useAppStore } from './app'
@@ -34,11 +35,15 @@ export const useMapStore = defineStore('map', () => {
 
   const selected = ref<OsmRef | null>(null)
   const selectedFeature = shallowRef<MapFeature | null>(null)
+  const originTags = shallowRef<Record<string, string> | null>(null)
   const selectedLoading = ref(false)
   const highlighted = ref<OsmRef[]>([])
 
   const area = shallowRef<Area | null>(null)
   const areaLoading = ref(false)
+  const polygon = shallowRef<Polygon | null>(null)
+  const drawing = ref(false)
+  const scopeName = computed(() => area.value?.name ?? (polygon.value ? 'Drawn polygon' : null))
 
   const extraImagery = ref<ImagerySource[]>([])
   const imageryId = ref<string | null>(readImagery())
@@ -79,6 +84,9 @@ export const useMapStore = defineStore('map', () => {
   }
 
   const padding: FitPadding = { top: 64, bottom: 64, left: 64, right: 64 }
+  function setBottomInset(px: number) {
+    padding.bottom = Math.max(64, Math.round(px) + 24)
+  }
 
   function fitBBox(b: BBox, maxZoom = 18, animate = true) {
     if (!map) return
@@ -130,17 +138,22 @@ export const useMapStore = defineStore('map', () => {
 
   async function select(ref: OsmRef | null, opts: { fly?: boolean } = {}) {
     selected.value = ref
+    originTags.value = null
     if (!ref) {
       selectedFeature.value = null
       return
     }
     const local = features.value.find((f) => sameRef(f.ref, ref))
     selectedFeature.value = local ?? null
+    originTags.value = local?.tags ?? null
     if (!local) {
       selectedLoading.value = true
       try {
         const f = await api.object(ref)
-        if (sameRef(selected.value, ref)) selectedFeature.value = f
+        if (sameRef(selected.value, ref)) {
+          selectedFeature.value = f
+          originTags.value = f.tags
+        }
       } catch (e) {
         if (sameRef(selected.value, ref)) app.fail(e, `Loading ${refString(ref)}`)
       } finally {
@@ -157,7 +170,14 @@ export const useMapStore = defineStore('map', () => {
     if (selectedFeature.value) selectedFeature.value = { ...selectedFeature.value, tags }
   }
 
+  function setPolygon(p: Polygon | null) {
+    drawing.value = false
+    polygon.value = p
+    if (p) area.value = null
+  }
+
   async function setArea(name: string | null, fly = true) {
+    polygon.value = null
     if (!name) {
       area.value = null
       return
@@ -176,10 +196,10 @@ export const useMapStore = defineStore('map', () => {
 
   return {
     ready, bbox, zoom, features, featuresTruncated, featuresLoading,
-    selected, selectedFeature, selectedLoading, highlighted,
-    area, areaLoading,
+    selected, selectedFeature, originTags, selectedLoading, highlighted,
+    area, areaLoading, polygon, drawing, scopeName, setPolygon,
     imageryId, allImagery, activeImagery, setImagery, addImagery,
-    attach, detach, instance, fitBBox, flyTo, updateView, loadFeatures,
+    attach, detach, instance, setBottomInset, fitBBox, flyTo, updateView, loadFeatures,
     select, patchSelectedTags, setArea,
   }
 })

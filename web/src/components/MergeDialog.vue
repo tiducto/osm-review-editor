@@ -27,7 +27,7 @@ const running = computed(() => (started.value || !!progress.value) && !progress.
 const changeCount = computed(() => preview.value?.groups.reduce((n, g) => n + g.changeIds.length, 0) ?? 0)
 const isProd = computed(() => (preview.value?.target ?? app.target) === 'prod')
 const connected = computed(() => !!app.account?.connected)
-const canUpload = computed(() => !!preview.value && !preview.value.conflicts.length && changeCount.value > 0 && connected.value && !running.value)
+const canUpload = computed(() => !!preview.value && changeCount.value > 0 && connected.value && !running.value)
 
 const changesetBase = computed(() =>
   isProd.value ? 'https://www.openstreetmap.org/changeset/' : 'https://master.apis.dev.openstreetmap.org/changeset/',
@@ -120,8 +120,11 @@ const pct = computed(() => (progress.value && progress.value.total ? Math.round(
 
         <section v-if="preview.conflicts.length" class="space-y-1.5">
           <div class="flex items-center gap-2 text-[12.5px] font-semibold text-changed">
-            <Icon name="conflict" :size="14" /> {{ plural(preview.conflicts.length, 'conflict') }} to resolve first
+            <Icon name="conflict" :size="14" /> {{ plural(preview.conflicts.length, 'change') }} in conflict will be skipped
           </div>
+          <p class="text-[12px] text-fg-2">
+            They stay in the draft and are not uploaded. Resolve them now to include them, or upload the rest and merge again later.
+          </p>
           <ul class="divide-y divide-line overflow-hidden rounded-md border border-line">
             <li v-for="id in preview.conflicts" :key="id" class="flex items-center gap-2 px-3 py-1.5">
               <span class="font-mono text-[12px]">{{ conflictTitle(id) }}</span>
@@ -143,7 +146,12 @@ const pct = computed(() => (progress.value && progress.value.total ? Math.round(
               <Icon :name="expanded === g.key ? 'chevron-down' : 'chevron-right'" :size="14" class="mt-0.5 text-fg-3" />
               <div class="min-w-0 flex-1">
                 <div class="font-medium">{{ g.comment }}</div>
-                <div class="text-[11.5px] text-fg-3">{{ plural(g.changeIds.length, 'change') }} · <span class="font-mono">{{ g.key }}</span></div>
+                <div class="text-[11.5px] text-fg-3">
+                  {{ plural(g.changeIds.length, 'change') }} · <span class="font-mono">{{ g.key }}</span>
+                </div>
+                <div class="mt-0.5 text-[11.5px]" :class="g.tags.source ? 'text-fg-2' : 'text-fg-3'">
+                  source: <span :class="g.tags.source && 'font-mono'">{{ g.tags.source || 'none' }}</span>
+                </div>
               </div>
             </button>
             <div v-if="expanded === g.key" class="border-t border-line bg-surface-2 px-3 py-2">

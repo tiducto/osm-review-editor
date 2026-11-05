@@ -22,6 +22,16 @@ const list = computed(() => {
   return f ? app.areas.filter((a) => a.name.toLowerCase().includes(f)) : app.areas
 })
 
+function startDrawing() {
+  open.value = false
+  filter.value = ''
+  mapStore.drawing = true
+}
+
+function clearPolygon() {
+  mapStore.setPolygon(null)
+}
+
 function choose(name: string | null) {
   open.value = false
   filter.value = ''
@@ -34,7 +44,7 @@ function choose(name: string | null) {
     <button class="btn h-8 max-w-32 gap-2 sm:max-w-56" :class="open && 'bg-surface-3'" @click="open = !open">
       <Spinner v-if="mapStore.areaLoading" :size="12" />
       <Icon v-else name="pin" :size="14" class="text-fg-3" />
-      <span class="truncate">{{ mapStore.area?.name ?? 'Map view' }}</span>
+      <span class="truncate">{{ mapStore.drawing ? 'Drawing…' : (mapStore.scopeName ?? 'Map view') }}</span>
       <Icon name="chevron-down" :size="13" class="text-fg-3" />
     </button>
     <Transition name="pop">
@@ -47,9 +57,20 @@ function choose(name: string | null) {
             <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-2" @click="choose(null)">
               <Icon name="target" :size="14" class="text-fg-3" />
               <span class="flex-1">Map view</span>
-              <Icon v-if="!mapStore.area" name="check" :size="14" class="text-accent" />
+              <Icon v-if="!mapStore.area && !mapStore.polygon" name="check" :size="14" class="text-accent" />
             </button>
             <p class="px-3 pb-1.5 pl-9 text-[11px] text-fg-3">Rules follow the visible map</p>
+          </li>
+          <li class="border-b border-line pb-1">
+            <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-2" data-testid="draw-polygon" @click="startDrawing">
+              <Icon name="edit" :size="14" class="text-fg-3" />
+              <span class="flex-1">{{ mapStore.polygon ? 'Redraw polygon' : 'Draw polygon' }}</span>
+              <Icon v-if="mapStore.polygon" name="check" :size="14" class="text-accent" />
+            </button>
+            <p class="px-3 pb-1.5 pl-9 text-[11px] text-fg-3">
+              Click to add points, double-click or click the first point to finish
+              <button v-if="mapStore.polygon" class="ml-1 text-accent hover:underline" @click="clearPolygon">Clear</button>
+            </p>
           </li>
           <li v-for="a in list" :key="a.name">
             <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-2" @click="choose(a.name)">

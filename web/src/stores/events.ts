@@ -16,9 +16,19 @@ export function connectEvents(): () => void {
       mapStore.addImagery(cmd.imagery)
       app.toast(`Imagery added: ${cmd.imagery.name}`)
     }
-    if (cmd.draftId) {
-      void drafts.open(cmd.draftId, { review: true })
+    if (cmd.message) app.toast(cmd.message, 'info', 9000)
+    const ids = cmd.draftIds.length ? cmd.draftIds : cmd.draftId ? [cmd.draftId] : []
+    if (ids.length === 1) {
+      void drafts.open(ids[0], { review: true })
+      window.focus()
       return
+    }
+    if (ids.length > 1) {
+      app.toast(`Remote control created ${ids.length} drafts`, 'success')
+      drafts.statusFilter = 'open'
+      drafts.drawerTab = 'drafts'
+      drafts.drawerOpen = true
+      void drafts.loadDrafts()
     }
     if (drafts.reviewing) drafts.stopReview()
     if (cmd.bbox) mapStore.fitBBox(cmd.bbox, 19)

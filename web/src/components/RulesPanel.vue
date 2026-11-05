@@ -24,7 +24,7 @@ const listed = computed(() => {
 })
 
 const totalShown = computed(() => rules.shownIssues.length)
-const scopeLabel = computed(() => (mapStore.area ? mapStore.area.name : rules.needsZoom ? 'Zoom in or pick an area' : 'Visible map'))
+const scopeLabel = computed(() => mapStore.scopeName ?? (rules.needsZoom ? 'Zoom in or pick an area' : 'Visible map'))
 
 const filterExamples = ['highway=footway !surface', 'footway=sidewalk', 'public_transport=platform !tactile_paving']
 
@@ -166,7 +166,7 @@ function createDraft(r: Rule) {
                   v-if="r.hasFix"
                   class="btn btn-primary btn-sm"
                   :disabled="!rules.scope || drafts.busy"
-                  :title="rules.scope ? `Create a draft with this rule's fixes in ${mapStore.area?.name ?? 'the visible map'}` : 'Pick an area or zoom in first'"
+                  :title="rules.scope ? `Create a draft with this rule's fixes in ${mapStore.area?.name ?? (mapStore.polygon ? 'the drawn polygon' : 'the visible map')}` : 'Pick an area or zoom in first'"
                   @click="createDraft(r)"
                 >
                   <Icon name="plus" :size="12" /> Create draft

@@ -10,6 +10,8 @@ import { useDraftsStore } from '@/stores/drafts'
 import { basemapUrl } from './style'
 import { INTERACTIVE, ISSUE_LAYERS, SRC, installLayers, setData, setImagery, setVisible } from './layers'
 import { areaToGeoJSON, beforeToGeoJSON, changesToGeoJSON, empty, featuresToGeoJSON, issuesToGeoJSON } from './data'
+import { asGeometry } from '@/lib/geo'
+import { PolygonDraw, drawJustEnded, type DrawState } from './draw'
 import { parseRef, refString, featureTitle } from '@/lib/osm'
 import { changeKindColor, changeKindLabel, type ChangeKind } from '@/lib/colors'
 import { changeKind } from '@/lib/changes'
@@ -24,6 +26,8 @@ const drafts = useDraftsStore()
 const el = ref<HTMLDivElement | null>(null)
 let map: maplibregl.Map | null = null
 let styleReady = false
+let draw: PolygonDraw | null = null
+const drawState = ref<DrawState>({ count: 0, canFinish: false })
 
 maplibregl.setWorkerUrl(workerUrl)
 
@@ -59,7 +63,9 @@ function syncIssues() {
 }
 function syncArea() {
   if (!map || !styleReady) return
-  setData(map, SRC.area, areaToGeoJSON(mapStore.area))
+  const draftScope = drafts.reviewing ? asGeometry(drafts.current?.draft.scope) : null
+  const g = draftScope ?? mapStore.polygon
+  setData(map, SRC.area, g ? { type: 'FeatureCollection', features: [{ type: 'Feature', properties: { g: 'polygon' }, geometry: g }] } : areaToGeoJSON(mapStore.area))
 }
 function syncChanges() {
   if (!map || !styleReady) return
@@ -101,7 +107,19 @@ watch(() => mapStore.highlighted, syncHighlight, { deep: true })
 watch(() => [mapStore.selectedFeature, drafts.reviewing], syncSelection)
 watch(issuesFC, syncIssues)
 watch(() => drafts.reviewing, syncIssues)
-watch(() => mapStore.area, syncArea)
+watch(() => [mapStore.area, mapStore.polygon, drafts.reviewing, drafts.current?.draft.scope], syncArea)
+watch(
+  () => mapStore.drawing,
+  (on) => {
+    hover.value = null
+    if (on) draw?.start()
+    else draw?.stop()
+  },
+)
+watch(
+  () => drafts.reviewing,
+  () => (hover.value = null),
+)
 watch(() => [drafts.current, drafts.index, drafts.reviewing, drafts.showBefore], syncChanges)
 watch(() => [drafts.context, drafts.reviewing], syncContext)
 watch(() => mapStore.activeImagery, syncImagery)
@@ -156,6 +174,7 @@ function topFeature(e: MapMouseEvent): MapGeoJSONFeature | null {
 }
 
 async function onClick(e: MapMouseEvent) {
+  if (mapStore.drawing || drawJustEnded()) return
   const f = topFeature(e)
   if (!f || !map) {
     if (!drafts.reviewing) void mapStore.select(null)
@@ -182,7 +201,7 @@ async function onClick(e: MapMouseEvent) {
 const hover = ref<{ x: number; y: number; text: string; sub?: string; color?: string } | null>(null)
 
 function onMouseMove(e: MapMouseEvent) {
-  if (!map) return
+  if (!map || mapStore.drawing) return
   const f = topFeature(e)
   map.getCanvas().style.cursor = f ? 'pointer' : ''
   if (!f) {
@@ -222,6 +241,19 @@ function onMouseMove(e: MapMouseEvent) {
   hover.value = { x: e.point.x, y: e.point.y, text, sub, color }
 }
 
+const hoverStyle = computed(() => {
+  const h = hover.value
+  const box = el.value
+  if (!h || !box) return {}
+  const flipX = h.x + 14 + 260 > box.clientWidth
+  const flipY = h.y + 10 + 56 > box.clientHeight
+  return {
+    left: `${flipX ? h.x - 10 : h.x + 14}px`,
+    top: `${flipY ? h.y - 8 : h.y + 10}px`,
+    transform: `translate(${flipX ? '-100%' : '0'}, ${flipY ? '-100%' : '0'})`,
+  }
+})
+
 let resizeObserver: ResizeObserver | null = null
 
 onMounted(() => {
@@ -246,6 +278,7 @@ onMounted(() => {
     installLayers(map, app.isDark)
     styleReady = true
     syncAll()
+    draw?.redraw()
   })
   map.on('moveend', onMoveEnd)
   map.on('click', (e) => void onClick(e))
@@ -255,6 +288,12 @@ onMounted(() => {
     reportView()
     onMoveEnd()
   })
+  draw = new PolygonDraw(map, {
+    finish: (p) => mapStore.setPolygon(p),
+    cancel: () => (mapStore.drawing = false),
+    change: (s) => (drawState.value = s),
+  })
+  if (mapStore.drawing) draw.start()
   mapStore.attach(map)
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__oreMap = map
   resizeObserver = new ResizeObserver(() => map?.resize())
@@ -262,6 +301,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  draw?.stop()
+  draw = null
   resizeObserver?.disconnect()
   mapStore.detach()
   map?.remove()
@@ -290,7 +331,7 @@ const currentHasGeometryChange = computed(() => {
     <div
       v-if="hover"
       class="pointer-events-none absolute z-10 max-w-64 rounded-md border border-line bg-surface/95 px-2 py-1 text-[12px] shadow-panel backdrop-blur"
-      :style="{ left: `${hover.x + 14}px`, top: `${hover.y + 10}px` }"
+      :style="hoverStyle"
     >
       <div class="flex items-center gap-1.5 font-medium">
         <span v-if="hover.color" class="size-2 shrink-0 rounded-full" :style="{ background: hover.color }" />
@@ -299,7 +340,26 @@ const currentHasGeometryChange = computed(() => {
       <div v-if="hover.sub" class="font-mono text-[10.5px] text-fg-3">{{ hover.sub }}</div>
     </div>
 
-    <div class="pointer-events-none absolute top-3 left-1/2 z-10 flex -translate-x-1/2 flex-col items-center gap-2">
+    <div class="pointer-events-none absolute top-3 left-1/2 z-10 flex w-max max-w-[calc(100%-24px)] -translate-x-1/2 flex-col items-center gap-2">
+      <div
+        v-if="mapStore.drawing"
+        class="pointer-events-auto flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 rounded-lg border border-accent/50 bg-surface/95 px-3 py-2 text-[12px] text-fg-2 shadow-pop backdrop-blur"
+        data-testid="draw-banner"
+      >
+        <span class="flex items-center gap-1.5 font-medium text-fg"><Icon name="edit" :size="13" class="text-accent" /> Drawing polygon</span>
+        <span>
+          {{ drawState.count ? `${drawState.count} point${drawState.count === 1 ? '' : 's'}` : 'Click the map to add points' }}<template
+            v-if="drawState.count"
+          > · double-click or click the first point to finish</template>
+        </span>
+        <span class="flex items-center gap-1">
+          <button class="btn btn-sm" :disabled="!drawState.count" title="Remove last point (Backspace)" @click="draw?.undo()">
+            <Icon name="undo" :size="12" /> Undo
+          </button>
+          <button class="btn btn-primary btn-sm" :disabled="!drawState.canFinish" title="Finish (Enter)" @click="draw?.finish()">Finish</button>
+          <button class="btn btn-ghost btn-sm" title="Cancel (Esc)" @click="draw?.cancel()">Cancel <span class="kbd">Esc</span></button>
+        </span>
+      </div>
       <Transition name="fade">
         <div v-if="zoomHint" class="rounded-full border border-line bg-surface/95 px-3 py-1 text-[12px] text-fg-2 shadow-panel backdrop-blur">
           {{ zoomHint }}

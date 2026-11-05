@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { EditorLinks, Issue } from '@/generated/models'
+import type { Change, EditorLinks, Issue } from '@/generated/models'
 import { api } from '@/api/client'
 import { useMapStore } from '@/stores/map'
 import { useRulesStore } from '@/stores/rules'
@@ -23,12 +23,15 @@ const base = computed<Record<string, string>>(() => feature.value?.tags ?? {})
 const edited = ref<Record<string, string>>({})
 const reason = ref('')
 const links = ref<EditorLinks | null>(null)
+const conflict = ref<Change | null>(null)
+const conflictKeys = ref<{ key: string; base: string | null; mine: string | null; live: string | null }[]>([])
 
 watch(
   () => feature.value,
-  (f) => {
+  (f, old) => {
     edited.value = { ...(f?.tags ?? {}) }
     reason.value = ''
+    if (!old || !f || old.ref.type !== f.ref.type || old.ref.id !== f.ref.id) conflict.value = null
   },
   { immediate: true },
 )
@@ -68,7 +71,26 @@ function fixSummary(i: Issue): string {
 async function save() {
   const ref = mapStore.selected
   if (!ref || !dirty.value || drafts.savingManual) return
-  await drafts.saveManualEdit(ref, edited.value, reason.value)
+  const startedFrom = { ...(mapStore.originTags ?? base.value) }
+  const mine = { ...edited.value }
+  const c = await drafts.saveManualEdit(ref, mine, startedFrom, reason.value)
+  if (c?.status === 'conflict') {
+    conflict.value = c
+    const live = c.liveTags ?? {}
+    const keys = new Set([...Object.keys(startedFrom), ...Object.keys(mine)])
+    conflictKeys.value = [...keys]
+      .filter((k) => startedFrom[k] !== mine[k] && live[k] !== startedFrom[k] && live[k] !== mine[k])
+      .map((k) => ({ key: k, base: startedFrom[k] ?? null, mine: mine[k] ?? null, live: live[k] ?? null }))
+  } else if (c) {
+    conflict.value = null
+  }
+}
+
+function resolveConflict() {
+  const c = conflict.value
+  if (!c) return
+  conflict.value = null
+  void drafts.open(c.draftId, { review: true, changeId: c.id })
 }
 
 function discard() {
@@ -172,6 +194,33 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <p>Click an object or an issue on the map to inspect it.</p>
       </div>
     </div>
+
+    <section v-if="conflict" class="scroll-thin max-h-[45%] shrink-0 space-y-2 overflow-y-auto border-t border-changed/40 bg-changed-soft px-4 py-3" data-testid="manual-conflict">
+      <div class="flex items-center gap-2 font-semibold text-changed">
+        <Icon name="conflict" :size="15" /> Conflict with the live object
+      </div>
+      <p class="text-[12px] text-fg-2">
+        Someone changed this object upstream (now v{{ conflict.liveVersion ?? '?' }}) on a key you edited. Your edit is saved in the manual draft
+        as a conflict and will not upload until you pick the values.
+      </p>
+      <table v-if="conflictKeys.length" class="w-full font-mono text-[11.5px]">
+        <thead class="text-left text-[10.5px] text-fg-3">
+          <tr><th class="pr-2 font-medium">Key</th><th class="pr-2 font-medium">Was</th><th class="pr-2 font-medium">Yours</th><th class="font-medium">Live</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="k in conflictKeys" :key="k.key">
+            <td class="pr-2 break-all">{{ k.key }}</td>
+            <td class="pr-2 break-all text-fg-3">{{ k.base ?? '∅' }}</td>
+            <td class="pr-2 break-all">{{ k.mine ?? '∅' }}</td>
+            <td class="break-all text-changed">{{ k.live ?? '∅' }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="flex gap-1.5">
+        <button class="btn btn-sm btn-primary" @click="resolveConflict">Resolve conflict</button>
+        <button class="btn btn-sm btn-ghost" @click="conflict = null">Dismiss</button>
+      </div>
+    </section>
 
     <Transition name="fade">
       <footer v-if="dirty && mapStore.selected" class="shrink-0 space-y-2 border-t border-line bg-surface-2 px-4 py-3">

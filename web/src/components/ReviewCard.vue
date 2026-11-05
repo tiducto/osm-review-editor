@@ -16,6 +16,7 @@ import TagDiffView from './TagDiffView.vue'
 import TagEditor from './TagEditor.vue'
 import PresetFields from './PresetFields.vue'
 import ConflictResolver from './ConflictResolver.vue'
+import DraftChangeset from './DraftChangeset.vue'
 import Icon from './Icon.vue'
 import Spinner from './Spinner.vue'
 
@@ -172,6 +173,7 @@ const shortcuts = [
       </div>
       <h2 class="mt-1 truncate text-[14px] font-semibold" :title="draft.title">{{ draft.title }}</h2>
       <p v-if="draft.description" class="mt-0.5 line-clamp-2 text-[12px] text-fg-2" :title="draft.description">{{ draft.description }}</p>
+      <DraftChangeset :draft="draft" />
       <div class="mt-2.5 flex items-center gap-3">
         <div class="flex h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
           <div v-for="s in progressSegments" :key="s.label" :class="s.cls" class="h-full transition-[width] duration-300" :style="{ width: `${s.w * 100}%` }" />

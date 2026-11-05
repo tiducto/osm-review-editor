@@ -13,6 +13,7 @@ export const SRC = {
   highlight: 'ore-highlight',
   selection: 'ore-selection',
   issues: 'ore-issues',
+  draw: 'ore-draw',
 } as const
 
 export type SourceId = (typeof SRC)[keyof typeof SRC]
@@ -295,6 +296,49 @@ export function installLayers(map: MlMap, dark: boolean): void {
       'circle-color': ['get', 'color'],
       'circle-stroke-color': t.halo,
       'circle-stroke-width': 2,
+    },
+  })
+
+  installDrawLayers(map)
+}
+
+export function installDrawLayers(map: MlMap): void {
+  const add = (layer: Parameters<MlMap['addLayer']>[0]) => {
+    if (!map.getLayer(layer.id)) map.addLayer(layer)
+  }
+  add({
+    id: 'ore-draw-fill',
+    type: 'fill',
+    source: SRC.draw,
+    filter: isPolygon,
+    paint: { 'fill-color': accent, 'fill-opacity': 0.12 },
+  })
+  const preview: ExpressionSpecification = ['boolean', ['get', 'preview'], false]
+  add({
+    id: 'ore-draw-line',
+    type: 'line',
+    source: SRC.draw,
+    filter: ['all', ['==', ['get', 'g'], 'line'], ['!', preview]],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': accent, 'line-width': 2.5 },
+  })
+  add({
+    id: 'ore-draw-preview',
+    type: 'line',
+    source: SRC.draw,
+    filter: ['all', ['==', ['get', 'g'], 'line'], preview],
+    paint: { 'line-color': accent, 'line-width': 2, 'line-dasharray': [2, 2], 'line-opacity': 0.8 },
+  })
+  add({
+    id: 'ore-draw-point',
+    type: 'circle',
+    source: SRC.draw,
+    filter: isPoint,
+    paint: {
+      'circle-radius': ['case', ['boolean', ['get', 'first'], false], 7, 4.5],
+      'circle-color': '#ffffff',
+      'circle-stroke-color': accent,
+      'circle-stroke-width': ['case', ['boolean', ['get', 'first'], false], 3, 2],
     },
   })
 }

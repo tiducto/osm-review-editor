@@ -20,6 +20,7 @@ import type {
   ResolveConflictRequest,
   ReviewRequest,
   Rule,
+  RuleIssuesRequest,
   RuleRunResult,
   SearchHit,
   SetTargetRequest,
@@ -84,7 +85,8 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
 }
 
 const get = <T>(path: string, query?: Query, signal?: AbortSignal) => request<T>('GET', withQuery(path, query), undefined, signal)
-const post = <T>(path: string, body?: unknown, query?: Query) => request<T>('POST', withQuery(path, query), body ?? {})
+const post = <T>(path: string, body?: unknown, query?: Query, signal?: AbortSignal) =>
+  request<T>('POST', withQuery(path, query), body ?? {}, signal)
 const put = <T>(path: string, body: unknown) => request<T>('PUT', path, body)
 const patch = <T>(path: string, body: unknown) => request<T>('PATCH', path, body)
 
@@ -104,12 +106,14 @@ export const api = {
   links: (ref: OsmRef) => get<EditorLinks>(`/api/objects/${refString(ref)}/links`),
 
   rules: () => get<Rule[]>('/api/rules'),
-  issues: (ruleId: string, scope: { area?: string | null; bbox?: BBox | null; limit?: number }, signal?: AbortSignal) =>
-    get<RuleRunResult>(
-      `/api/rules/${enc(ruleId)}/issues`,
-      { area: scope.area, bbox: scope.bbox && !scope.area ? bboxParam(scope.bbox) : undefined, limit: scope.limit },
-      signal,
-    ),
+  issues: (ruleId: string, scope: RuleIssuesRequest, signal?: AbortSignal) => {
+    const body: RuleIssuesRequest = scope.area
+      ? { area: scope.area, limit: scope.limit }
+      : scope.polygon
+        ? { polygon: scope.polygon, limit: scope.limit }
+        : { bbox: scope.bbox, limit: scope.limit }
+    return post<RuleRunResult>(`/api/rules/${enc(ruleId)}/issues`, body, undefined, signal)
+  },
 
   drafts: (filter: { status?: DraftStatus; author?: string } = {}) => get<Draft[]>('/api/drafts', filter),
   createDraft: (req: CreateDraftRequest) => post<Draft>('/api/drafts', req),
@@ -132,6 +136,9 @@ export const api = {
   setTarget: (req: SetTargetRequest) => put<AccountStatus>('/api/settings/target', req),
   logout: () => post<AccountStatus>('/api/account/logout'),
   mcpInfo: () => get<McpInfo>('/api/settings/mcp'),
+  imagerySettings: () => get<ImagerySource[]>('/api/settings/imagery'),
+  saveImagerySettings: (list: ImagerySource[]) => put<ImagerySource[]>('/api/settings/imagery', list),
+  resetImagerySettings: () => post<ImagerySource[]>('/api/settings/imagery/reset'),
 }
 
 export function errorMessage(e: unknown): string {

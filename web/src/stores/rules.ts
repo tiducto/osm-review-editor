@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, reactive, ref, shallowRef, watch } from 'vue'
-import type { BBox, Issue, OsmRef, Rule, RuleRunResult, Severity } from '@/generated/models'
+import type { BBox, Issue, OsmRef, Rule, RuleIssuesRequest, RuleRunResult, Severity } from '@/generated/models'
 import { api, errorMessage, isAbort } from '@/api/client'
 import { useMapStore } from './map'
 import { ruleColor } from '@/lib/colors'
@@ -88,13 +88,15 @@ export const useRulesStore = defineStore('rules', () => {
     }
   }
 
-  const scope = computed<{ area?: string; bbox?: BBox } | null>(() => {
+  const scope = computed<RuleIssuesRequest | null>(() => {
     if (mapStore.area) return { area: mapStore.area.name }
+    if (mapStore.polygon) return { polygon: mapStore.polygon }
     if (mapStore.bbox && mapStore.zoom >= ISSUE_MIN_ZOOM) return { bbox: padBBox(mapStore.bbox, 0.25) }
     return null
   })
 
-  const needsZoom = computed(() => !mapStore.area && mapStore.zoom < ISSUE_MIN_ZOOM)
+  const fixedScope = computed(() => !!mapStore.area || !!mapStore.polygon)
+  const needsZoom = computed(() => !fixedScope.value && mapStore.zoom < ISSUE_MIN_ZOOM)
 
   async function loadRule(id: string) {
     const s = scope.value
@@ -127,7 +129,7 @@ export const useRulesStore = defineStore('rules', () => {
   }
 
   function onViewChanged() {
-    if (mapStore.area) return
+    if (fixedScope.value) return
     const b = mapStore.bbox
     if (!scope.value || !b) {
       if (Object.keys(results.value).length) results.value = {}
@@ -139,7 +141,7 @@ export const useRulesStore = defineStore('rules', () => {
   }
 
   watch(
-    () => mapStore.area?.name,
+    () => [mapStore.area?.name, mapStore.polygon],
     () => {
       results.value = {}
       void refresh()

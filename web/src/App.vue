@@ -30,6 +30,28 @@ const rightContent = computed<'review' | 'inspector' | null>(() =>
   drafts.reviewing && drafts.current ? 'review' : mapStore.selected ? 'inspector' : null,
 )
 const rightOpen = computed(() => !!rightContent.value && !rightCollapsed.value)
+const mapBox = ref<HTMLElement | null>(null)
+const rightPanel = ref<HTMLElement | null>(null)
+
+function syncInset() {
+  const map = mapBox.value?.getBoundingClientRect()
+  const box = rightPanel.value?.parentElement?.getBoundingClientRect()
+  if (!map || !box || window.innerWidth >= 768 || !rightOpen.value) {
+    mapStore.setBottomInset(0)
+    return
+  }
+  mapStore.setBottomInset(Math.max(0, map.bottom - (box.bottom - box.height * 0.58)))
+}
+watch(
+  () => [mapStore.selected, drafts.reviewing && drafts.current?.draft.id],
+  () => {
+    if (window.innerWidth < 768) rightCollapsed.value = false
+  },
+)
+watch(rightOpen, () => {
+  syncInset()
+  if (drafts.reviewing && window.innerWidth < 768) setTimeout(() => drafts.focusCurrent(), 220)
+})
 
 function onKey(e: KeyboardEvent) {
   if (isTyping(e) || hasModifier(e) || app.settingsOpen || app.mergeDraftId) return
@@ -49,7 +71,7 @@ function onKey(e: KeyboardEvent) {
 let stopEvents: (() => void) | null = null
 
 watch(
-  () => drafts.current?.draft.id ?? null,
+  () => (drafts.reviewing ? (drafts.current?.draft.id ?? null) : null),
   (id) => {
     const url = new URL(location.href)
     if (id) url.searchParams.set('draft', id)
@@ -60,6 +82,8 @@ watch(
 
 onMounted(async () => {
   window.addEventListener('keydown', onKey)
+  window.addEventListener('resize', syncInset)
+  syncInset()
   stopEvents = connectEvents()
   await app.init()
   await rules.load()
@@ -71,6 +95,7 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey)
+  window.removeEventListener('resize', syncInset)
   stopEvents?.()
 })
 </script>
@@ -100,7 +125,7 @@ onBeforeUnmount(() => {
       </aside>
 
       <main class="flex min-w-0 flex-1 flex-col">
-        <div class="relative min-h-0 flex-1">
+        <div ref="mapBox" class="relative min-h-0 flex-1">
           <MapView />
           <button
             class="absolute top-1/2 left-0 z-10 grid h-12 w-4 -translate-y-1/2 place-items-center rounded-r-md border border-l-0 border-line bg-surface text-fg-3 shadow-panel hover:text-fg"
@@ -112,7 +137,7 @@ onBeforeUnmount(() => {
           </button>
           <button
             v-if="rightContent"
-            class="absolute top-1/2 right-0 z-10 grid h-12 w-4 -translate-y-1/2 place-items-center rounded-l-md border border-r-0 border-line bg-surface text-fg-3 shadow-panel hover:text-fg"
+            class="absolute top-1/2 right-0 z-10 grid h-12 w-4 -translate-y-1/2 place-items-center rounded-l-md border border-r-0 border-line bg-surface text-fg-3 shadow-panel hover:text-fg max-md:hidden"
             :title="rightOpen ? 'Hide panel (])' : 'Show panel (])'"
             @click="rightCollapsed = !rightCollapsed"
           >
@@ -123,10 +148,21 @@ onBeforeUnmount(() => {
       </main>
 
       <aside
-        class="max-w-[100vw] shrink-0 overflow-hidden border-l border-line bg-surface transition-[width] duration-200 max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-20 max-md:shadow-panel"
-        :class="rightOpen ? 'w-[392px]' : 'w-0 border-l-0'"
+        class="shrink-0 border-line bg-surface md:overflow-hidden md:border-l md:transition-[width] md:duration-200 max-md:absolute max-md:inset-x-0 max-md:bottom-0 max-md:z-20 max-md:border-t max-md:shadow-pop max-md:transition-[height]"
+        :class="[rightOpen ? 'md:w-[392px] max-md:h-[58%]' : 'md:w-0 md:border-l-0 max-md:h-0 max-md:border-t-0', !rightContent && 'max-md:hidden']"
+        ref="rightPanel"
+        data-testid="right-panel"
       >
-        <div class="h-full w-[392px] max-w-[100vw]">
+        <button
+          v-if="rightContent"
+          class="absolute -top-8 right-3 flex h-8 items-center gap-1 rounded-t-lg border border-b-0 border-line bg-surface px-3 text-[12px] font-medium text-fg-2 shadow-panel md:hidden"
+          data-testid="sheet-toggle"
+          @click="rightCollapsed = !rightCollapsed"
+        >
+          <Icon :name="rightOpen ? 'chevron-down' : 'chevron-up'" :size="13" />
+          {{ rightOpen ? 'Show map' : rightContent === 'review' ? 'Show review' : 'Show inspector' }}
+        </button>
+        <div class="h-full overflow-hidden md:w-[392px]">
           <ReviewCard v-if="rightContent === 'review'" />
           <Inspector v-else-if="rightContent === 'inspector'" />
         </div>
