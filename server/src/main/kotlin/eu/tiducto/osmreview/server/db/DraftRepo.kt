@@ -337,10 +337,11 @@ class DraftRepo(private val db: Db) {
         }
     }
 
-    suspend fun recordRuleRun(ruleId: String, scopeKey: String, issueCount: Int, tookMs: Long) = db.tx {
+    suspend fun recordRuleRun(ruleId: String, scopeKey: String, scopeGeom: JsonElement?, issueCount: Int, tookMs: Long) = db.tx {
         RuleRunsTable.insert {
             it[RuleRunsTable.ruleId] = ruleId
             it[RuleRunsTable.scopeKey] = scopeKey
+            it[RuleRunsTable.scopeGeom] = scopeGeom
             it[RuleRunsTable.issueCount] = issueCount
             it[RuleRunsTable.tookMs] = tookMs
             it[ranAt] = now()

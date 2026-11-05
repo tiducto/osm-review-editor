@@ -1,8 +1,13 @@
 package eu.tiducto.osmreview.server.mcp
 
 import eu.tiducto.osmreview.rules.Geo
-import eu.tiducto.osmreview.rules.Scope
+import eu.tiducto.osmreview.rules.ParentInfo
+import eu.tiducto.osmreview.rules.PolygonScopes
+import eu.tiducto.osmreview.rules.containsLonLat
 import eu.tiducto.osmreview.server.App
+import eu.tiducto.osmreview.server.api.runRule
+import eu.tiducto.osmreview.server.core.NotFoundException
+import eu.tiducto.osmreview.server.core.ResolvedScope
 import eu.tiducto.osmreview.server.osm.Overpass
 import eu.tiducto.osmreview.shared.Authors
 import eu.tiducto.osmreview.shared.BBox
@@ -38,6 +43,7 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
@@ -45,6 +51,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.double
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -135,8 +142,8 @@ private fun buildServer(app: App): Server {
         },
         readOnly = true,
     ) { args ->
-        val (scope, key) = scopeOf(app, args["area"]!!)
-        val r = app.rules.run(args.str("rule_id")!!, scope, key, args.int("limit") ?: 200)
+        val resolved = resolveArea(app, args["area"])
+        val r = app.runRule(args.str("rule_id") ?: return@tool err("rule_id is required"), resolved, args.int("limit") ?: 200)
         ok(r, eu.tiducto.osmreview.shared.RuleRunResult.serializer())
     }
 
@@ -154,14 +161,14 @@ private fun buildServer(app: App): Server {
         val limit = 500
         val goql = args.str("goql")
         val ql = args.str("overpass")
+        if (goql == null && ql == null) return@tool err("Give goql or overpass")
+        val resolved = resolveArea(app, args["area"])
         when {
             goql != null -> {
-                val (_, key) = scopeOf(app, args["area"]!!)
-                val bbox = bboxOf(app, args["area"]!!)
-                val (found, truncated) = app.queries.goql(goql, bbox, limit)
+                val (found, truncated) = app.queries.goql(goql, resolved.scope, limit)
                 okJson(
                     buildJsonObject {
-                        put("scope", key)
+                        put("scope", resolved.key)
                         put("truncated", truncated)
                         putJsonArray("objects") {
                             found.forEach { f ->
@@ -177,22 +184,29 @@ private fun buildServer(app: App): Server {
                     },
                 )
             }
-            ql != null -> {
-                val (hits, truncated) = overpass.query(ql, limit)
+            else -> {
+                val (raw, truncated) = overpass.query(ql!!, limit, Geo.bbox(resolved.scope.bounds))
+                val hits = if (resolved.scope.polygon == null) {
+                    raw
+                } else {
+                    raw.filter { h -> h.center?.let { resolved.scope.containsLonLat(it.lng, it.lat) } ?: true }
+                }
                 okJson(
                     buildJsonObject {
+                        put("scope", resolved.key)
                         put("truncated", truncated)
                         put("objects", WireJson.encodeToJsonElement(ListSerializer(Overpass.Hit.serializer()), hits))
                     },
                 )
             }
-            else -> err("Give goql or overpass")
         }
     }
 
     server.tool(
         "get_object",
-        "One object: from the mirror (tags, geometry, parent ways/relations) or, with live=true, from the OSM API (with version).",
+        "One object with its neighbours: parents (ways and relations it belongs to, with member role) and, for nodes and ways, " +
+            "connected_ways (ways sharing a node with it). From the mirror (tags, geometry summary) or, with live=true, from the OSM API " +
+            "(with version; parents are live, connected ways of a way come from the mirror).",
         schema(listOf("type", "id")) {
             enum("type", "node, way or relation", listOf("node", "way", "relation"))
             long("id", "OSM id")
@@ -202,7 +216,16 @@ private fun buildServer(app: App): Server {
     ) { args ->
         val ref = OsmRef(OsmType.fromApiName(args.str("type")!!), args.long("id")!!)
         if (args.bool("live") == true) {
-            val el = app.account.api().fetchOne(ref) ?: return@tool err("$ref does not exist on the ${app.account.target.name.lowercase()} API")
+            val api = app.account.api()
+            val el = api.fetchOne(ref) ?: return@tool err("$ref does not exist on the ${app.account.target.name.lowercase()} API")
+            val parents = api.parents(ref).take(MAX_NEIGHBOURS).map { p ->
+                ParentInfo(p.ref, p.tags, p.members.firstOrNull { it.type == ref.type.apiName && it.ref == ref.id }?.role?.takeIf { it.isNotEmpty() })
+            }
+            val connected = when (ref.type) {
+                OsmType.NODE -> parents.filter { it.ref.type == OsmType.WAY }.map { it.copy(role = null) }
+                OsmType.WAY -> runCatching { app.queries.connectedWays(ref) }.getOrDefault(emptyList())
+                OsmType.RELATION -> emptyList()
+            }
             okJson(
                 buildJsonObject {
                     put("ref", ref.toString())
@@ -213,6 +236,8 @@ private fun buildServer(app: App): Server {
                     if (el.lon != null) put("lon", el.lon)
                     if (el.nodeIds.isNotEmpty()) put("node_count", el.nodeIds.size)
                     if (el.members.isNotEmpty()) put("member_count", el.members.size)
+                    put("parents", neighboursJson(parents))
+                    if (ref.type != OsmType.RELATION) put("connected_ways", neighboursJson(connected))
                 },
             )
         } else {
@@ -222,7 +247,8 @@ private fun buildServer(app: App): Server {
                     put("ref", ref.toString())
                     put("tags", tagsJson(info.feature.tags))
                     put("geometry", summary(info.feature.geometry))
-                    put("parents", WireJson.encodeToJsonElement(ListSerializer(eu.tiducto.osmreview.rules.ParentInfo.serializer()), info.parents))
+                    put("parents", neighboursJson(info.parents))
+                    if (ref.type != OsmType.RELATION) put("connected_ways", neighboursJson(info.connectedWays))
                 },
             )
         }
@@ -237,7 +263,7 @@ private fun buildServer(app: App): Server {
             area()
         },
     ) { args ->
-        val scope = args["area"]?.let { a -> runCatching { app.drafts.resolveScope(a.asAreaName(), a.asBBox()).third }.getOrNull() }
+        val scope = args["area"]?.takeUnless { it is JsonNull }?.let { resolveArea(app, it).geometry }
         val d = app.drafts.createDraft(args.str("title")!!, args.str("description").orEmpty(), Authors.CLAUDE, scope)
         okJson(buildJsonObject { put("draft_id", d.id) })
     }
@@ -326,31 +352,43 @@ private fun buildServer(app: App): Server {
     return server
 }
 
-private fun JsonElement.asAreaName(): String? = (this as? JsonPrimitive)?.contentOrNull?.takeIf { s -> s.count { it == ',' } != 3 }
-
-private fun JsonElement.asBBox(): BBox? {
-    val parts = when (this) {
-        is JsonArray -> map { it.jsonPrimitive.double }
-        is JsonPrimitive -> contentOrNull?.split(",")?.mapNotNull { it.trim().toDoubleOrNull() }
-        else -> null
-    } ?: return null
-    return if (parts.size == 4) BBox(parts[0], parts[1], parts[2], parts[3]) else null
-}
-
-private fun scopeOf(app: App, area: JsonElement): Pair<Scope, String> {
-    if (area is JsonObject) {
-        val g = Geo.fromGeoJson(area)
-        return Scope(Geo.boundsOf(g), g) to "geojson:${area.hashCode()}"
+private fun resolveArea(app: App, area: JsonElement?): ResolvedScope = when (area) {
+    null, JsonNull -> throw IllegalArgumentException("area is required: $AREA_FORMS")
+    is JsonObject -> app.drafts.resolveScope(null, null, area)
+    is JsonArray -> app.drafts.resolveScope(null, bboxOf(area), null)
+    is JsonPrimitive -> {
+        val text = area.contentOrNull?.trim().orEmpty()
+        when {
+            text.isEmpty() -> throw IllegalArgumentException("area is empty: $AREA_FORMS")
+            text.startsWith("{") -> app.drafts.resolveScope(null, null, PolygonScopes.parseJson(text))
+            text.startsWith("[") -> resolveArea(app, PolygonScopes.parseJson(text))
+            else -> bboxOf(text)?.let { app.drafts.resolveScope(null, it, null) } ?: try {
+                app.drafts.resolveScope(text, null, null)
+            } catch (e: NotFoundException) {
+                throw IllegalArgumentException("Unknown area '$text'. $AREA_FORMS")
+            }
+        }
     }
-    val (scope, key, _) = app.drafts.resolveScope(area.asAreaName(), area.asBBox())
-    return scope to key
 }
 
-private fun bboxOf(app: App, area: JsonElement): BBox? = when {
-    area is JsonObject -> Geo.bbox(Geo.boundsOf(Geo.fromGeoJson(area)))
-    area.asBBox() != null -> area.asBBox()
-    else -> area.asAreaName()?.let { app.queries.area(it)?.first?.bbox }
+private const val AREA_FORMS =
+    "Give an admin boundary or place name (e.g. \"Opava\"), a bbox [west, south, east, north], or a GeoJSON Polygon/MultiPolygon in WGS84."
+
+private fun bboxOf(a: JsonArray): BBox {
+    val parts = a.map { (it as? JsonPrimitive)?.doubleOrNull }
+    if (parts.size != 4 || parts.any { it == null }) throw IllegalArgumentException("A bbox area must be [west, south, east, north] numbers")
+    return BBox(parts[0]!!, parts[1]!!, parts[2]!!, parts[3]!!)
 }
+
+private fun bboxOf(text: String): BBox? {
+    val parts = text.split(",").map { it.trim().toDoubleOrNull() }
+    if (parts.size != 4 || parts.any { it == null }) return null
+    return BBox(parts[0]!!, parts[1]!!, parts[2]!!, parts[3]!!)
+}
+
+private fun neighboursJson(list: List<ParentInfo>): JsonElement = WireJson.encodeToJsonElement(ListSerializer(ParentInfo.serializer()), list)
+
+private const val MAX_NEIGHBOURS = 50
 
 private fun summary(g: JsonElement): JsonObject {
     val o = g as? JsonObject ?: return buildJsonObject { }
@@ -420,7 +458,11 @@ private fun JsonObjectBuilder.enum(name: String, d: String, values: List<String>
     putJsonArray("enum") { values.forEach { add(JsonPrimitive(it)) } }
 }
 private fun JsonObjectBuilder.area() = putJsonObject("area") {
-    put("description", "Area name (admin boundary, e.g. \"Opava\"), bbox [west,south,east,north], or a GeoJSON Polygon")
+    put(
+        "description",
+        "Area name (admin boundary, e.g. \"Opava\"), bbox [west,south,east,north], or a GeoJSON Polygon/MultiPolygon " +
+            "(geometry, Feature or one-feature FeatureCollection) in WGS84, at most 10 degrees across and 20000 vertices",
+    )
 }
 
 private fun JsonObject.str(k: String) = (this[k] as? JsonPrimitive)?.contentOrNull

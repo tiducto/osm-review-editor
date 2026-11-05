@@ -52,10 +52,32 @@ class MirrorQueries(private val mirror: GolMirror) {
         val f = findIn(gol, listOf(ref))[ref] ?: return@query null
         ObjectInfo(
             feature = f.toMapFeature(),
-            parents = f.parents().take(MAX_PARENTS).map { ParentInfo(it.ref, it.tagMap(), it.role().takeIf { r -> r.isNotEmpty() }) },
+            parents = f.parents().take(MAX_PARENTS).map { p ->
+                val role = if (p.isRelation) f.roleIn(p) else null
+                ParentInfo(p.ref, p.tagMap(), role)
+            },
             center = f.centroid(),
+            connectedWays = connectedWays(gol, f),
         )
     }
+
+    fun connectedWays(ref: OsmRef): List<ParentInfo> = mirror.query { gol ->
+        findIn(gol, listOf(ref))[ref]?.let { connectedWays(gol, it) }.orEmpty()
+    }
+
+    private fun connectedWays(gol: FeatureLibrary, f: Feature): List<ParentInfo> =
+        if (f.isRelation) {
+            emptyList()
+        } else {
+            gol.select("w").connectedTo(f).asSequence()
+                .filter { it.ref != f.ref }
+                .take(MAX_PARENTS)
+                .map { ParentInfo(it.ref, it.tagMap()) }
+                .toList()
+        }
+
+    private fun Feature.roleIn(relation: Feature): String? =
+        relation.members().firstOrNull { it.ref == ref }?.role()?.takeIf { it.isNotEmpty() }
 
     private data class AreaEntry(
         val name: String,
@@ -138,8 +160,11 @@ class MirrorQueries(private val mirror: GolMirror) {
             .toList()
     }
 
-    fun goql(query: String, bbox: BBox?, limit: Int): Pair<List<MapFeature>, Boolean> = mirror.query { gol ->
-        val sel = gol.select(query).let { s -> bbox?.let { s.`in`(Geo.box(it)) } ?: s }
+    fun goql(query: String, bbox: BBox?, limit: Int): Pair<List<MapFeature>, Boolean> =
+        goql(query, bbox?.let { Scope(Geo.box(it)) }, limit)
+
+    fun goql(query: String, scope: Scope?, limit: Int): Pair<List<MapFeature>, Boolean> = mirror.query { gol ->
+        val sel = gol.select(query).let { s -> scope?.let { s.within(it) } ?: s }
         val out = ArrayList<MapFeature>()
         for (f in sel) {
             if (out.size >= limit) return@query out to true
@@ -165,7 +190,12 @@ class MirrorQueries(private val mirror: GolMirror) {
 data class ParentInfo(val ref: OsmRef, val tags: Map<String, String>, val role: String? = null)
 
 @kotlinx.serialization.Serializable
-data class ObjectInfo(val feature: MapFeature, val parents: List<ParentInfo>, val center: eu.tiducto.osmreview.shared.LngLat)
+data class ObjectInfo(
+    val feature: MapFeature,
+    val parents: List<ParentInfo>,
+    val center: eu.tiducto.osmreview.shared.LngLat,
+    val connectedWays: List<ParentInfo> = emptyList(),
+)
 
 private const val MAX_PARENTS = 50
 

@@ -118,7 +118,7 @@ fun main(args: Array<String>) {
         serializer<UiEvent>(), serializer<ApiError>(), serializer<SearchHit>(), serializer<EditorLinks>(), serializer<AccountStatus>(), serializer<McpInfo>(),
     ).forEach(gen::addResponse)
     listOf(
-        serializer<CreateDraftRequest>(), serializer<DraftFromRuleRequest>(), serializer<ProposeChangesRequest>(),
+        serializer<CreateDraftRequest>(), serializer<DraftFromRuleRequest>(), serializer<RuleIssuesRequest>(), serializer<ProposeChangesRequest>(),
         serializer<ReviewRequest>(), serializer<ResolveConflictRequest>(), serializer<ManualEditRequest>(),
         serializer<UpdateDraftRequest>(), serializer<SetTargetRequest>(),
     ).forEach(gen::addRequest)
