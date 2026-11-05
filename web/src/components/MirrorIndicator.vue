@@ -137,14 +137,14 @@ onBeforeUnmount(() => {
         <button
           v-if="mirror.updateSupported"
           class="btn btn-sm"
-          :disabled="mirror.sidecarBusy || mirror.requesting"
-          :title="mirror.sidecarBusy ? t('shell.mirror.updateBusy') : ''"
+          :disabled="mirror.sidecarBusy || mirror.requesting || !mirror.sidecar"
+          :title="!mirror.sidecar ? t('shell.mirror.noUpdater') : mirror.sidecarBusy ? t('shell.mirror.updateBusy') : ''"
           data-testid="mirror-update-now"
           @click="mirror.updateNow()"
         >
           <Spinner v-if="mirror.requesting" :size="11" /> {{ t('shell.mirror.updateNow') }}
         </button>
-        <span v-if="mirror.sidecarBusy && mirror.updateSupported" class="self-center text-[11px] text-fg-3">{{ t('shell.mirror.updateBusy') }}</span>
+        <span v-if="mirror.updateSupported && (mirror.sidecarBusy || !mirror.sidecar)" class="self-center text-[11px] text-fg-3" data-testid="mirror-update-reason">{{ !mirror.sidecar ? t('shell.mirror.noUpdater') : t('shell.mirror.updateBusy') }}</span>
       </div>
     </div>
   </div>
