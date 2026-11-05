@@ -126,6 +126,8 @@ private val INSTRUCTIONS = """
     (list_rule_files, read_rule_file, validate_rule_file, write_rule_file, delete_rule_file). Validate before writing;
     a write with errors is refused unless force=true. Presets: search_presets, get_preset, match_preset, and
     import_preset / detach_preset to customise an iD preset as an overlay file.
+    push_view moves the user's open browser tab (area or center, highlights, a scan, a draft, selected objects) to show
+    what you found; the user sees a toast "Claude changed the view" with undo, so use it when it helps, with a short message.
 """.trimIndent()
 
 private fun buildServer(app: App): Server {
@@ -439,7 +441,126 @@ private fun buildServer(app: App): Server {
     }
     registerRuleFileTools(server, app)
     registerMapCssTools(server, app)
+    registerPushView(server, app)
     return server
+}
+
+private fun registerPushView(server: Server, app: App) {
+    server.tool(
+        "push_view",
+        "Move the user's open browser tab: fly the map to an area or a point, switch highlights on, open a scan or a draft and " +
+            "select objects. The user sees a toast \"Claude changed the view\" with your message and an undo button. Give at least " +
+            "one of area, center, highlights, scan_id, draft_id, select; area and center exclude each other. With only select, the " +
+            "map frames the selected objects. When no tab is open the view is queued and applied when one connects. Returns " +
+            "{delivered, queued, event}.",
+        schema {
+            area()
+            putJsonObject("center") {
+                put("type", "array")
+                putJsonObject("items") { put("type", "number") }
+                put("description", "[lon, lat] to center the map on")
+            }
+            putJsonObject("zoom") {
+                put("type", "number")
+                put("description", "Zoom 0–22 with center (default 17)")
+            }
+            putJsonObject("highlights") {
+                put("type", "array")
+                putJsonObject("items") { put("type", "string") }
+                put("description", "Highlight file paths from list_highlights, e.g. highlights/sidewalks.mapcss")
+            }
+            bool("replace_highlights", "true: exactly these highlights are active; false (default): add them to the active ones")
+            str("scan_id", "Scan to open, from run_scan or get_scan")
+            str("draft_id", "Draft to open")
+            putJsonObject("select") {
+                put("type", "array")
+                putJsonObject("items") { put("type", "string") }
+                put("description", "Objects to select: n123, w45, r6 or node123, way45, relation6")
+            }
+            str("message", "Short text for the toast, e.g. why you moved the view")
+        },
+    ) { args ->
+        val hasArea = args["area"]?.takeUnless { it is JsonNull } != null
+        val centerArg = args["center"]?.takeUnless { it is JsonNull }
+        val zoomArg = args["zoom"]?.takeUnless { it is JsonNull }
+        if (hasArea && centerArg != null) return@tool err("Give area or center, not both")
+        if (zoomArg != null && centerArg == null) return@tool err("zoom needs center")
+
+        val resolved = if (hasArea) resolveArea(app, args["area"]) else null
+        val center = centerArg?.let { c ->
+            val parts = (c as? JsonArray)?.map { (it as? JsonPrimitive)?.doubleOrNull }
+            if (parts == null || parts.size != 2 || parts.any { it == null }) return@tool err("center must be [lon, lat] numbers")
+            val (lon, lat) = parts[0]!! to parts[1]!!
+            if (lon !in -180.0..180.0 || lat !in -90.0..90.0) return@tool err("center [$lon, $lat] is outside [-180..180, -90..90]")
+            LngLat(lon, lat)
+        }
+        val zoom = zoomArg?.let { z ->
+            val v = (z as? JsonPrimitive)?.doubleOrNull ?: return@tool err("zoom must be a number")
+            if (v !in 0.0..22.0) return@tool err("zoom must be between 0 and 22")
+            v
+        } ?: center?.let { DEFAULT_PUSH_ZOOM }
+
+        val highlights = stringList(args, "highlights") ?: return@tool err("highlights must be an array of file paths")
+        if (highlights.isNotEmpty()) {
+            val known = app.highlights.list().files.associateBy { it.path }
+            for (path in highlights) {
+                val f = known[path] ?: return@tool err("Unknown highlight file '$path'; see list_highlights")
+                if (!f.valid) return@tool err("Highlight file '$path' has errors: ${f.diagnostics.firstOrNull()?.message.orEmpty()}")
+            }
+        }
+
+        val scanId = args.str("scan_id")?.trim()?.ifEmpty { null }
+        if (scanId != null) {
+            runCatching { app.scans.scan(scanId) }.getOrElse { return@tool err("Unknown scan '$scanId'") }
+        }
+        val draftId = args.str("draft_id")?.trim()?.ifEmpty { null }
+        if (draftId != null) {
+            val uuid = runCatching { java.util.UUID.fromString(draftId) }.getOrNull()
+            if (uuid == null || app.repo.getDraft(uuid) == null) return@tool err("Unknown draft '$draftId'")
+        }
+        val selectRaw = stringList(args, "select") ?: return@tool err("select must be an array of refs like n123, w45, r6")
+        val select = selectRaw.map { s ->
+            eu.tiducto.osmreview.server.remote.parseRefs(s).singleOrNull() ?: return@tool err("Not an OSM ref: '$s' (use n123, w45, r6 or node123)")
+        }.distinct()
+
+        if (resolved == null && center == null && highlights.isEmpty() && scanId == null && draftId == null && select.isEmpty()) {
+            return@tool err("Give at least one of area, center, highlights, scan_id, draft_id, select")
+        }
+
+        val bbox = when {
+            resolved != null -> Geo.bbox(resolved.scope.bounds)
+            center == null && select.isNotEmpty() -> eu.tiducto.osmreview.server.remote.bboxFor(app, select)
+            else -> null
+        }
+        val event = eu.tiducto.osmreview.shared.UiEvent.PushView(
+            bbox = bbox,
+            center = center,
+            zoom = zoom,
+            areaName = resolved?.areaName,
+            highlights = highlights,
+            replaceHighlights = args.bool("replace_highlights") == true,
+            scanId = scanId,
+            draftId = draftId,
+            select = select,
+            message = args.str("message")?.trim()?.ifEmpty { null },
+        )
+        val delivered = app.events.emit(event)
+        okJson(
+            buildJsonObject {
+                put("delivered", delivered)
+                put("queued", !delivered)
+                put("event", WireJson.encodeToJsonElement(eu.tiducto.osmreview.shared.UiEvent.serializer(), event))
+            },
+        )
+    }
+}
+
+private const val DEFAULT_PUSH_ZOOM = 17.0
+
+private fun stringList(args: JsonObject, key: String): List<String>? = when (val v = args[key]) {
+    null, JsonNull -> emptyList()
+    is JsonArray -> v.map { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content ?: return null }
+    else -> null
 }
 
 internal fun resolveArea(app: App, area: JsonElement?): ResolvedScope = when (area) {

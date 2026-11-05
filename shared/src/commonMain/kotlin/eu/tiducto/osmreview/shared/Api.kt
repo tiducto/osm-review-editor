@@ -252,6 +252,21 @@ sealed interface UiEvent {
     @Serializable
     @SerialName("scan_finished")
     data class ScanFinished(val scanId: String, val scope: String, val issueCount: Int) : UiEvent
+
+    @Serializable
+    @SerialName("push_view")
+    data class PushView(
+        val bbox: BBox? = null,
+        val center: LngLat? = null,
+        val zoom: Double? = null,
+        val areaName: String? = null,
+        val highlights: List<String> = emptyList(),
+        val replaceHighlights: Boolean = false,
+        val scanId: String? = null,
+        val draftId: String? = null,
+        val select: List<OsmRef> = emptyList(),
+        val message: String? = null,
+    ) : UiEvent
 }
 
 @Serializable

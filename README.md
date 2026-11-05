@@ -246,6 +246,7 @@ queries, creates a draft with a reason per change, and reads your rejection comm
 | `delete_rule_file` | Move a file to the folder's `.trash/` |
 | `search_presets`, `get_preset`, `match_preset` | iD and user presets: search (cs, en), resolved preset, best preset for tags and geometry |
 | `import_preset`, `detach_preset` | Create an overlay file for an iD preset; turn an overlay into a full copy |
+| `push_view` | Move your open browser tab: fly to an `area` or a `center` + `zoom`, add or replace active `highlights`, open a `scan_id` or `draft_id`, `select` objects (framed when nothing else frames the view). You see a toast "Claude changed the view" with its `message` and undo; queued until a tab connects |
 
 `propose_geometry` limits: relations can only be modified (member list), not created or deleted;
 way node lists and relation member lists are complete replacements (or `insert_nodes` for a node

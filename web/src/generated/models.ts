@@ -178,6 +178,20 @@ export interface UiEventMirrorSwapped {
   status: MirrorStatus
 }
 
+export interface UiEventPushView {
+  type: 'push_view'
+  bbox: BBox | null
+  center: LngLat | null
+  zoom: number | null
+  areaName: string | null
+  highlights: string[]
+  replaceHighlights: boolean
+  scanId: string | null
+  draftId: string | null
+  select: OsmRef[]
+  message: string | null
+}
+
 export interface UiEventRemoteCommand {
   type: 'remote_command'
   command: string
@@ -202,7 +216,7 @@ export interface UiEventScanFinished {
   issueCount: number
 }
 
-export type UiEvent = UiEventDraftUpdated | UiEventMergeProgress | UiEventMirrorSwapped | UiEventRemoteCommand | UiEventRulesChanged | UiEventScanFinished
+export type UiEvent = UiEventDraftUpdated | UiEventMergeProgress | UiEventMirrorSwapped | UiEventPushView | UiEventRemoteCommand | UiEventRulesChanged | UiEventScanFinished
 
 export interface ApiError {
   error: string

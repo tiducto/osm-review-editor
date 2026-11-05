@@ -231,7 +231,7 @@ private suspend fun relationMembers(app: App, refs: List<OsmRef>): List<OsmRef> 
     return live.values.flatMap { r -> r.members.mapNotNull { m -> runCatching { OsmRef(OsmType.fromApiName(m.type), m.ref) }.getOrNull() } }
 }
 
-private suspend fun bboxFor(app: App, refs: List<OsmRef>): BBox? {
+internal suspend fun bboxFor(app: App, refs: List<OsmRef>): BBox? {
     val pts = ArrayList<Pair<Double, Double>>()
     val mirrored = runCatching { app.queries.mapFeatures(refs) }.getOrElse { emptyMap() }
     mirrored.values.forEach { collectPoints(it.geometry, pts) }

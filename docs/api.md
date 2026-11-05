@@ -538,6 +538,14 @@ Server → UI messages, one `UiEvent` JSON per frame, discriminated by `type`:
   `imagery`. `draftIds` lists every draft the command created (one per object for `addtags`;
   `draftId` is the first). `message` reports what an import skipped. Queued while no tab is
   connected and replayed when one connects.
+- `push_view`: Claude moved the view over MCP (`push_view` tool). Fields, all optional: `bbox`
+  (`{west, south, east, north}`, the resolved area or, with only `select`, the selected objects),
+  `center` (`{lng, lat}`) with `zoom` (0–22, 17 when only a center was given), `areaName` (when the
+  area was given by name), `highlights` (highlight file paths) with `replaceHighlights` (`false`: add
+  to the active highlights, `true`: make exactly these active), `scanId`, `draftId`, `select`
+  (`OsmRef` list) and `message`. The UI shows a toast "Claude changed the view" with undo. Queued
+  while no tab is connected (together with `remote_command`, the 20 most recent, in order) and
+  replayed when one connects.
 - `draft_updated`: a draft changed (e.g. Claude proposed changes over MCP); refetch it.
 - `merge_progress`: upload progress for a draft.
 - `mirror_swapped`: the GOL was updated and swapped; refetch rule layers.

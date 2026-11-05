@@ -6,6 +6,12 @@ import eu.tiducto.osmreview.server.App
 import eu.tiducto.osmreview.server.Config
 import eu.tiducto.osmreview.server.db.RuleRunsTable
 import eu.tiducto.osmreview.server.module
+import eu.tiducto.osmreview.shared.BBox
+import eu.tiducto.osmreview.shared.LngLat
+import eu.tiducto.osmreview.shared.OsmRef
+import eu.tiducto.osmreview.shared.OsmType
+import eu.tiducto.osmreview.shared.UiEvent
+import eu.tiducto.osmreview.shared.WireJson
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
@@ -54,6 +60,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class McpTest {
@@ -204,6 +211,7 @@ class McpTest {
                 "list_rule_files", "read_rule_file", "validate_rule_file", "write_rule_file", "delete_rule_file", "copy_rule_file",
                 "search_presets", "get_preset", "match_preset", "import_preset", "detach_preset",
                 "run_scan", "get_scan", "diff_scans", "draft_from_scan", "list_highlights", "highlight_stats", "evaluate_highlight",
+                "push_view",
             ),
             tools,
         )
@@ -416,6 +424,103 @@ class McpTest {
         assertTrue(keys.any { it.startsWith("area:Opava#") }, keys.toString())
     }
 
+    private fun pushed(r: ToolResult): UiEvent.PushView {
+        assertFalse(r.isError, r.text)
+        val o = r.json.jsonObject
+        assertEquals("push_view", o["event"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        return WireJson.decodeFromJsonElement(UiEvent.serializer(), o["event"]!!) as UiEvent.PushView
+    }
+
+    private fun assertBBox(expected: BBox, actual: BBox?) {
+        assertNotNull(actual)
+        listOf(expected.west to actual.west, expected.south to actual.south, expected.east to actual.east, expected.north to actual.north)
+            .forEach { (e, a) -> assertEquals(e, a, 1e-5, "$expected vs $actual") }
+    }
+
+    @Test
+    fun pushViewFramesAreaByNameAndBbox() = mcpTest {
+        val session = initialize()
+        val named = pushed(call(session, "push_view", args("area" to PRESET, "highlights" to strings("highlights/sidewalks.mapcss"), "message" to "sidewalk gaps")))
+        assertEquals(PRESET, named.areaName)
+        assertBBox(BBox(17.895, 49.935, 17.915, 49.95), named.bbox)
+        assertEquals(listOf("highlights/sidewalks.mapcss"), named.highlights)
+        assertFalse(named.replaceHighlights)
+        assertEquals("sidewalk gaps", named.message)
+        assertNull(named.center)
+
+        val boxed = pushed(call(session, "push_view", args("area" to "17.88,49.93,17.92,49.95", "replace_highlights" to true, "highlights" to strings())))
+        assertNull(boxed.areaName)
+        assertBBox(BBox(17.88, 49.93, 17.92, 49.95), boxed.bbox)
+        assertTrue(boxed.replaceHighlights)
+    }
+
+    @Test
+    fun pushViewCenterZoomAndSelection() = mcpTest {
+        val session = initialize()
+        val centered = pushed(call(session, "push_view", args("center" to numbers(17.9, 49.94), "zoom" to 18.5, "select" to strings("n101", "way55"))))
+        assertEquals(LngLat(17.9, 49.94), centered.center)
+        assertEquals(18.5, centered.zoom)
+        assertNull(centered.bbox, "a center frames the view, select does not add a bbox")
+        assertEquals(listOf(OsmRef(OsmType.NODE, 101), OsmRef(OsmType.WAY, 55)), centered.select)
+
+        val defaultZoom = pushed(call(session, "push_view", args("center" to numbers(17.9, 49.94))))
+        assertEquals(17.0, defaultZoom.zoom)
+
+        val selected = pushed(call(session, "push_view", args("select" to strings("w55"))))
+        val box = assertNotNull(selected.bbox, "only select: bbox from the objects")
+        assertTrue(box.west <= 17.9 && box.east >= 17.9 && box.south <= 49.94 && box.north >= 49.94, box.toString())
+        assertNull(selected.zoom)
+
+        val created = call(session, "create_draft", args("title" to "Shown")).json.jsonObject["draft_id"]!!.jsonPrimitive.content
+        val draft = pushed(call(session, "push_view", args("draft_id" to created)))
+        assertEquals(created, draft.draftId)
+        assertNull(draft.bbox)
+    }
+
+    @Test
+    fun pushViewRejectsBadArguments() = mcpTest {
+        val session = initialize()
+        fun failsWith(text: String, r: ToolResult) {
+            assertTrue(r.isError, r.text)
+            assertTrue(text in r.text, r.text)
+        }
+        failsWith("at least one of", call(session, "push_view", args()))
+        failsWith("at least one of", call(session, "push_view", args("message" to "hi")))
+        failsWith("highlights/nope.mapcss", call(session, "push_view", args("highlights" to strings("highlights/sidewalks.mapcss", "highlights/nope.mapcss"))))
+        failsWith("Unknown draft", call(session, "push_view", args("draft_id" to "00000000-0000-0000-0000-000000000000")))
+        failsWith("Unknown draft", call(session, "push_view", args("draft_id" to "not-a-uuid")))
+        failsWith("Unknown scan", call(session, "push_view", args("scan_id" to "00000000-0000-0000-0000-000000000000")))
+        failsWith("not both", call(session, "push_view", args("area" to PRESET, "center" to numbers(17.9, 49.94))))
+        failsWith("between 0 and 22", call(session, "push_view", args("center" to numbers(17.9, 49.94), "zoom" to 23)))
+        failsWith("Not an OSM ref", call(session, "push_view", args("select" to strings("x12"))))
+        assertTrue(app.events.connect().isEmpty(), "nothing is emitted for a rejected call")
+    }
+
+    @Test
+    fun pushViewIsQueuedWithoutATabAndDeliveredWithOne() = mcpTest {
+        val session = initialize()
+        app.events.emit(UiEvent.RemoteCommand("zoom", bbox = BBox(17.0, 49.0, 18.0, 50.0)))
+        val queued = call(session, "push_view", args("area" to PRESET)).json.jsonObject
+        assertEquals(false, queued["delivered"]!!.jsonPrimitive.booleanOrNull)
+        assertEquals(true, queued["queued"]!!.jsonPrimitive.booleanOrNull)
+        app.events.emit(UiEvent.DraftUpdated("x"))
+
+        val replayed = app.events.connect()
+        assertEquals(2, replayed.size, replayed.toString())
+        assertTrue(replayed[0] is UiEvent.RemoteCommand)
+        assertEquals(PRESET, (replayed[1] as UiEvent.PushView).areaName)
+
+        val delivered = call(session, "push_view", args("select" to strings("n101"))).json.jsonObject
+        assertEquals(true, delivered["delivered"]!!.jsonPrimitive.booleanOrNull)
+        assertEquals(false, delivered["queued"]!!.jsonPrimitive.booleanOrNull)
+        app.events.disconnect()
+        assertTrue(app.events.connect().isEmpty())
+        app.events.disconnect()
+    }
+
+    private fun strings(vararg s: String) = buildJsonArray { s.forEach { add(JsonPrimitive(it)) } }
+    private fun numbers(vararg n: Double) = buildJsonArray { n.forEach { add(JsonPrimitive(it)) } }
+
     private fun refKey(ref: JsonElement): String {
         val o = ref.jsonObject
         return "${o["type"]!!.jsonPrimitive.content}:${o["id"]!!.jsonPrimitive.content}"
@@ -449,6 +554,7 @@ class McpTest {
                     )
                 }
                 req.method != HttpMethod.Get -> respond("unexpected ${req.method} $path", HttpStatusCode.BadRequest)
+                path.endsWith("/way/55/full") -> respond(osm(listOf(elements.getValue("way/55"), elements.getValue("node/101"))))
                 parents.keys.any { path.endsWith(it) } -> respond(osm(parents.entries.first { path.endsWith(it.key) }.value))
                 else -> {
                     val type = path.substringAfterLast("/").removeSuffix("s")
