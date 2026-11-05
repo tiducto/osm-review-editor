@@ -189,6 +189,12 @@ export interface AccountStatus {
   configured: boolean
 }
 
+export interface McpInfo {
+  url: string
+  token: string
+  claudeCodeCommand: string
+}
+
 export interface CreateDraftRequest {
   title: string
   description?: string

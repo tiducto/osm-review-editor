@@ -126,7 +126,7 @@ fun main(args: Array<String>) {
         serializer<Rule>(), serializer<Issue>(), serializer<RuleRunResult>(), serializer<Area>(),
         serializer<FeatureCollection>(), serializer<ProposalResult>(), serializer<MergePreview>(),
         serializer<MergeProgress>(), serializer<Upload>(), serializer<AppStatus>(), serializer<ImagerySource>(),
-        serializer<UiEvent>(), serializer<ApiError>(), serializer<SearchHit>(), serializer<EditorLinks>(), serializer<AccountStatus>(),
+        serializer<UiEvent>(), serializer<ApiError>(), serializer<SearchHit>(), serializer<EditorLinks>(), serializer<AccountStatus>(), serializer<McpInfo>(),
     ).forEach(gen::addResponse)
     listOf(
         serializer<CreateDraftRequest>(), serializer<DraftFromRuleRequest>(), serializer<ProposeChangesRequest>(),

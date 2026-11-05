@@ -100,6 +100,9 @@ fun Application.module(app: App) {
         localPort(app.config.remoteControlPort) { remoteControlRoutes(app) }
 
         localPort(app.config.port) {
+            install(eu.tiducto.osmreview.server.api.LocalOnly) {
+                allowedHosts = allowedHosts + io.ktor.http.Url(app.config.publicUrl).host
+            }
             apiRoutes(app)
             mcpRoutes(app)
             webSocket("/api/events") {

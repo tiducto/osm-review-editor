@@ -235,3 +235,7 @@ data class SearchHit(
 /** Deep links for handing an object off to other editors. */
 @Serializable
 data class EditorLinks(val iD: String, val osm: String, val history: String)
+
+/** How to connect Claude: shown in Settings. */
+@Serializable
+data class McpInfo(val url: String, val token: String, val claudeCodeCommand: String)

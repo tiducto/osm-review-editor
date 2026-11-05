@@ -185,6 +185,16 @@ fun Route.apiRoutes(app: App) {
             app.account.logout()
             call.respond(app.account.status())
         }
+        get("/settings/mcp") {
+            val url = "${app.config.publicUrl}/mcp"
+            call.respond(
+                eu.tiducto.osmreview.shared.McpInfo(
+                    url = url,
+                    token = app.mcpToken,
+                    claudeCodeCommand = "claude mcp add --transport http osm-review $url --header \"Authorization: Bearer ${app.mcpToken}\"",
+                ),
+            )
+        }
         put("/settings/target") {
             val req = call.receive<SetTargetRequest>()
             require(req.target != OsmTarget.PROD || req.confirm) { "Switching to the production API needs confirm: true" }
