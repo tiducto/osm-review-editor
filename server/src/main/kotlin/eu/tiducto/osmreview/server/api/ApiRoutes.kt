@@ -232,7 +232,7 @@ fun Route.apiRoutes(app: App) {
             )
         }
         ruleFileRoutes(app.ruleFiles, app.ruleSources)
-        presetRoutes(app.presets)
+        presetRoutes(app.presets, app.presetBulk)
         mapCssRoutes(app)
 
         put("/settings/target") {

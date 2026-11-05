@@ -1,5 +1,8 @@
 package eu.tiducto.osmreview.shared.presets
 
+import eu.tiducto.osmreview.shared.DraftDetail
+import eu.tiducto.osmreview.shared.OsmRef
+import eu.tiducto.osmreview.shared.ProposalResult
 import eu.tiducto.osmreview.shared.TagEdit
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -147,6 +150,45 @@ data class PresetApplyRequest(
 
 @Serializable
 data class PresetApplyResult(val presetId: String, val edit: TagEdit, val tags: Map<String, String>)
+
+@Serializable
+data class PresetBulkApplyRequest(
+    val presetId: String,
+    val refs: List<OsmRef>,
+    val dryRun: Boolean = true,
+    val title: String? = null,
+    val draftId: String? = null,
+    val reason: String? = null,
+    val area: String? = null,
+    val locale: String? = null,
+)
+
+@Serializable
+data class PresetBulkSkip(val ref: OsmRef, val message: String)
+
+@Serializable
+data class PresetBulkItem(
+    val ref: OsmRef,
+    val name: String? = null,
+    val fromPresetId: String? = null,
+    val before: Map<String, String>,
+    val after: Map<String, String>,
+    val summary: String,
+)
+
+@Serializable
+data class PresetBulkApplyResult(
+    val presetId: String,
+    val presetName: String,
+    val total: Int,
+    val changed: Int,
+    val unchanged: Int,
+    val skipped: List<PresetBulkSkip>,
+    val preview: List<PresetBulkItem>,
+    val truncated: Boolean,
+    val draft: DraftDetail? = null,
+    val results: List<ProposalResult> = emptyList(),
+)
 
 @Serializable
 data class ImportPresetRequest(

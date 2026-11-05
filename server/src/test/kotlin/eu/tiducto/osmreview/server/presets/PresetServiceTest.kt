@@ -2,6 +2,7 @@ package eu.tiducto.osmreview.server.presets
 
 import eu.tiducto.osmreview.server.core.NotFoundException
 import eu.tiducto.osmreview.server.core.StateException
+import eu.tiducto.osmreview.server.rulesfolder.BuiltInRules
 import eu.tiducto.osmreview.server.rulesfolder.PresetFileLoader
 import eu.tiducto.osmreview.server.rulesfolder.RulesFolder
 import eu.tiducto.osmreview.server.rulesfolder.SmartPresetLoader
@@ -115,6 +116,29 @@ class PresetServiceTest {
         )
         assertTrue(ok.saved, ok.toString())
         assertEquals(listOf("smart/footway-crossing"), presets.smartPresets().map { it.id })
+    }
+
+    @Test
+    fun builtInSmartPresetsOnAnEmptyFolder() {
+        val empty = Files.createTempDirectory("rules")
+        RulesFolder(empty, null, listOf(PresetFileLoader { data.index }, SmartPresetLoader()), builtInFiles = BuiltInRules.fromResources()).use { f ->
+            f.rescan()
+            assertEquals(listOf("smart/footway-crossing"), PresetService(data, f).smartPresets().map { it.id })
+            assertTrue(f.info("presets/smart/footway-crossing.json")!!.origin!!.builtIn)
+        }
+    }
+
+    @Test
+    fun userPresetsResolveInTheLocaleSortedByName() {
+        folder.write("presets/b.json", """{"id":"custom/b","extends":"amenity/bench","name":"Zebra bench"}""", force = true)
+        folder.write("presets/a.json", """{"id":"custom/a","extends":"highway/footway/sidewalk"}""", force = true)
+        folder.write("presets/bad.json", """{"id":"custom/bad","extends":"no/such"}""", force = true)
+        folder.write("presets/c.json", """{"id":"custom/c","extends":"amenity/bench","name":"apple bench"}""", force = true)
+        val cs = presets.userPresets("cs")
+        assertEquals(listOf("custom/c", "custom/a", "custom/b"), cs.map { it.id })
+        assertEquals("Chodník podél vozovky", cs[1].name)
+        assertTrue(cs.all { it.origin == PresetOrigin.USER && it.locale == "cs" })
+        assertEquals("Sidewalk", presets.userPresets("en").first { it.id == "custom/a" }.name)
     }
 
     @Test

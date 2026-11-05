@@ -6,6 +6,8 @@ import eu.tiducto.osmreview.shared.presets.ImportPresetRequest
 import eu.tiducto.osmreview.shared.presets.Preset
 import eu.tiducto.osmreview.shared.presets.PresetApplyRequest
 import eu.tiducto.osmreview.shared.presets.PresetApplyResult
+import eu.tiducto.osmreview.shared.presets.PresetBulkApplyRequest
+import eu.tiducto.osmreview.shared.presets.PresetBulkApplyResult
 import eu.tiducto.osmreview.shared.presets.PresetMatch
 import eu.tiducto.osmreview.shared.presets.PresetMatchRequest
 import eu.tiducto.osmreview.shared.presets.PresetSummary
@@ -130,7 +132,7 @@ fun main(args: Array<String>) {
         serializer<OsmChangeImportResult>(),
         serializer<RuleFileList>(), serializer<RuleFileContent>(), serializer<ValidateRuleFileResult>(), serializer<WriteRuleFileResult>(),
         serializer<DeleteRuleFileResult>(), serializer<RuleSource>(),
-        serializer<ResolvedPreset>(), serializer<PresetSummary>(), serializer<PresetMatch>(), serializer<PresetApplyResult>(),
+        serializer<ResolvedPreset>(), serializer<PresetSummary>(), serializer<PresetMatch>(), serializer<PresetApplyResult>(), serializer<PresetBulkApplyResult>(),
         serializer<IdSchemaInfo>(), serializer<SmartPreset>(), serializer<Preset>(),
         serializer<HighlightList>(), serializer<HighlightEvaluation>(), serializer<CoverageStats>(),
         serializer<Scan>(), serializer<ScanReport>(), serializer<ScanDiff>(), serializer<ScanIssue>(), serializer<ScanDraftResult>(),
@@ -140,7 +142,7 @@ fun main(args: Array<String>) {
         serializer<ReviewRequest>(), serializer<ResolveConflictRequest>(), serializer<ManualEditRequest>(),
         serializer<UpdateDraftRequest>(), serializer<SetTargetRequest>(), serializer<OsmChangeImportRequest>(), serializer<DraftFromOsmChangeRequest>(),
         serializer<WriteRuleFileRequest>(), serializer<CreateRuleFileRequest>(), serializer<ValidateRuleFileRequest>(),
-        serializer<PresetMatchRequest>(), serializer<PresetApplyRequest>(), serializer<ImportPresetRequest>(), serializer<DetachPresetRequest>(),
+        serializer<PresetMatchRequest>(), serializer<PresetApplyRequest>(), serializer<ImportPresetRequest>(), serializer<DetachPresetRequest>(), serializer<PresetBulkApplyRequest>(),
         serializer<RunScanRequest>(), serializer<ScanDraftRequest>(), serializer<HighlightStatsRequest>(),
     ).forEach(gen::addRequest)
     val out = File(args.firstOrNull() ?: "models.ts")

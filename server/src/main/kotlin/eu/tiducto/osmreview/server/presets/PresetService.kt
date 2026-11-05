@@ -80,6 +80,12 @@ class PresetService(val data: IdPresetData, private val folder: RulesFolder) {
 
     fun get(id: String, locale: String?): ResolvedPreset = index.resolve(id, locale) ?: throw NotFoundException("Unknown preset '$id'")
 
+    fun userPresets(locale: String?): List<ResolvedPreset> {
+        val idx = index
+        return idx.userIds.mapNotNull { idx.resolve(it, locale) }
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER, ResolvedPreset::name).thenBy(ResolvedPreset::id))
+    }
+
     fun match(tags: Map<String, String>, geometry: PresetGeometry, locale: String?): PresetMatch =
         index.match(tags, geometry, locale) ?: throw NotFoundException("No preset matches")
 

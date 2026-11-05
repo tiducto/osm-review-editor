@@ -17,6 +17,10 @@ export const EDIT_MIN_ZOOM = 15
 
 let session: EditSession | null = null
 
+export function currentEditSession(): EditSession | null {
+  return session
+}
+
 export interface SaveRequest {
   title: string
   changesetComment: string
@@ -25,10 +29,6 @@ export interface SaveRequest {
 export interface NeedsPreset {
   entityId: string
   geometry: EntityGeometry
-}
-
-export function currentEditSession(): EditSession | null {
-  return session
 }
 
 export interface TakeOverPrompt {

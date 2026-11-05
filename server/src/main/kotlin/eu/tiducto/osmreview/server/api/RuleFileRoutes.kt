@@ -1,6 +1,7 @@
 package eu.tiducto.osmreview.server.api
 
 import eu.tiducto.osmreview.server.core.NotFoundException
+import eu.tiducto.osmreview.server.presets.PresetBulkService
 import eu.tiducto.osmreview.server.presets.PresetService
 import eu.tiducto.osmreview.server.rulesfolder.RemoteRuleSources
 import eu.tiducto.osmreview.server.rulesfolder.RulesFolder
@@ -14,6 +15,7 @@ import eu.tiducto.osmreview.shared.WriteRuleFileResult
 import eu.tiducto.osmreview.shared.presets.DetachPresetRequest
 import eu.tiducto.osmreview.shared.presets.ImportPresetRequest
 import eu.tiducto.osmreview.shared.presets.PresetApplyRequest
+import eu.tiducto.osmreview.shared.presets.PresetBulkApplyRequest
 import eu.tiducto.osmreview.shared.presets.PresetGeometry
 import eu.tiducto.osmreview.shared.presets.PresetMatchRequest
 import io.ktor.http.CacheControl
@@ -64,7 +66,7 @@ fun Route.ruleFileRoutes(rules: RulesFolder, sources: RemoteRuleSources) {
     }
 }
 
-fun Route.presetRoutes(presets: PresetService) {
+fun Route.presetRoutes(presets: PresetService, bulk: PresetBulkService? = null) {
     route("/presets") {
         get("/search") {
             val q = call.request.queryParameters
@@ -79,9 +81,11 @@ fun Route.presetRoutes(presets: PresetService) {
             val req = call.receive<PresetApplyRequest>()
             call.respond(presets.apply(req.presetId, req.tags, req.geometry, req.fromPresetId))
         }
+        if (bulk != null) post("/apply/bulk") { call.respond(bulk.apply(call.receive<PresetBulkApplyRequest>())) }
         post("/import") { call.respondWrite(presets.import(call.receive<ImportPresetRequest>()), HttpStatusCode.Created) }
         post("/detach") { call.respondWrite(presets.detach(call.receive<DetachPresetRequest>())) }
         get("/smart") { call.respond(presets.smartPresets()) }
+        get("/user") { call.respond(presets.userPresets(call.request.queryParameters["locale"])) }
         get("/id-schema") { call.respond(presets.data.info("/api/presets/id-schema/")) }
         get("/id-schema/{file...}") {
             val name = call.tailPath("file")

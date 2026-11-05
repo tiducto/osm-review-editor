@@ -1,32 +1,29 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useEditorStore } from '@/stores/editor'
-import type { EntitySnapshot, Tags } from '@/editor/types'
-import { iconMarkup } from '@/map/osm/icons'
-import TagEditor from '../TagEditor.vue'
+import { useEditPresetsStore } from '@/stores/presetEdit'
+import { usePresetsStore } from '@/stores/presets'
+import type { EntitySnapshot } from '@/editor/types'
+import type { SmartPreset } from '@/generated/models'
+import PresetEditor, { type EditableEntity } from '../presets/PresetEditor.vue'
+import SmartPresetPanel from '../presets/SmartPresetPanel.vue'
 import Icon from '../Icon.vue'
 
 const editor = useEditorStore()
+const presetEdit = useEditPresetsStore()
+const presets = usePresetsStore()
+const t = presets.t
+const picking = ref(false)
 
-const single = computed<EntitySnapshot | null>(() => (editor.selection.length === 1 ? editor.selection[0] : null))
-const iconSvg = ref<string | null>(null)
-
-watch(
-  () => single.value?.preset.icon ?? null,
-  async (icon) => {
-    iconSvg.value = null
-    if (!icon) return
-    const svg = await iconMarkup(icon)
-    if (single.value?.preset.icon === icon) iconSvg.value = svg
-  },
-  { immediate: true },
+const entities = computed<EditableEntity[]>(() =>
+  editor.selection.map((s: EntitySnapshot) => ({ id: s.id, tags: s.tags, geometry: s.geometry, baseTags: s.baseTags, title: s.displayName })),
 )
-
-const tags = computed<Tags>({
-  get: () => single.value?.tags ?? {},
-  set: (t) => {
-    if (single.value) editor.setTags(single.value.id, t)
-  },
+const ids = computed(() => editor.selection.map((s) => s.id))
+const single = computed<EntitySnapshot | null>(() => (editor.selection.length === 1 ? editor.selection[0] : null))
+const smart = computed<SmartPreset[]>(() => presetEdit.smartFor(editor.selection))
+const drawName = computed(() => {
+  const d = presetEdit.drawPreset
+  return d ? (presets.catalog?.preset(d.id)?.name ?? d.id) : null
 })
 
 const shortcuts: [string, string][] = [
@@ -39,74 +36,62 @@ const shortcuts: [string, string][] = [
   ['Alt', 'Drag or draw without snapping'],
 ]
 
-const kindLabel: Record<string, string> ={ node: 'Node', way: 'Way', relation: 'Relation' }
-
-function title(s: EntitySnapshot): string {
-  return s.displayName ?? s.preset.name
-}
+const kindLabel: Record<string, string> = { node: 'Node', way: 'Way', relation: 'Relation' }
 
 function shortRef(s: EntitySnapshot): string {
   return `${s.id[0]}${s.osmId}`
+}
+
+function onSmart(p: SmartPreset) {
+  if (single.value) presetEdit.openSmart(p, single.value.id)
 }
 </script>
 
 <template>
   <div class="flex h-full flex-col" data-testid="edit-inspector">
     <div class="flex h-10 shrink-0 items-center gap-2 border-b border-line px-3">
-      <h2 class="text-[13px] font-semibold">Edit</h2>
+      <h2 class="text-[13px] font-semibold">{{ t('inspector.edit') }}</h2>
       <span class="chip bg-accent-soft text-accent">iD {{ editor.version }}</span>
+      <span v-if="editor.selection.length > 1" class="chip bg-surface-3 text-fg-2">{{ t('inspector.selected', { n: editor.selection.length }) }}</span>
       <button class="btn btn-ghost btn-icon btn-sm ml-auto w-6" title="Deselect (Esc)" @click="editor.select([])"><Icon name="x" :size="14" /></button>
     </div>
 
-    <div v-if="single" class="scroll-thin min-h-0 flex-1 overflow-y-auto">
-      <div class="space-y-1 border-b border-line px-4 py-3">
-        <div class="flex items-center gap-2.5">
-          <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-3 p-1.5 text-fg-2" data-testid="edit-preset-icon">
-            <span v-if="iconSvg" class="block size-6" v-html="iconSvg" />
-            <Icon v-else name="dot" :size="16" />
-          </span>
-          <div class="min-w-0">
-            <div class="truncate text-[12px] text-fg-2" data-testid="edit-preset-name">{{ single.preset.name }}</div>
-            <h3 class="truncate text-[15px] leading-snug font-semibold">{{ title(single) }}</h3>
-          </div>
-        </div>
-        <div class="flex flex-wrap items-center gap-x-2 font-mono text-[11.5px] text-fg-3">
+    <div v-if="drawName" class="flex items-center gap-2 border-b border-accent/40 bg-accent-soft px-4 py-2 text-[12px]" data-testid="draw-preset">
+      <Icon name="edit" :size="13" class="text-accent" />
+      <span class="flex-1">{{ t('draw.hint', { name: drawName }) }}</span>
+      <button class="btn btn-ghost btn-sm" @click="presetEdit.cancelDraw(); editor.select([])">{{ t('draw.cancel') }}</button>
+    </div>
+
+    <SmartPresetPanel />
+
+    <PresetEditor
+      v-if="entities.length"
+      v-model:picking="picking"
+      :entities="entities"
+      :smart="smart"
+      :readonly="presetEdit.busy"
+      @patch="presetEdit.patch(ids, $event)"
+      @tags="single && editor.setTags(single.id, $event)"
+      @preset="presetEdit.changePreset(ids, $event)"
+      @smart="onSmart"
+    >
+      <template #meta>
+        <div v-if="single" class="flex flex-wrap items-center gap-x-2 font-mono text-[11.5px] text-fg-3">
           <span>{{ shortRef(single) }}</span>
           <span v-if="single.isNew" class="font-sans text-added">new</span>
           <span v-else-if="single.version">v{{ single.version }}</span>
           <span class="font-sans">· {{ kindLabel[single.kind] }}, {{ single.geometry }}</span>
           <span v-if="single.nodeCount != null" class="font-sans">· {{ single.nodeCount }} nodes</span>
-          <span v-if="single.memberCount != null" class="font-sans">· {{ single.memberCount }} members</span>
         </div>
-      </div>
-
-      <section v-if="single.preset.fields.length" class="border-b border-line px-4 py-2.5" data-testid="edit-preset-fields">
-        <slot name="fields" :entity="single" :fields="single.preset.fields">
-          <div class="text-[11.5px] text-fg-3">
-            Preset fields: <span class="font-mono">{{ single.preset.fields.join(', ') }}</span>
-          </div>
-        </slot>
-      </section>
-
-      <section class="px-4 py-3">
-        <TagEditor v-model="tags" :base="single.baseTags" />
-      </section>
-    </div>
-
-    <div v-else-if="editor.selection.length" class="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-3">
-      <div class="section-title mb-2">{{ editor.selection.length }} selected</div>
-      <ul class="space-y-1">
-        <li v-for="s in editor.selection" :key="s.id">
-          <button class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-surface-3" @click="editor.select([s.id])">
-            <span class="min-w-0 flex-1 truncate">{{ title(s) }}</span>
-            <span class="font-mono text-[11px] text-fg-3">{{ shortRef(s) }}</span>
-          </button>
-        </li>
-      </ul>
-    </div>
+        <div v-else class="flex flex-wrap gap-1 pt-0.5">
+          <button v-for="s in editor.selection.slice(0, 8)" :key="s.id" class="chip bg-surface-3 font-mono text-fg-2 hover:text-fg" @click="editor.select([s.id])">{{ shortRef(s) }}</button>
+          <span v-if="editor.selection.length > 8" class="text-[11px] text-fg-3">+{{ editor.selection.length - 8 }}</span>
+        </div>
+      </template>
+    </PresetEditor>
 
     <div v-else class="flex flex-1 flex-col justify-center gap-4 px-6 text-fg-3">
-      <p class="text-center">Select a feature to edit its tags. Right-click for operations.</p>
+      <p class="text-center">{{ t('inspector.select') }}</p>
       <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11.5px]">
         <template v-for="[k, label] in shortcuts" :key="k">
           <dt><span class="kbd">{{ k }}</span></dt>
