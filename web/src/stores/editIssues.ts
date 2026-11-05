@@ -25,6 +25,7 @@ export const useEditIssuesStore = defineStore('editIssues', () => {
   const issues = shallowRef<EditIssue[]>([])
   const running = ref(false)
   const panelOpen = ref(false)
+  const panelCollapsed = ref(false)
   const focused = ref<string | null>(null)
   const sheetPaths = ref<string[]>([])
   const sheetErrors = ref<string[]>([])
@@ -153,6 +154,7 @@ export const useEditIssuesStore = defineStore('editIssues', () => {
   function focus(issue: EditIssue, opts: { select?: boolean; fly?: boolean } = {}) {
     focused.value = issue.id
     panelOpen.value = true
+    panelCollapsed.value = false
     draw()
     const map = mapStore.instance()
     if (opts.fly !== false && map && issue.loc) {
@@ -215,7 +217,7 @@ export const useEditIssuesStore = defineStore('editIssues', () => {
   }
 
   return {
-    issues, running, panelOpen, focused, sheetPaths, sheetErrors, summary, errors, warnings, others,
+    issues, running, panelOpen, panelCollapsed, focused, sheetPaths, sheetErrors, summary, errors, warnings, others,
     attach, detach, schedule, run, focus, focusById, applyFix, confirmSave, review,
   }
 })

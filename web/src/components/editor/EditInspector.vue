@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useEditorStore } from '@/stores/editor'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useEditorStore, type NeedsPreset } from '@/stores/editor'
 import { useEditPresetsStore } from '@/stores/presetEdit'
 import { usePresetsStore } from '@/stores/presets'
 import type { EntitySnapshot } from '@/editor/types'
@@ -8,11 +8,14 @@ import type { SmartPreset } from '@/generated/models'
 import PresetEditor, { type EditableEntity } from '../presets/PresetEditor.vue'
 import SmartPresetPanel from '../presets/SmartPresetPanel.vue'
 import Icon from '../Icon.vue'
+import EditIssues from './EditIssues.vue'
+import { useEditIssuesStore } from '@/stores/editIssues'
 
 const editor = useEditorStore()
 const presetEdit = useEditPresetsStore()
 const presets = usePresetsStore()
 const t = presets.t
+const editIssues = useEditIssuesStore()
 const picking = ref(false)
 
 const entities = computed<EditableEntity[]>(() =>
@@ -40,6 +43,46 @@ const kindLabel: Record<string, string> = { node: 'Node', way: 'Way', relation: 
 
 function shortRef(s: EntitySnapshot): string {
   return `${s.id[0]}${s.osmId}`
+}
+
+const prompted = ref<string | null>(null)
+
+function prompt(req: NeedsPreset | null) {
+  if (!req || !single.value || single.value.id !== req.entityId) return
+  prompted.value = req.entityId
+  picking.value = true
+}
+
+let unsubscribe: (() => void) | null = null
+onMounted(() => {
+  unsubscribe = editor.onNeedsPreset((req) => queueMicrotask(() => prompt(req)))
+  prompt(editor.needsPreset)
+})
+onBeforeUnmount(() => unsubscribe?.())
+
+watch(
+  () => single.value?.id ?? null,
+  (id) => {
+    if (prompted.value && id !== prompted.value) {
+      prompted.value = null
+      picking.value = false
+    }
+    if (id && editor.needsPreset?.entityId === id && !picking.value) prompt(editor.needsPreset)
+  },
+)
+
+watch(picking, (open) => {
+  if (open || !prompted.value) return
+  prompted.value = null
+  editor.clearNeedsPreset()
+})
+
+function onPreset(id: string) {
+  void presetEdit.changePreset(ids.value, id)
+  if (prompted.value) {
+    prompted.value = null
+    editor.clearNeedsPreset()
+  }
 }
 
 function onSmart(p: SmartPreset) {
@@ -72,7 +115,7 @@ function onSmart(p: SmartPreset) {
       :readonly="presetEdit.busy"
       @patch="presetEdit.patch(ids, $event)"
       @tags="single && editor.setTags(single.id, $event)"
-      @preset="presetEdit.changePreset(ids, $event)"
+      @preset="onPreset"
       @smart="onSmart"
     >
       <template #meta>
@@ -90,7 +133,7 @@ function onSmart(p: SmartPreset) {
       </template>
     </PresetEditor>
 
-    <div v-else class="flex flex-1 flex-col justify-center gap-4 px-6 text-fg-3">
+    <div v-else class="flex min-h-0 flex-1 flex-col justify-center gap-4 overflow-y-auto px-6 text-fg-3">
       <p class="text-center">{{ t('inspector.select') }}</p>
       <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11.5px]">
         <template v-for="[k, label] in shortcuts" :key="k">
@@ -99,5 +142,7 @@ function onSmart(p: SmartPreset) {
         </template>
       </dl>
     </div>
+
+    <EditIssues v-if="editIssues.panelOpen" />
   </div>
 </template>

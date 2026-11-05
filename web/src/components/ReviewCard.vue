@@ -8,13 +8,15 @@ import { changeKindColor, changeKindLabel } from '@/lib/colors'
 import { featureTitle, refString } from '@/lib/osm'
 import { diffSize, tagDiff, tagDiffSummary } from '@/lib/tagdiff'
 import { hasModifier, isTyping } from '@/lib/keyboard'
-import { matchPreset } from '@/lib/presets'
+import { geometryOf } from '@/presets/catalog'
+import type { Geometry, PresetDef, TagPatch } from '@/presets/types'
+import { usePresetsStore } from '@/stores/presets'
 import { relativeTime } from '@/lib/format'
 import AuthorBadge from './AuthorBadge.vue'
 import StatusPill from './StatusPill.vue'
 import TagDiffView from './TagDiffView.vue'
-import TagEditor from './TagEditor.vue'
-import PresetFields from './PresetFields.vue'
+import PresetEditor, { type EditableEntity } from './presets/PresetEditor.vue'
+import PresetIcon from './presets/PresetIcon.vue'
 import ConflictResolver from './ConflictResolver.vue'
 import DraftChangeset from './DraftChangeset.vue'
 import Icon from './Icon.vue'
@@ -27,6 +29,8 @@ const drafts = useDraftsStore()
 const rules = useRulesStore()
 const app = useAppStore()
 const editor = useEditorStore()
+const presets = usePresetsStore()
+void presets.ensure().catch(() => {})
 
 const editable = computed(() => draft.value?.status === 'open' || draft.value?.status === 'partially_merged')
 
@@ -61,7 +65,58 @@ const rejection = computed(() => (c.value?.status === 'rejected' ? lastReview(c.
 const lastEdit = computed(() => (c.value ? lastReview(c.value, 'edit') : null))
 
 const editDiff = computed(() => (c.value ? tagDiff(c.value.baseTags, editTags.value) : null))
-const editPreset = computed(() => matchPreset(editTags.value))
+function isClosed(g: unknown): boolean {
+  const geom = g as { type?: string; coordinates?: number[][] } | null
+  if (!geom) return false
+  if (geom.type === 'Polygon' || geom.type === 'MultiPolygon') return true
+  const cs = geom.type === 'LineString' ? (geom.coordinates ?? []) : []
+  return cs.length > 3 && cs[0][0] === cs[cs.length - 1][0] && cs[0][1] === cs[cs.length - 1][1]
+}
+
+const changeGeometry = computed<Geometry>(() => {
+  const cur = c.value
+  if (!cur) return 'point'
+  const cat = presets.catalog
+  if (cur.ref.type === 'node') {
+    if (!cat) return 'point'
+    const tags = Object.keys(cur.newTags).length ? cur.newTags : cur.baseTags
+    const asPoint = cat.match(tags, 'point')
+    return cat.isFallback(asPoint) && !cat.isFallback(cat.match(tags, 'vertex')) ? 'vertex' : 'point'
+  }
+  return geometryOf(cur.ref.type, cur.newTags, {
+    closed: isClosed(cur.newGeom ?? cur.baseGeom),
+    isArea: (t) => cat?.isArea(t) ?? false,
+  })
+})
+
+const presetAfter = computed<PresetDef | null>(() => (c.value ? (presets.catalog?.match(c.value.newTags, changeGeometry.value) ?? null) : null))
+const presetBefore = computed<PresetDef | null>(() => {
+  const cur = c.value
+  if (!cur || cur.action === 'create') return null
+  const p = presets.catalog?.match(cur.baseTags, changeGeometry.value) ?? null
+  return p && p.id !== presetAfter.value?.id ? p : null
+})
+
+const editEntities = computed<EditableEntity[]>(() =>
+  c.value ? [{ id: refString(c.value.ref), tags: editTags.value, geometry: changeGeometry.value, baseTags: c.value.baseTags, title: featureTitle(c.value.ref, editTags.value) }] : [],
+)
+
+function onEditPatch(patch: TagPatch) {
+  const next = { ...editTags.value }
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined || v === '') delete next[k]
+    else next[k] = v
+  }
+  editTags.value = next
+}
+
+function onEditPreset(id: string) {
+  const cat = presets.catalog
+  const to = cat?.preset(id)
+  if (!cat || !to) return
+  editTags.value = cat.changePreset(editTags.value, changeGeometry.value, cat.match(editTags.value, changeGeometry.value), to)
+  presets.useRecent(id)
+}
 
 const remainingSameRule = computed(() => {
   const cur = c.value
@@ -242,7 +297,19 @@ const shortcuts = [
               {{ c.confidence === 'deterministic' ? 'Deterministic' : 'Needs review' }}
             </span>
           </div>
-          <h3 class="mt-1.5 text-[16px] leading-snug font-semibold break-words">{{ featureTitle(c.ref, c.newTags) }}</h3>
+          <div class="mt-2 flex items-center gap-2.5" data-testid="review-preset">
+            <PresetIcon :icon="presetAfter?.icon" :size="34" />
+            <div class="min-w-0 flex-1">
+              <div class="flex min-w-0 items-center gap-1 text-[12px] text-fg-2">
+                <template v-if="presetBefore">
+                  <span class="truncate text-fg-3 line-through decoration-fg-3/50" data-testid="review-preset-before">{{ presetBefore.name }}</span>
+                  <Icon name="chevron-right" :size="11" class="shrink-0 text-fg-3" />
+                </template>
+                <span class="truncate" data-testid="review-preset-name">{{ presetAfter?.name ?? '' }}</span>
+              </div>
+              <h3 class="text-[16px] leading-snug font-semibold break-words">{{ featureTitle(c.ref, c.newTags) }}</h3>
+            </div>
+          </div>
           <div class="mt-0.5 flex items-center gap-2 font-mono text-[11.5px] text-fg-3">
             {{ refString(c.ref) }}<span v-if="c.baseVersion">· v{{ c.baseVersion }}</span>
             <span class="font-sans">· {{ relativeTime(c.createdAt) }}</span>
@@ -315,13 +382,9 @@ const shortcuts = [
         <ConflictResolver v-if="c.status === 'conflict'" :change="c" />
 
         <template v-if="mode === 'edit'">
-          <div v-if="editPreset" class="rounded-md border border-line p-2.5">
-            <div class="section-title mb-2">{{ editPreset.name }}</div>
-            <PresetFields v-model="editTags" :preset="editPreset" />
+          <div class="-mx-4 flex flex-col border-y border-line" data-testid="review-edit">
+            <PresetEditor :entities="editEntities" @patch="onEditPatch" @preset="onEditPreset" @tags="editTags = $event" />
           </div>
-          <TagEditor v-model="editTags" :base="c.baseTags">
-            <template #title><span class="section-title">Edit tags</span></template>
-          </TagEditor>
           <code v-if="editDiff" class="block truncate font-mono text-[11.5px] text-fg-2">{{ tagDiffSummary(c.baseTags, editTags) || 'No changes from base' }}</code>
           <div class="flex items-center gap-2">
             <button class="btn btn-primary" :disabled="drafts.busy || !editDiff || !diffSize(editDiff)" @click="submitEdit">
