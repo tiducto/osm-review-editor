@@ -111,7 +111,17 @@ export interface Capture {
   ratios: number[]
   drift: number
   canvasSizes: number
-  frames: number
+  framesBefore: number
+  framesAfter: number
+}
+
+async function waitForNewFrame(page: Page, frames: string[], seen: number, label: string) {
+  const deadline = Date.now() + 15_000
+  while (frames.length <= seen) {
+    if (Date.now() > deadline) throw new Error(`screencast delivered no frame ${label}`)
+    await page.evaluate(() => (window as unknown as MapWindow).__oreMap.triggerRepaint())
+    await page.waitForTimeout(100)
+  }
 }
 
 export async function captureTransition(page: Page, action: () => Promise<unknown>, ms = 700): Promise<Capture> {
@@ -127,6 +137,8 @@ export async function captureTransition(page: Page, action: () => Promise<unknow
     [before.x + before.w * 0.7, before.y + before.h * 0.2],
     [before.x + before.w * 0.4, before.y + 40],
   ]
+  await cdp.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 })
+  await waitForNewFrame(page, frames, 0, 'before the action')
   await page.evaluate(
     ([probes, ms]) => {
       const w = window as unknown as MapWindow & { __probe?: Promise<{ drift: number; sizes: number }> }
@@ -153,12 +165,11 @@ export async function captureTransition(page: Page, action: () => Promise<unknow
     },
     [probes, ms + 600] as const,
   )
-  await cdp.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 })
-  await page.waitForTimeout(120)
+  const framesBefore = frames.length
   await action()
   await page.waitForTimeout(ms)
   await settle(page)
-  await page.waitForTimeout(200)
+  await waitForNewFrame(page, frames, Math.max(framesBefore, frames.length), 'after the transition settled')
   await cdp.send('Page.stopScreencast')
   await cdp.detach()
   const probe = await page.evaluate(() => (window as unknown as { __probe: Promise<{ drift: number; sizes: number }> }).__probe)
@@ -187,11 +198,12 @@ export async function captureTransition(page: Page, action: () => Promise<unknow
     },
     [frames, rect] as const,
   )
-  return { ratios, drift: probe.drift, canvasSizes: probe.sizes, frames: frames.length }
+  return { ratios, drift: probe.drift, canvasSizes: probe.sizes, framesBefore, framesAfter: frames.length - framesBefore }
 }
 
 export function expectSteady(c: Capture, label: string) {
-  expect(c.frames, `${label}: frames captured`).toBeGreaterThan(1)
+  expect(c.framesBefore, `${label}: frames captured before the action`).toBeGreaterThan(0)
+  expect(c.framesAfter, `${label}: frames captured during and after the action`).toBeGreaterThan(0)
   const first = c.ratios[0]
   expect(first, `${label}: map has content`).toBeGreaterThan(0.05)
   const worst = Math.min(...c.ratios)
