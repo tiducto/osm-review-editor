@@ -260,7 +260,12 @@ moved is auto-rebased as before. A geometry modify is auto-rebased only when the
 equals its base geometry and no tag it touches changed; otherwise, and for every delete whose live
 version moved, it becomes `conflict` with `liveVersion`, `liveTags`, `liveShape` and `liveGeom`.
 Geometry is never merged automatically: `resolve` puts the change onto the live version keeping its
-own geometry (`useLiveGeometry: true` drops it, leaving a tag change). New elements have no version
+own geometry (`useLiveGeometry: true` drops it, leaving a tag change). A `<delete>` is never rebased: any upstream
+change to the element (tags or geometry) since the draft was made puts it in `conflict`, both at
+refresh and in the check right before upload, so a stale delete is never uploaded with the live
+version. `resolve` keeps the delete against the new live version (`baseVersion` becomes the live
+version; tags and `useLiveGeometry` in the request are ignored) and returns it to `pending`;
+rejecting the change drops the delete. New elements have no version
 check; a new way using a live node deleted meanwhile fails at upload.
  Changes in conflict are skipped, never a 409: they are
 listed in `MergePreview.conflicts` and stay in the draft. Before upload every approved change is

@@ -265,6 +265,78 @@ class GeometryDraftTest {
     }
 
     @Test
+    fun staleDeleteAtRefreshIsAConflict(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        connect()
+        val (d, ch) = import(osmChange(delete = """<node id="21" version="3" lat="49.940" lon="17.940"/>"""))
+        val del = ch.getValue(n(21))
+        assertEquals(ChangeAction.DELETE, del.action)
+        assertEquals(3, del.baseVersion)
+
+        osm.edit(n(21), mapOf("backrest" to "yes"))
+        var c = drafts.refresh(d.draft.id).changes.single()
+        assertEquals(ChangeStatus.CONFLICT, c.status, "a delete whose element changed upstream is never auto-rebased")
+        assertEquals(4, c.liveVersion)
+        assertEquals("yes", c.liveTags!!["backrest"])
+        assertNotNull(c.liveShape)
+        assertFailsWith<StateException> { drafts.review(c.id, ReviewRequest(ReviewDecision.APPROVE)) }
+        assertTrue(merge.preview(d.draft.id).conflicts.contains(c.id))
+
+        c = drafts.resolveConflict(c.id, mapOf("ignored" to "yes"))
+        assertEquals(ChangeStatus.PENDING, c.status)
+        assertEquals(ChangeAction.DELETE, c.action)
+        assertEquals(4, c.baseVersion)
+        assertTrue(c.newTags.isEmpty())
+        assertNull(c.liveVersion)
+        assertNull(c.newShape)
+
+        drafts.review(c.id, ReviewRequest(ReviewDecision.APPROVE))
+        merge.merge(d.draft.id)
+        assertTrue("""<node id="21" version="4"""" in osm.uploads.single(), osm.uploads.single())
+        assertFalse(osm.visible(n(21)))
+        assertEquals(ChangeStatus.UPLOADED, drafts.detail(d.draft.id).changes.single().status)
+    }
+
+    @Test
+    fun deleteChangedBetweenApprovalAndUploadIsNotUploaded(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        connect()
+        val (d, ch) = import(osmChange(delete = """<node id="21" version="3" lat="49.940" lon="17.940"/>"""))
+        drafts.review(ch.getValue(n(21)).id, ReviewRequest(ReviewDecision.APPROVE))
+
+        osm.edit(n(21), mapOf("backrest" to "yes"))
+        merge.merge(d.draft.id)
+        var c = drafts.detail(d.draft.id).changes.single()
+        assertEquals(ChangeStatus.CONFLICT, c.status)
+        assertEquals(4, c.liveVersion)
+        assertTrue(osm.uploads.isEmpty())
+        assertTrue(osm.visible(n(21)))
+        assertEquals(DraftStatus.OPEN, drafts.detail(d.draft.id).draft.status)
+
+        c = drafts.resolveConflict(c.id, emptyMap())
+        drafts.review(c.id, ReviewRequest(ReviewDecision.APPROVE))
+        merge.merge(d.draft.id)
+        assertTrue("""<node id="21" version="4"""" in osm.uploads.single(), osm.uploads.single())
+        assertFalse(osm.visible(n(21)))
+        assertEquals(DraftStatus.MERGED, drafts.detail(d.draft.id).draft.status)
+    }
+
+    @Test
+    fun droppingAStaleDeleteLeavesTheElement(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        connect()
+        val (d, ch) = import(osmChange(delete = """<node id="21" version="3" lat="49.940" lon="17.940"/>"""))
+        osm.edit(n(21), mapOf("backrest" to "yes"))
+        val c = drafts.refresh(d.draft.id).changes.single()
+        assertEquals(ChangeStatus.CONFLICT, c.status)
+        drafts.review(ch.getValue(n(21)).id, ReviewRequest(ReviewDecision.REJECT))
+        assertEquals(ChangeStatus.REJECTED, drafts.detail(d.draft.id).changes.single().status)
+        assertFailsWith<StateException> { merge.merge(d.draft.id) }
+        assertTrue(osm.uploads.isEmpty())
+        assertTrue(osm.visible(n(21)))
+    }
+
+    @Test
     fun relationMemberAddDependsOnNewNode(): Unit = runBlocking {
         if (!docker) return@runBlocking println("Docker not available, skipping")
         connect()
