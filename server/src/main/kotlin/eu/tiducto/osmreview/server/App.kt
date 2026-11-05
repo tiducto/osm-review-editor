@@ -10,6 +10,7 @@ import eu.tiducto.osmreview.server.core.MergeService
 import eu.tiducto.osmreview.server.db.Db
 import eu.tiducto.osmreview.server.db.DraftRepo
 import eu.tiducto.osmreview.server.db.SettingsRepo
+import eu.tiducto.osmreview.server.tiles.TileService
 import eu.tiducto.osmreview.shared.BBox
 import eu.tiducto.osmreview.shared.EditorLinks
 import eu.tiducto.osmreview.shared.OsmRef
@@ -41,6 +42,7 @@ class App(val config: Config, val http: HttpClient = defaultHttpClient()) : Auto
     val events = EventBus()
     val mirror = GolMirror(config.dataDir, config.golFile)
     val queries = MirrorQueries(mirror)
+    val tiles = TileService(mirror)
     val rules = RuleEngine(mirror)
     val account = Account(config, settings, http)
     val areas = AreaPresets(config, queries)

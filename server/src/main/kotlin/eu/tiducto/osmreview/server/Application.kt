@@ -9,6 +9,7 @@ import eu.tiducto.osmreview.server.core.StateException
 import eu.tiducto.osmreview.server.mcp.mcpRoutes
 import eu.tiducto.osmreview.server.osm.OsmApiException
 import eu.tiducto.osmreview.server.remote.remoteControlRoutes
+import eu.tiducto.osmreview.server.tiles.tileRoutes
 import eu.tiducto.osmreview.shared.ApiError
 import eu.tiducto.osmreview.shared.UiEvent
 import eu.tiducto.osmreview.shared.WireJson
@@ -112,6 +113,7 @@ fun Application.module(app: App) {
                 allowedHosts = allowedHosts + io.ktor.http.Url(app.config.publicUrl).host
             }
             apiRoutes(app)
+            tileRoutes(app.tiles)
             mcpRoutes(app)
             webSocket("/api/events") {
                 val queued = app.events.connect()
