@@ -42,3 +42,7 @@ val generateTsModels by tasks.registering(JavaExec::class) {
     mainClass.set("eu.tiducto.osmreview.shared.TsModelGeneratorKt")
     args(rootProject.file("web/src/generated/models.ts").absolutePath)
 }
+
+tasks.named<Test>("jvmTest") {
+    inputs.property("josmMapCss", providers.environmentVariable("OSM_REVIEW_JOSM_MAPCSS").orElse(""))
+}
