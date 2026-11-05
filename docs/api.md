@@ -67,7 +67,10 @@ Each run is recorded in `app.rule_runs` with its scope key and scope geometry (s
 | GET | `/api/drafts?status=&author=` | | `Draft[]`, newest first |
 | POST | `/api/drafts` | `CreateDraftRequest` | `Draft` (author `user`) |
 | POST | `/api/drafts/from-rule` | `DraftFromRuleRequest` `{ruleId, area?, bbox?, polygon?, title?, limit?}` | `DraftDetail` (author `rule:<id>`; every issue with a fix becomes a change, refetched live; the draft's `scope` is the scope geometry) |
+| POST | `/api/drafts/from-osmchange` | `DraftFromOsmChangeRequest` `{title, osmChange, description?, area?, changesetComment?, changesetSource?, reasons?, reason?}` | `201` `OsmChangeImportResult` (author `user`; nothing is created when the osmChange is invalid) |
 | GET | `/api/drafts/{id}` | | `DraftDetail` |
+| GET | `/api/drafts/{id}/osmchange` | | `application/xml` osmChange of the draft's pending, approved and conflict changes |
+| POST | `/api/drafts/{id}/osmchange` | `OsmChangeImportRequest` `{osmChange, reasons?, reason?, replace?}`, or the raw XML with `Content-Type: application/xml` and `?replace=&reason=` | `OsmChangeImportResult` `{draft, results}` |
 | PATCH | `/api/drafts/{id}` | `UpdateDraftRequest` `{title?, description?, status?, changesetComment?, changesetSource?}` | `Draft` (omitted fields are kept; `status` only `open` or `closed`) |
 | POST | `/api/drafts/{id}/changes` | `ProposeChangesRequest` | `ProposalResult[]` |
 | POST | `/api/drafts/{id}/refresh` | | `DraftDetail` (refetches live versions; marks conflicts, auto-rebases where possible) |
@@ -75,9 +78,79 @@ Each run is recorded in `app.rule_runs` with its scope key and scope geometry (s
 | GET | `/api/drafts/{id}/merge-preview` | | `MergePreview` (changeset groups with comment and tags, ids of changes in conflict) |
 | POST | `/api/drafts/{id}/merge` | | `202`; progress arrives as `merge_progress` events |
 | GET | `/api/drafts/{id}/uploads` | | `Upload[]` |
-| POST | `/api/changes/{id}/review` | `ReviewRequest` | `Change` (`approve`, `edit` with full `tags`, `reject` with `comment`, `send_to_id`, `reset`) |
-| POST | `/api/changes/{id}/resolve` | `ResolveConflictRequest` | `Change` (final tags after a three-way pick; back to pending on the live version) |
+| POST | `/api/changes/{id}/review` | `ReviewRequest` | `Change` (`approve`, `edit` with full `tags`, `reject` with `comment`, `send_to_id`, `reset`; `cascade` see [dependencies](#dependencies)) |
+| POST | `/api/changes/{id}/resolve` | `ResolveConflictRequest` `{tags, useLiveGeometry?}` | `Change` (final tags after a three-way pick; back to pending on the live version; a geometry change keeps its geometry unless `useLiveGeometry`) |
 | POST | `/api/manual-edits` | `ManualEditRequest` | `Change` in the open manual draft (created on demand) |
+
+### Geometry drafts (osmChange)
+
+A change is one OSM element with `action` `create`, `modify` or `delete`. Besides tags it can carry
+geometry:
+
+| Field on `Change` | Meaning |
+| --- | --- |
+| `baseShape` | `ElementShape` `{location?, nodes?, members?}` of the live element the change is based on (node location, way node ids, relation members `{type, ref, role}`) |
+| `newShape` | The proposed geometry; only the parts that change are set. `null` on a tag-only modify |
+| `geometryChanged` | `true` for creates, deletes and modifies with a `newShape` |
+| `geometrySummary` | `new way, 3 nodes`, `moved 11 m`, `nodes 4 → 2 (+0 −2)`, `members 1 → 2 (+1 −0)`, `deleted if unused` |
+| `baseGeom`, `newGeom` | GeoJSON for drawing before/after: `Point` for nodes, `LineString` for ways (node coordinates from the osmChange, other changes of the draft and the live API); relations have no `newGeom` (`baseGeom` from the mirror when available), use `newShape.members` |
+| `ifUnused` | A delete sent in an `<delete if-unused="true">` block |
+| `placeholderId` | The negative id a created element had before upload; `ref` then holds the real id |
+| `liveShape`, `liveGeom` | The live geometry when the change is a geometry conflict |
+| `dependsOn`, `requiredBy` | `ChangeLink[]` `{changeId, ref, action, status}`, see below |
+
+`POST /api/drafts/{id}/osmchange` takes an osmChange 0.6 document as iD writes it
+(`osmChangeset.osmChangeJXON`): `<create>` with negative ids, `<modify>` and `<delete>` with the
+versions the editor started from, `if-unused` on delete blocks, empty blocks allowed. `reasons` maps
+an element ref as in the document (`n-1`, `w60`) to a reason shown to the reviewer; `reason` applies
+to the rest. The import:
+
+- validates the document: unique elements, negative ids only in `<create>`, new nodes with
+  `lat`/`lon`, ways with at least 2 nodes, every reference resolvable (to an element of the document,
+  a new element already in the draft or a live element), nothing referencing an element the draft
+  deletes. Any problem rejects the whole import with a 400 listing them.
+- fetches the live elements of modifies and deletes in batches (missing or deleted ones are a 400)
+  and stores base and new state per element. An element with an open change in another draft is a
+  400.
+- gives new elements server-wide unique negative ids. `results[].ref` is the stored ref and
+  `sourceRef` the ref from the document when they differ; the export uses the stored ids, and
+  importing an element whose negative id is a new element of the draft updates it.
+- updates the draft's open change for an element instead of adding a second one (outcome
+  `duplicate`, back to `pending`); an element equal to its stored change is `no_op` "unchanged",
+  a modify equal to the live element is `no_op` and withdraws an existing change for it.
+- marks a modify or delete as `conflict` when its `version` differs from the live one (the base is
+  then the live element; resolve it like any conflict).
+- with `replace: true` treats the document as the whole session: open changes of the draft that are
+  not in it are rejected ("removed in the editor"). A `<delete>` of a negative id withdraws that new
+  element.
+- strips `geodesk:` keys from all tags.
+
+A modify that only changes tags is stored as a tag-only change (no `newShape`) and behaves like a
+rule or MCP tag change. `GET /api/drafts/{id}/osmchange` returns the pending, approved and conflict
+changes as one osmChange (creates node → way → relation, modifies, deletes relation → way → node,
+`if-unused` deletes in their own block) with the base versions, so the editor can rehydrate the
+session and send it back with `replace: true`. Uploaded and rejected changes are left out.
+
+### Dependencies
+
+A change depends on another change of the same draft when it cannot be uploaded without it:
+
+- a way (new or modified) whose node list contains a new node, and a relation whose member list
+  contains a new element;
+- a delete of an element that a modified or deleted way or relation of the draft uses in its base
+  but no longer in its new state (the node of a shortened way, the nodes of a deleted way).
+
+Review stays per object, with these rules:
+
+- `reject` and `send_to_id` are refused (409) while a direct or indirect dependent is `approved`;
+  with `cascade: true` every dependent that is not rejected or uploaded is rejected too, each with a
+  review comment naming the dependency.
+- `approve` and `edit` are refused while a dependency is `rejected`; with `cascade: true` the pending
+  dependencies are approved too (a dependency in conflict is refused).
+- MCP `update_change` with `withdraw` rejects the dependents as well.
+
+`MergePreview.blocked` lists approved changes that cannot be uploaded because a dependency is not
+approved or uploaded (`{changeId, ref, message}`); the merge skips them.
 
 ### Changeset metadata
 
@@ -94,7 +167,9 @@ the review imagery alone.
 `Esri World Imagery`). It is stored on the `Review` as `imagery`.
 
 The merge splits approved changes into changesets by rule (`manual` when none) and draft area, up to
-500 changes each. Each changeset carries:
+500 changes each. Changes that depend on each other always share a changeset: a connected group
+goes into the changeset of its first rule and is never split (one larger than 500 gets a changeset
+of its own); a group larger than 10,000 elements fails the merge with an error. Each changeset carries:
 
 - `comment`: the draft's `changesetComment` when set, else `<area>: <rule comment> (rule <id>),
   reviewed individually` (or the draft title for manual changes); the `<area>: ` prefix is left out
@@ -107,7 +182,21 @@ The merge preview shows these tags per group.
 
 ### Merge behaviour
 
-Merging uploads only `approved` changes. Changes in conflict are skipped, never a 409: they are
+Merging uploads only `approved` changes. Each changeset gets one osmChange with creates (nodes,
+ways, relations in dependency order), then modifies, then deletes (relations, ways, nodes;
+`if-unused` deletes in a `<delete if-unused="true">` block). The ids in the `diffResult` are stored
+per change (`ref` gets the real id, `placeholderId` the old one) and replace the placeholders in the
+node and member lists of the draft's other changes, so later changesets and later merges reference
+the uploaded elements.
+
+Version checks run per element at refresh and before upload. A tag-only modify whose live version
+moved is auto-rebased as before. A geometry modify is auto-rebased only when the live geometry still
+equals its base geometry and no tag it touches changed; otherwise, and for every delete whose live
+version moved, it becomes `conflict` with `liveVersion`, `liveTags`, `liveShape` and `liveGeom`.
+Geometry is never merged automatically: `resolve` puts the change onto the live version keeping its
+own geometry (`useLiveGeometry: true` drops it, leaving a tag change). New elements have no version
+check; a new way using a live node deleted meanwhile fails at upload.
+ Changes in conflict are skipped, never a 409: they are
 listed in `MergePreview.conflicts` and stay in the draft. Before upload every approved change is
 checked against the live version; changes that moved upstream are auto-rebased back to `pending`
 or marked `conflict`, and are skipped too. When the API rejects a changeset with 409 or 412, its

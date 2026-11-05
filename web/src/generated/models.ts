@@ -44,6 +44,16 @@ export interface Change {
   reviews: Review[]
   createdAt: string
   updatedAt: string
+  baseShape: ElementShape | null
+  newShape: ElementShape | null
+  liveShape: ElementShape | null
+  liveGeom: JsonValue | null
+  geometryChanged: boolean
+  geometrySummary: string | null
+  ifUnused: boolean
+  placeholderId: number | null
+  dependsOn: ChangeLink[]
+  requiredBy: ChangeLink[]
 }
 
 export interface Review {
@@ -102,6 +112,7 @@ export interface ProposalResult {
   outcome: ProposalOutcome
   changeId: string | null
   message: string | null
+  sourceRef: OsmRef | null
 }
 
 export interface MergePreview {
@@ -109,6 +120,7 @@ export interface MergePreview {
   groups: ChangesetGroup[]
   conflicts: string[]
   target: OsmTarget
+  blocked: BlockedChange[]
 }
 
 export interface MergeProgress {
@@ -213,6 +225,11 @@ export interface McpInfo {
   claudeCodeCommand: string
 }
 
+export interface OsmChangeImportResult {
+  draft: DraftDetail
+  results: ProposalResult[]
+}
+
 export interface CreateDraftRequest {
   title: string
   description?: string
@@ -247,10 +264,12 @@ export interface ReviewRequest {
   comment?: string | null
   tags?: Record<string, string> | null
   imagery?: string | null
+  cascade?: boolean
 }
 
 export interface ResolveConflictRequest {
   tags: Record<string, string>
+  useLiveGeometry?: boolean
 }
 
 export interface ManualEditRequest {
@@ -271,6 +290,24 @@ export interface UpdateDraftRequest {
 export interface SetTargetRequest {
   target: OsmTarget
   confirm?: boolean
+}
+
+export interface OsmChangeImportRequest {
+  osmChange: string
+  reasons?: Record<string, string>
+  reason?: string | null
+  replace?: boolean
+}
+
+export interface DraftFromOsmChangeRequest {
+  title: string
+  osmChange: string
+  description?: string
+  area?: string | null
+  changesetComment?: string | null
+  changesetSource?: string | null
+  reasons?: Record<string, string>
+  reason?: string | null
 }
 
 export type DraftStatus = 'open' | 'merged' | 'partially_merged' | 'closed'
@@ -307,6 +344,19 @@ export type Confidence = 'deterministic' | 'needs_review'
 
 export type ChangeStatus = 'pending' | 'approved' | 'rejected' | 'conflict' | 'uploaded'
 
+export interface ElementShape {
+  location: LngLat | null
+  nodes: number[] | null
+  members: RelationMember[] | null
+}
+
+export interface ChangeLink {
+  changeId: string
+  ref: OsmRef
+  action: ChangeAction
+  status: ChangeStatus
+}
+
 export type ReviewDecision = 'approve' | 'edit' | 'reject' | 'send_to_id' | 'reset'
 
 export type Severity = 'info' | 'warning' | 'error'
@@ -342,6 +392,12 @@ export interface ChangesetGroup {
 
 export type OsmTarget = 'dev' | 'prod'
 
+export interface BlockedChange {
+  changeId: string
+  ref: OsmRef
+  message: string
+}
+
 export interface MirrorStatus {
   available: boolean
   file: string | null
@@ -364,6 +420,12 @@ export interface ProposedChange {
 }
 
 export type OsmType = 'node' | 'way' | 'relation'
+
+export interface RelationMember {
+  type: OsmType
+  ref: number
+  role: string
+}
 
 export interface SidecarStatus {
   lastRunAt: string | null

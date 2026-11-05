@@ -195,7 +195,7 @@ class McpTest {
         val tools = body(rpc("tools/list", JsonObject(emptyMap()), session))["result"]!!.jsonObject["tools"]!!.jsonArray
             .map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
         assertEquals(
-            setOf("list_rules", "run_rule", "query_osm", "get_object", "create_draft", "propose_changes", "update_change", "list_drafts", "get_draft"),
+            setOf("list_rules", "run_rule", "query_osm", "get_object", "create_draft", "propose_changes", "propose_geometry", "update_change", "list_drafts", "get_draft"),
             tools,
         )
 
@@ -240,6 +240,59 @@ class McpTest {
         val change = detail["changes"]!!.jsonArray.single().jsonObject
         assertEquals("paved on imagery", change["reason"]!!.jsonPrimitive.content)
         assertEquals("asphalt", change["newTags"]!!.jsonObject["surface"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun proposeGeometryInsertsNodeIntoWay() = mcpTest {
+        val session = initialize()
+        val draftId = call(session, "create_draft", args("title" to "Bumps", "area" to "17.88,49.93,17.92,49.95"))
+            .json.jsonObject["draft_id"]!!.jsonPrimitive.content
+        val rejected = call(
+            session, "propose_geometry",
+            args(
+                "draft_id" to draftId,
+                "elements" to buildJsonArray {
+                    add(buildJsonObject { put("action", "create"); put("type", "relation"); put("id", -1); put("reason", "x") })
+                },
+            ),
+        )
+        assertTrue(rejected.isError)
+        assertTrue("relations can only be modified" in rejected.text, rejected.text)
+
+        val proposed = call(
+            session, "propose_geometry",
+            args(
+                "draft_id" to draftId,
+                "elements" to buildJsonArray {
+                    add(
+                        buildJsonObject {
+                            put("action", "create"); put("type", "node"); put("id", -1)
+                            put("lat", 49.941); put("lon", 17.901)
+                            putJsonObject("add_tags") { put("traffic_calming", "bump") }
+                            put("reason", "bump visible on imagery")
+                        },
+                    )
+                    add(
+                        buildJsonObject {
+                            put("action", "modify"); put("type", "way"); put("id", 55)
+                            put("insert_nodes", buildJsonArray { add(buildJsonObject { put("node", -1); put("after", 101) }) })
+                            put("reason", "bump sits on the footway")
+                        },
+                    )
+                },
+            ),
+        )
+        assertFalse(proposed.isError, proposed.text)
+        val results = proposed.json.jsonArray.map { it.jsonObject }
+        assertEquals(listOf("accepted", "accepted"), results.map { it["outcome"]!!.jsonPrimitive.content })
+        val nodeId = results.first()["ref"]!!.jsonObject["id"]!!.jsonPrimitive.content.toLong()
+        assertTrue(nodeId < 0)
+
+        val changes = call(session, "get_draft", args("draft_id" to draftId)).json.jsonObject["changes"]!!.jsonArray.map { it.jsonObject }
+        val way = changes.first { refKey(it["ref"]!!) == "way:55" }
+        assertEquals(listOf(101L, nodeId, 2L), way["newShape"]!!.jsonObject["nodes"]!!.jsonArray.map { it.jsonPrimitive.content.toLong() })
+        assertEquals("node:$nodeId", refKey(way["dependsOn"]!!.jsonArray.single().jsonObject["ref"]!!))
+        assertEquals("bump", changes.first { refKey(it["ref"]!!) == "node:$nodeId" }["newTags"]!!.jsonObject["traffic_calming"]!!.jsonPrimitive.content)
     }
 
     @Test

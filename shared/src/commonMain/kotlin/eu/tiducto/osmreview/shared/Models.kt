@@ -155,7 +155,30 @@ data class Change(
     val reviews: List<Review> = emptyList(),
     val createdAt: String,
     val updatedAt: String,
+    val baseShape: ElementShape? = null,
+    val newShape: ElementShape? = null,
+    val liveShape: ElementShape? = null,
+    val liveGeom: JsonElement? = null,
+    val geometryChanged: Boolean = false,
+    val geometrySummary: String? = null,
+    val ifUnused: Boolean = false,
+    val placeholderId: Long? = null,
+    val dependsOn: List<ChangeLink> = emptyList(),
+    val requiredBy: List<ChangeLink> = emptyList(),
 )
+
+@Serializable
+data class RelationMember(val type: OsmType, val ref: Long, val role: String = "")
+
+@Serializable
+data class ElementShape(
+    val location: LngLat? = null,
+    val nodes: List<Long>? = null,
+    val members: List<RelationMember>? = null,
+)
+
+@Serializable
+data class ChangeLink(val changeId: String, val ref: OsmRef, val action: ChangeAction, val status: ChangeStatus)
 
 @Serializable
 data class DraftDetail(val draft: Draft, val changes: List<Change>)

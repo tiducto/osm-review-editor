@@ -6,12 +6,17 @@ import eu.tiducto.osmreview.rules.PolygonScopes
 import eu.tiducto.osmreview.rules.containsLonLat
 import eu.tiducto.osmreview.server.App
 import eu.tiducto.osmreview.server.api.runRule
+import eu.tiducto.osmreview.server.core.EditElement
+import eu.tiducto.osmreview.server.core.NodeInsert
 import eu.tiducto.osmreview.server.core.NotFoundException
 import eu.tiducto.osmreview.server.core.ResolvedScope
 import eu.tiducto.osmreview.server.db.DraftMeta
 import eu.tiducto.osmreview.server.osm.Overpass
 import eu.tiducto.osmreview.shared.Authors
 import eu.tiducto.osmreview.shared.BBox
+import eu.tiducto.osmreview.shared.ChangeAction
+import eu.tiducto.osmreview.shared.LngLat
+import eu.tiducto.osmreview.shared.RelationMember
 import eu.tiducto.osmreview.shared.DraftStatus
 import eu.tiducto.osmreview.shared.OsmRef
 import eu.tiducto.osmreview.shared.OsmType
@@ -109,7 +114,7 @@ private suspend fun ApplicationCall.authorized(app: App): Boolean {
 private val INSTRUCTIONS = """
     OSM Review Editor: propose OpenStreetMap tag fixes as drafts for a human to review.
     You can read the local OSM mirror (query_osm, get_object), run QA rules (list_rules, run_rule), and
-    create and edit drafts (create_draft, propose_changes, update_change, list_drafts, get_draft).
+    create and edit drafts (create_draft, propose_changes, propose_geometry, update_change, list_drafts, get_draft).
     You cannot upload: the human reviews every change in the UI and merges. Give every change a short,
     specific reason. Read get_draft to see the human's decisions and rejection comments, then revise
     with update_change. Areas are admin boundary names (e.g. "Opava", "Kateřinky", "Brno-střed"), a bbox
@@ -306,6 +311,68 @@ private fun buildServer(app: App): Server {
     }
 
     server.tool(
+        "propose_geometry",
+        "Propose geometry edits in a draft as osmChange-style elements (max 500 per call), reviewed per object like tag changes. " +
+            "Each element: {action: create|modify|delete, type: node|way|relation, id, reason, ...}. New elements use negative ids " +
+            "(-1, -2, …) that other elements of the same call may reference. create node: lat, lon, tags. create way: nodes (ids, at " +
+            "least 2) and tags. modify node: lat/lon to move it, add_tags/remove_tags/set_tags. modify way: nodes (the complete new " +
+            "list) or insert_nodes [{node, after}] to put a node right after an existing one. modify relation: members (complete new " +
+            "list of {type, ref, role}). delete node or way: if_unused (default true) skips the delete when something still uses it. " +
+            "A way split is a modify of the old way (shortened node list) plus a create of the new way sharing the split node; " +
+            "update relations that contain the way with a modify carrying the new member list. Creating or deleting relations is " +
+            "not supported here. Live versions are fetched; omitted geometry keeps the live geometry.",
+        schema(listOf("draft_id", "elements")) {
+            str("draft_id", "Draft id from create_draft")
+            putJsonObject("elements") {
+                put("type", "array")
+                putJsonObject("items") {
+                    put("type", "object")
+                    putJsonArray("required") { add(JsonPrimitive("action")); add(JsonPrimitive("type")); add(JsonPrimitive("id")); add(JsonPrimitive("reason")) }
+                    putJsonObject("properties") {
+                        enum("action", "create, modify or delete", listOf("create", "modify", "delete"))
+                        enum("type", "node, way or relation", listOf("node", "way", "relation"))
+                        long("id", "OSM id, or a negative placeholder for a new element")
+                        putJsonObject("lat") { put("type", "number") }
+                        putJsonObject("lon") { put("type", "number") }
+                        putJsonObject("nodes") { put("type", "array"); putJsonObject("items") { put("type", "integer") } }
+                        putJsonObject("insert_nodes") {
+                            put("type", "array")
+                            putJsonObject("items") {
+                                put("type", "object")
+                                putJsonObject("properties") {
+                                    long("node", "Node to insert (may be a negative placeholder)")
+                                    long("after", "Existing node of the way it goes after")
+                                }
+                            }
+                        }
+                        putJsonObject("members") {
+                            put("type", "array")
+                            putJsonObject("items") {
+                                put("type", "object")
+                                putJsonObject("properties") {
+                                    enum("type", "Member type", listOf("node", "way", "relation"))
+                                    long("ref", "Member id")
+                                    str("role", "Role, empty string for none")
+                                }
+                            }
+                        }
+                        putJsonObject("add_tags") { put("type", "object") }
+                        putJsonObject("remove_tags") { put("type", "array"); putJsonObject("items") { put("type", "string") } }
+                        putJsonObject("set_tags") { put("type", "object"); put("description", "Complete tag set") }
+                        bool("if_unused", "For deletes: skip when still used (default true)")
+                        str("reason", "Why, shown to the reviewer")
+                    }
+                }
+            }
+        },
+    ) { args ->
+        val draftId = args.str("draft_id") ?: return@tool err("draft_id is required")
+        val elements = (args["elements"] as? JsonArray ?: return@tool err("elements is required")).map { it.jsonObject.toEditElement() }
+        val results = app.drafts.proposeGeometry(draftId, elements)
+        ok(results, ListSerializer(eu.tiducto.osmreview.shared.ProposalResult.serializer()))
+    }
+
+    server.tool(
         "update_change",
         "Revise one of your proposed changes (add_tags / remove_tags / set_tags applied to the current proposal) or withdraw it. " +
             "A revised change goes back to pending for the human.",
@@ -427,6 +494,38 @@ private fun JsonObject.toProposal(): ProposedChange = ProposedChange(
     reason = str("reason"),
     confidence = eu.tiducto.osmreview.shared.Confidence.NEEDS_REVIEW,
 )
+
+private fun JsonObject.toEditElement(): EditElement {
+    val action = ChangeAction.entries.firstOrNull { it.name.equals(str("action"), ignoreCase = true) }
+        ?: throw IllegalArgumentException("action must be create, modify or delete")
+    val type = OsmType.fromApiName(str("type") ?: throw IllegalArgumentException("type is required"))
+    val ref = OsmRef(type, long("id") ?: throw IllegalArgumentException("id is required"))
+    require(type != OsmType.RELATION || action == ChangeAction.MODIFY) { "$ref: relations can only be modified here" }
+    val lat = (this["lat"] as? JsonPrimitive)?.doubleOrNull
+    val lon = (this["lon"] as? JsonPrimitive)?.doubleOrNull
+    require((lat == null) == (lon == null)) { "$ref: give both lat and lon" }
+    return EditElement(
+        action = action,
+        ref = ref,
+        edit = toTagEdit().takeUnless { it.isEmpty },
+        location = if (lat != null && lon != null) LngLat(lon, lat) else null,
+        nodes = (this["nodes"] as? JsonArray)?.map { it.jsonPrimitive.longOrNull ?: throw IllegalArgumentException("$ref: nodes must be ids") },
+        members = (this["members"] as? JsonArray)?.map { m ->
+            val o = m.jsonObject
+            RelationMember(
+                OsmType.fromApiName(o.str("type") ?: throw IllegalArgumentException("$ref: member type is required")),
+                o.long("ref") ?: throw IllegalArgumentException("$ref: member ref is required"),
+                o.str("role").orEmpty(),
+            )
+        },
+        insertNodes = (this["insert_nodes"] as? JsonArray)?.map { i ->
+            val o = i.jsonObject
+            NodeInsert(o.long("node") ?: throw IllegalArgumentException("$ref: insert_nodes needs node"), o.long("after") ?: throw IllegalArgumentException("$ref: insert_nodes needs after"))
+        }.orEmpty(),
+        ifUnused = action == ChangeAction.DELETE && bool("if_unused") != false,
+        reason = str("reason"),
+    )
+}
 
 private fun JsonObject.toTagEdit() = TagEdit(
     set = (this["add_tags"] as? JsonObject)?.mapValues { it.value.jsonPrimitive.content }.orEmpty(),

@@ -8,7 +8,13 @@ import eu.tiducto.osmreview.rules.Geo
 import eu.tiducto.osmreview.rules.PolygonScopes
 import eu.tiducto.osmreview.server.db.DraftMeta
 import eu.tiducto.osmreview.server.db.DraftRepo
+import eu.tiducto.osmreview.server.db.GeometryUpdate
 import eu.tiducto.osmreview.server.db.NewChange
+import eu.tiducto.osmreview.server.osm.OsmChangeXml
+import eu.tiducto.osmreview.shared.DraftFromOsmChangeRequest
+import eu.tiducto.osmreview.shared.ElementShape
+import eu.tiducto.osmreview.shared.OsmChangeImportRequest
+import eu.tiducto.osmreview.shared.OsmChangeImportResult
 import eu.tiducto.osmreview.server.osm.OsmElement
 import eu.tiducto.osmreview.shared.Area
 import eu.tiducto.osmreview.shared.Authors
@@ -54,6 +60,7 @@ class DraftService(
     private val presets: (String) -> Area? = { null },
 ) {
     private val log = LoggerFactory.getLogger(DraftService::class.java)
+    private val edits = GeometryEdits(repo, account) { refs -> geometries(refs, null) }
 
     suspend fun createDraft(
         title: String,
@@ -228,7 +235,10 @@ class DraftService(
         val ref = OsmRef(OsmType.NODE, repo.nextPlaceholderId())
         val point = pointGeom(loc)
         val c = repo.insertChange(
-            NewChange(draftId, ref, ChangeAction.CREATE, null, emptyMap(), tags, null, point, loc, p.ruleId, p.reason, p.confidence),
+            NewChange(
+                draftId, ref, ChangeAction.CREATE, null, emptyMap(), tags, null, point, loc, p.ruleId, p.reason, p.confidence,
+                newShape = ElementShape(location = loc),
+            ),
         )
         return ProposalResult(ref, ProposalOutcome.ACCEPTED, c.id)
     }
@@ -242,17 +252,25 @@ class DraftService(
         if (c.status == ChangeStatus.CONFLICT && req.decision in setOf(ReviewDecision.APPROVE, ReviewDecision.EDIT)) {
             throw StateException("Resolve the conflict first: the live object moved to v${c.liveVersion}")
         }
+        val all = if (c.dependsOn.isEmpty() && c.requiredBy.isEmpty()) emptyList() else repo.changes(UUID.fromString(c.draftId))
         when (req.decision) {
-            ReviewDecision.APPROVE -> repo.updateChange(id) { status = ChangeStatus.APPROVED }
+            ReviewDecision.APPROVE -> {
+                approveDependencies(c, all, req.cascade)
+                repo.updateChange(id) { status = ChangeStatus.APPROVED }
+            }
             ReviewDecision.EDIT -> {
                 val tags = req.tags?.withoutPseudoTags() ?: throw IllegalArgumentException("An edit needs the full tag set")
-                val noOp = c.action == ChangeAction.MODIFY && TagDiff.between(c.baseTags, tags).isNoOp
+                val noOp = c.action == ChangeAction.MODIFY && c.newShape == null && TagDiff.between(c.baseTags, tags).isNoOp
+                if (noOp) rejectDependents(c, all, req.cascade) else approveDependencies(c, all, req.cascade)
                 repo.updateChange(id) {
                     newTags = tags
                     status = if (noOp) ChangeStatus.REJECTED else ChangeStatus.APPROVED
                 }
             }
-            ReviewDecision.REJECT, ReviewDecision.SEND_TO_ID -> repo.updateChange(id) { status = ChangeStatus.REJECTED }
+            ReviewDecision.REJECT, ReviewDecision.SEND_TO_ID -> {
+                rejectDependents(c, all, req.cascade)
+                repo.updateChange(id) { status = ChangeStatus.REJECTED }
+            }
             ReviewDecision.RESET -> repo.updateChange(id) { status = if (c.liveVersion != null) ChangeStatus.CONFLICT else ChangeStatus.PENDING }
         }
         repo.addReview(
@@ -266,11 +284,49 @@ class DraftService(
         return repo.change(id)!!
     }
 
+    private suspend fun approveDependencies(c: Change, all: List<Change>, cascade: Boolean) {
+        if (all.isEmpty()) return
+        val deps = DraftGraph.dependencies(all, c.id)
+        val rejected = deps.filter { it.status == ChangeStatus.REJECTED }
+        if (rejected.isNotEmpty()) {
+            throw StateException("${c.ref} depends on rejected ${rejected.joinToString { it.ref.toString() }}; reset them first")
+        }
+        if (!cascade) return
+        val conflicts = deps.filter { it.status == ChangeStatus.CONFLICT }
+        if (conflicts.isNotEmpty()) {
+            throw StateException("${c.ref} depends on ${conflicts.joinToString { it.ref.toString() }} in conflict; resolve them first")
+        }
+        for (d in deps.filter { it.status == ChangeStatus.PENDING }) {
+            val did = UUID.fromString(d.id)
+            repo.updateChange(did) { status = ChangeStatus.APPROVED }
+            repo.addReview(did, ReviewDecision.APPROVE, "approved as a dependency of ${c.ref}", null)
+        }
+    }
+
+    private suspend fun rejectDependents(c: Change, all: List<Change>, cascade: Boolean) {
+        if (all.isEmpty()) return
+        val dependents = DraftGraph.dependents(all, c.id).filter { it.status !in setOf(ChangeStatus.REJECTED, ChangeStatus.UPLOADED) }
+        val approved = dependents.filter { it.status == ChangeStatus.APPROVED }
+        if (!cascade && approved.isNotEmpty()) {
+            throw StateException(
+                "${c.ref} is needed by approved ${approved.joinToString { it.ref.toString() }}; " +
+                    "reject those first or reject with cascade to reject them too",
+            )
+        }
+        if (!cascade) return
+        for (d in dependents) {
+            val did = UUID.fromString(d.id)
+            repo.updateChange(did) { status = ChangeStatus.REJECTED }
+            repo.addReview(did, ReviewDecision.REJECT, "rejected because it depends on ${c.ref}", null)
+        }
+    }
+
     suspend fun updateProposal(changeId: String, edit: TagEdit?, withdraw: Boolean, reason: String?): Change {
         val id = parseId(changeId)
         val c = repo.change(id) ?: throw NotFoundException("Change $changeId not found")
         if (c.status == ChangeStatus.UPLOADED) throw StateException("Change is already uploaded")
         if (withdraw) {
+            if (c.requiredBy.isNotEmpty()) rejectDependents(c, repo.changes(UUID.fromString(c.draftId)), cascade = true)
             repo.updateChange(id) { status = ChangeStatus.REJECTED }
             repo.addReview(id, ReviewDecision.REJECT, "withdrawn by the author" + (reason?.let { ": $it" } ?: ""), null)
         } else {
@@ -392,6 +448,20 @@ class DraftService(
         if (el.version == base) return c.status != ChangeStatus.CONFLICT
         val mine = TagDiff.between(c.baseTags, c.newTags)
         val upstream = TagDiff.between(c.baseTags, el.tags)
+        val geometryEdit = c.action == ChangeAction.DELETE || c.newShape != null
+        val liveShape = ChangeElements.shapeOf(el)
+        val upstreamGeometry = c.baseShape == null || liveShape != c.baseShape
+        if (geometryEdit && (c.action == ChangeAction.DELETE || upstreamGeometry)) {
+            val geom = runCatching { edits.liveGeometry(account.api(), el) }.getOrNull()
+            repo.updateChange(id) {
+                status = ChangeStatus.CONFLICT
+                liveVersion = el.version
+                liveTags = el.tags
+                this.liveShape = liveShape
+                geom?.let { liveGeom = it }
+            }
+            return false
+        }
         return if ((mine.touchedKeys intersect upstream.touchedKeys).isEmpty()) {
             val rebased = mine.applyTo(el.tags)
             repo.updateChange(id) {
@@ -400,6 +470,9 @@ class DraftService(
                 newTags = rebased
                 status = ChangeStatus.PENDING
                 clearLive = true
+                if (geometryEdit) {
+                    geometry = GeometryUpdate(c.action, liveShape, c.newShape, c.baseGeom, c.newGeom, c.centroid, c.ifUnused)
+                }
             }
             repo.addReview(id, ReviewDecision.RESET, "auto-rebased from v$base onto v${el.version}", null)
             false
@@ -413,23 +486,79 @@ class DraftService(
         }
     }
 
-    suspend fun resolveConflict(changeId: String, proposed: Map<String, String>): Change {
-        val tags = proposed.withoutPseudoTags()
+    suspend fun resolveConflict(changeId: String, proposed: Map<String, String>, useLiveGeometry: Boolean = false): Change {
         val id = parseId(changeId)
         val c = repo.change(id) ?: throw NotFoundException("Change $changeId not found")
         if (c.status != ChangeStatus.CONFLICT) throw StateException("Change is not in conflict")
-        val el = account.api().fetchOne(c.ref)
+        val tags = if (c.action == ChangeAction.DELETE) emptyMap() else proposed.withoutPseudoTags()
+        val api = account.api()
+        val el = api.fetchOne(c.ref)
         if (el == null || !el.visible) throw StateException("${c.ref} no longer exists; reject the change instead")
+        val update = if (c.action == ChangeAction.DELETE || c.newShape != null || c.baseShape != null) {
+            val liveShape = ChangeElements.shapeOf(el)
+            val newShape = c.newShape.takeUnless { useLiveGeometry || c.action == ChangeAction.DELETE }
+            val baseGeom = edits.liveGeometry(api, el)
+            val newGeom = newShape?.let { edits.geometryFor(api, c.ref.type, ElementShape(it.location, it.nodes ?: liveShape.nodes, it.members)) }
+            GeometryUpdate(
+                c.action, liveShape, newShape, baseGeom, newGeom,
+                ChangeElements.centroid(newGeom) ?: ChangeElements.centroid(baseGeom) ?: c.centroid, c.ifUnused,
+            )
+        } else {
+            null
+        }
         repo.updateChange(id) {
             baseTags = el.tags
             baseVersion = el.version
             newTags = tags
             status = ChangeStatus.PENDING
             clearLive = true
+            geometry = update
         }
         repo.addReview(id, ReviewDecision.EDIT, "conflict resolved onto v${el.version}", tags)
         emitUpdated(c.draftId)
         return repo.change(id)!!
+    }
+
+    suspend fun importOsmChange(draftId: String, req: OsmChangeImportRequest): OsmChangeImportResult {
+        val uuid = parseId(draftId)
+        val draft = repo.getDraft(uuid) ?: throw NotFoundException("Draft $draftId not found")
+        if (draft.status !in ACTIVE) throw StateException("Draft ${draft.id} is ${draft.status.name.lowercase()}")
+        val entries = OsmChangeXml.parse(req.osmChange)
+        require(entries.isNotEmpty() || req.replace) { "The osmChange has no elements" }
+        val results = edits.apply(uuid, EditElement.fromOsmChange(entries, req.reasons, req.reason), req.replace)
+        emitUpdated(draft.id)
+        return OsmChangeImportResult(detail(draft.id), results)
+    }
+
+    suspend fun draftFromOsmChange(req: DraftFromOsmChangeRequest, author: String): OsmChangeImportResult {
+        val entries = OsmChangeXml.parse(req.osmChange)
+        require(entries.isNotEmpty()) { "The osmChange has no elements" }
+        val draft = createDraft(req.title, req.description, author, null, DraftMeta(req.area, req.changesetComment, req.changesetSource))
+        return try {
+            val results = edits.apply(UUID.fromString(draft.id), EditElement.fromOsmChange(entries, req.reasons, req.reason), replace = false)
+            emitUpdated(draft.id)
+            OsmChangeImportResult(detail(draft.id), results)
+        } catch (e: Exception) {
+            repo.deleteDraft(UUID.fromString(draft.id))
+            throw e
+        }
+    }
+
+    suspend fun exportOsmChange(draftId: String): String {
+        val uuid = parseId(draftId)
+        repo.getDraft(uuid) ?: throw NotFoundException("Draft $draftId not found")
+        return edits.export(repo.changes(uuid))
+    }
+
+    suspend fun proposeGeometry(draftId: String, elements: List<EditElement>): List<ProposalResult> {
+        val uuid = parseId(draftId)
+        val draft = repo.getDraft(uuid) ?: throw NotFoundException("Draft $draftId not found")
+        if (draft.status !in ACTIVE) throw StateException("Draft ${draft.id} is ${draft.status.name.lowercase()}")
+        require(elements.isNotEmpty()) { "Give at least one element" }
+        require(elements.size <= MAX_GEOMETRY_ELEMENTS) { "At most $MAX_GEOMETRY_ELEMENTS elements per call" }
+        val results = edits.apply(uuid, elements, replace = false)
+        emitUpdated(draft.id)
+        return results
     }
 
     private fun geometries(refs: List<OsmRef>, near: BBox?): Map<OsmRef, MapFeature> =
@@ -474,6 +603,7 @@ class DraftService(
         val ACTIVE = setOf(DraftStatus.OPEN, DraftStatus.PARTIALLY_MERGED)
         const val MAX_PROPOSALS = 2000
         const val MAX_FROM_RULE = 2000
+        const val MAX_GEOMETRY_ELEMENTS = 500
         const val MANUAL_TITLE = "Manual edits"
 
         fun parseId(id: String): UUID = runCatching { UUID.fromString(id) }.getOrElse { throw NotFoundException("Unknown id $id") }

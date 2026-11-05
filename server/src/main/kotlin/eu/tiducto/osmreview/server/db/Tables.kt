@@ -1,6 +1,9 @@
 package eu.tiducto.osmreview.server.db
 
+import eu.tiducto.osmreview.shared.ElementShape
+import eu.tiducto.osmreview.shared.RelationMember
 import eu.tiducto.osmreview.shared.WireJson
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.JsonElement
@@ -46,6 +49,15 @@ object ChangesTable : Table("app.changes") {
     val liveVersion = integer("live_version").nullable()
     val liveTags = jsonb("live_tags", WireJson, tagsSerializer).nullable()
     val changesetId = long("changeset_id").nullable()
+    val newNodes = array<Long>("new_nodes").nullable()
+    val newMembers = jsonb("new_members", WireJson, ListSerializer(RelationMember.serializer())).nullable()
+    val newLat = double("new_lat").nullable()
+    val newLon = double("new_lon").nullable()
+    val baseShape = jsonb("base_shape", WireJson, ElementShape.serializer()).nullable()
+    val liveShape = jsonb("live_shape", WireJson, ElementShape.serializer()).nullable()
+    val liveGeom = jsonb("live_geom", WireJson, JsonElement.serializer()).nullable()
+    val ifUnused = bool("if_unused")
+    val placeholderId = long("placeholder_id").nullable()
     val createdAt = timestampWithTimeZone("created_at")
     val updatedAt = timestampWithTimeZone("updated_at")
     override val primaryKey = PrimaryKey(id)

@@ -3,14 +3,10 @@ package eu.tiducto.osmreview.server.core
 import eu.tiducto.osmreview.server.Config
 import eu.tiducto.osmreview.server.db.DraftRepo
 import eu.tiducto.osmreview.server.osm.OsmApiException
+import eu.tiducto.osmreview.server.osm.OsmChangeXml
 import eu.tiducto.osmreview.server.osm.OsmElement
-import eu.tiducto.osmreview.server.osm.OsmXml
-import eu.tiducto.osmreview.server.osm.XBlock
-import eu.tiducto.osmreview.server.osm.XDiffEntry
-import eu.tiducto.osmreview.server.osm.XNode
-import eu.tiducto.osmreview.server.osm.XOsmChange
-import eu.tiducto.osmreview.server.osm.XRelation
-import eu.tiducto.osmreview.server.osm.XWay
+import eu.tiducto.osmreview.server.osm.XDiffResult
+import eu.tiducto.osmreview.shared.BlockedChange
 import eu.tiducto.osmreview.shared.Change
 import eu.tiducto.osmreview.shared.ChangeAction
 import eu.tiducto.osmreview.shared.ChangeStatus
@@ -19,10 +15,10 @@ import eu.tiducto.osmreview.shared.Draft
 import eu.tiducto.osmreview.shared.DraftStatus
 import eu.tiducto.osmreview.shared.MergePreview
 import eu.tiducto.osmreview.shared.MergeProgress
+import eu.tiducto.osmreview.shared.OsmRef
 import eu.tiducto.osmreview.shared.OsmType
 import eu.tiducto.osmreview.shared.ReviewDecision
 import eu.tiducto.osmreview.shared.UiEvent
-import eu.tiducto.osmreview.shared.withoutPseudoTags
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -44,19 +40,61 @@ class MergeService(
 
     suspend fun preview(draftId: String): MergePreview {
         val d = drafts.detail(draftId)
+        val approved = d.changes.filter { it.status == ChangeStatus.APPROVED }
+        val blocked = blocked(d.changes, approved)
+        val blockedIds = blocked.map { it.changeId }.toSet()
         return MergePreview(
             draftId = d.draft.id,
-            groups = groups(d.draft, d.changes.filter { it.status == ChangeStatus.APPROVED }),
+            groups = groups(d.draft, approved.filter { it.id !in blockedIds }, d.changes),
             conflicts = d.changes.filter { it.status == ChangeStatus.CONFLICT }.map { it.id },
             target = account.target,
+            blocked = blocked,
         )
     }
 
-    fun groups(draft: Draft, approved: List<Change>): List<ChangesetGroup> {
+    fun blocked(all: List<Change>, candidates: List<Change>): List<BlockedChange> {
+        val edges = DraftGraph.edges(all)
+        if (edges.isEmpty()) return emptyList()
+        val byId = all.associateBy { it.id }
+        val ready = candidates.map { it.id }.toMutableSet()
+        val out = LinkedHashMap<String, BlockedChange>()
+        var changed = true
+        while (changed) {
+            changed = false
+            for (id in ready.toList()) {
+                val missing = closure(edges, id).mapNotNull { byId[it] }.filter { it.id !in ready && it.status != ChangeStatus.UPLOADED }
+                if (missing.isNotEmpty()) {
+                    val c = byId.getValue(id)
+                    ready -= id
+                    out[id] = BlockedChange(
+                        id, c.ref,
+                        "${c.ref} needs " + missing.joinToString { "${it.ref} (${it.status.name.lowercase()})" } + " in the same upload",
+                    )
+                    changed = true
+                }
+            }
+        }
+        return out.values.toList()
+    }
+
+    private fun closure(edges: Map<String, Set<String>>, start: String): Set<String> {
+        val seen = LinkedHashSet<String>()
+        val queue = ArrayDeque(edges[start].orEmpty())
+        while (queue.isNotEmpty()) {
+            val id = queue.removeFirst()
+            if (id == start || !seen.add(id)) continue
+            queue += edges[id].orEmpty()
+        }
+        return seen
+    }
+
+    fun groups(draft: Draft, approved: List<Change>, all: List<Change> = approved): List<ChangesetGroup> {
         val area = draft.area?.ifBlank { null }
-        return approved.groupBy { (it.ruleId ?: "manual") to area }.flatMap { (key, changes) ->
-            val ruleId = key.first
-            val chunks = changes.sortedBy { it.centroid?.lng ?: 0.0 }.chunked(MAX_PER_CHANGESET)
+        val ids = approved.map { it.id }.toSet()
+        val components = DraftGraph.components(all.filter { it.id in ids })
+        val byKey = components.groupBy { comp -> comp.firstNotNullOfOrNull { it.ruleId } ?: "manual" }
+        return byKey.flatMap { (ruleId, comps) ->
+            val chunks = pack(comps.sortedBy { comp -> comp.minOf { it.centroid?.lng ?: 0.0 } })
             chunks.mapIndexed { i, chunk ->
                 val comment = draft.changesetComment?.ifBlank { null } ?: run {
                     val what = if (ruleId == "manual") {
@@ -82,6 +120,26 @@ class MergeService(
         }
     }
 
+    private fun pack(components: List<List<Change>>): List<List<Change>> {
+        val out = ArrayList<List<Change>>()
+        var cur = ArrayList<Change>()
+        for (comp in components) {
+            if (comp.size > OsmChangeXml.MAX_ELEMENTS) {
+                throw StateException(
+                    "${comp.size} changes depend on each other (${comp.first().ref} …), more than the ${OsmChangeXml.MAX_ELEMENTS} " +
+                        "elements one changeset can hold; split the edit into smaller drafts",
+                )
+            }
+            if (cur.isNotEmpty() && cur.size + comp.size > MAX_PER_CHANGESET) {
+                out += cur
+                cur = ArrayList()
+            }
+            cur += comp
+        }
+        if (cur.isNotEmpty()) out += cur
+        return out
+    }
+
     private fun sourceOf(draft: Draft, changes: List<Change>): String? {
         val reviewed = changes.flatMap { c ->
             c.reviews.filter { it.decision == ReviewDecision.APPROVE || it.decision == ReviewDecision.EDIT }.mapNotNull { it.imagery }
@@ -103,22 +161,32 @@ class MergeService(
         val approved = start.changes.filter { it.status == ChangeStatus.APPROVED }
         if (approved.isEmpty()) throw StateException("Nothing approved to merge")
         val live = api.fetch(approved.filter { it.action != ChangeAction.CREATE }.map { it.ref })
-        val ready = approved.filter { c -> c.action == ChangeAction.CREATE || drafts.checkConflict(c, live[c.ref]) }
-        val skipped = approved.size - ready.size
+        val checked = approved.filter { c -> c.action == ChangeAction.CREATE || drafts.checkConflict(c, live[c.ref]) }
+        val current = repo.changes(UUID.fromString(draftId))
+        val checkedIds = checked.map { it.id }.toSet()
+        val blocked = blocked(current, current.filter { it.id in checkedIds })
+        val blockedIds = blocked.map { it.changeId }.toSet()
+        val ready = current.filter { it.id in checkedIds && it.id !in blockedIds }
+        val skipped = approved.size - checked.size
 
-        val groups = groups(start.draft, ready)
+        val groups = groups(start.draft, ready, current)
         var done = 0
         val total = ready.size
-        progress(draftId, "", done, total, null, "Uploading ${groups.size} changeset(s)" + if (skipped > 0) "; $skipped changed upstream" else "")
+        val notes = listOfNotNull(
+            "Uploading ${groups.size} changeset(s)",
+            if (skipped > 0) "$skipped changed upstream" else null,
+            if (blocked.isNotEmpty()) "${blocked.size} skipped: " + blocked.take(3).joinToString("; ") { it.message } else null,
+        )
+        progress(draftId, "", done, total, null, notes.joinToString("; "))
 
         for (g in groups) {
-            val changes = g.changeIds.map { id -> ready.first { it.id == id } }
+            val changes = repo.changesByIds(g.changeIds.map(UUID::fromString)).associateBy { it.id }.let { m -> g.changeIds.mapNotNull(m::get) }
             val uploadId = repo.insertUpload(UUID.fromString(draftId), g.comment, changes.map { UUID.fromString(it.id) })
             var changesetId: Long? = null
             try {
                 changesetId = api.createChangeset(token, g.tags)
                 val diff = api.upload(token, changesetId, osmChange(changes, live, changesetId))
-                applyDiff(changes, diff.nodes + diff.ways + diff.relations, changesetId)
+                applyDiff(UUID.fromString(draftId), changes, diff, changesetId)
                 repo.finishUpload(uploadId, "uploaded", changesetId, null)
                 done += changes.size
                 progress(draftId, g.key, done, total, changesetId, "Uploaded ${changes.size} change(s) in changeset $changesetId")
@@ -143,37 +211,36 @@ class MergeService(
         events.emit(UiEvent.DraftUpdated(draftId))
     }
 
-    fun osmChange(changes: List<Change>, live: Map<eu.tiducto.osmreview.shared.OsmRef, OsmElement>, changesetId: Long): String {
-        fun block(cs: List<Change>, build: (Change) -> OsmElement): XBlock? {
-            if (cs.isEmpty()) return null
-            val els = cs.map { OsmXml.toXml(build(it), changesetId) }
-            return XBlock(els.filterIsInstance<XNode>(), els.filterIsInstance<XWay>(), els.filterIsInstance<XRelation>())
+    fun osmChange(changes: List<Change>, live: Map<OsmRef, OsmElement>, changesetId: Long): String {
+        val items = changes.map { c ->
+            val el = ChangeElements.element(c, live[c.ref], useLiveVersion = true)
+                ?: throw StateException("${c.ref} cannot be written: its live state or geometry is missing")
+            c to el
         }
-        val byAction = changes.groupBy { it.action }
-        return OsmXml.osmChange(
-            XOsmChange(
-                generator = "OSM Review Editor ${config.version}",
-                create = block(byAction[ChangeAction.CREATE].orEmpty()) { c ->
-                    val p = c.centroid ?: error("created node ${c.ref} has no location")
-                    OsmElement(OsmType.NODE, c.ref.id, 0, true, c.newTags.withoutPseudoTags(), p.lat.toString(), p.lng.toString())
-                },
-                modify = block(byAction[ChangeAction.MODIFY].orEmpty()) { c -> live.getValue(c.ref).copy(tags = c.newTags.withoutPseudoTags()) },
-                delete = block(byAction[ChangeAction.DELETE].orEmpty()) { c -> live.getValue(c.ref) },
-            ),
-        )
+        return OsmChangeXml.write("OSM Review Editor ${config.version}", ChangeElements.blocks(items), changesetId)
     }
 
-    private suspend fun applyDiff(changes: List<Change>, entries: List<XDiffEntry>, changesetId: Long) {
-        val byOld = entries.associateBy { it.oldId }
+    private suspend fun applyDiff(draftId: UUID, changes: List<Change>, diff: XDiffResult, changesetId: Long) {
+        val entries = diff.nodes.map { OsmRef(OsmType.NODE, it.oldId) to it } +
+            diff.ways.map { OsmRef(OsmType.WAY, it.oldId) to it } +
+            diff.relations.map { OsmRef(OsmType.RELATION, it.oldId) to it }
+        val byOld = entries.toMap()
+        val remap = HashMap<OsmRef, Long>()
         for (c in changes) {
-            val e = byOld[c.ref.id]
+            val e = byOld[c.ref]
+            val created = c.action == ChangeAction.CREATE && e?.newId != null
+            if (created) remap[c.ref] = e.newId!!
             repo.updateChange(UUID.fromString(c.id)) {
                 status = ChangeStatus.UPLOADED
                 this.changesetId = changesetId
-                if (c.action == ChangeAction.CREATE) e?.newId?.let { osmId = it }
+                if (created) {
+                    osmId = e.newId
+                    placeholderId = c.ref.id
+                }
                 e?.newVersion?.let { baseVersion = it }
             }
         }
+        repo.remapRefs(draftId, remap)
     }
 
     private fun progress(

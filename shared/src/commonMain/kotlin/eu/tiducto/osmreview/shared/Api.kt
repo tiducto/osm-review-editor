@@ -36,7 +36,31 @@ data class ProposalResult(
     val outcome: ProposalOutcome,
     val changeId: String? = null,
     val message: String? = null,
+    val sourceRef: OsmRef? = null,
 )
+
+@Serializable
+data class OsmChangeImportRequest(
+    val osmChange: String,
+    val reasons: Map<String, String> = emptyMap(),
+    val reason: String? = null,
+    val replace: Boolean = false,
+)
+
+@Serializable
+data class DraftFromOsmChangeRequest(
+    val title: String,
+    val osmChange: String,
+    val description: String = "",
+    val area: String? = null,
+    val changesetComment: String? = null,
+    val changesetSource: String? = null,
+    val reasons: Map<String, String> = emptyMap(),
+    val reason: String? = null,
+)
+
+@Serializable
+data class OsmChangeImportResult(val draft: DraftDetail, val results: List<ProposalResult>)
 
 @Serializable
 data class CreateDraftRequest(
@@ -75,10 +99,11 @@ data class ReviewRequest(
     val comment: String? = null,
     val tags: Map<String, String>? = null,
     val imagery: String? = null,
+    val cascade: Boolean = false,
 )
 
 @Serializable
-data class ResolveConflictRequest(val tags: Map<String, String>)
+data class ResolveConflictRequest(val tags: Map<String, String>, val useLiveGeometry: Boolean = false)
 
 @Serializable
 data class ManualEditRequest(
@@ -102,7 +127,11 @@ data class MergePreview(
     val groups: List<ChangesetGroup>,
     val conflicts: List<String>,
     val target: OsmTarget,
+    val blocked: List<BlockedChange> = emptyList(),
 )
+
+@Serializable
+data class BlockedChange(val changeId: String, val ref: OsmRef, val message: String)
 
 @Serializable
 enum class OsmTarget {

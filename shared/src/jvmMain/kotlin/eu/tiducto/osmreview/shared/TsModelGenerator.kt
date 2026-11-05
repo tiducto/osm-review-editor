@@ -116,11 +116,12 @@ fun main(args: Array<String>) {
         serializer<FeatureCollection>(), serializer<ProposalResult>(), serializer<MergePreview>(),
         serializer<MergeProgress>(), serializer<Upload>(), serializer<AppStatus>(), serializer<ImagerySource>(),
         serializer<UiEvent>(), serializer<ApiError>(), serializer<SearchHit>(), serializer<EditorLinks>(), serializer<AccountStatus>(), serializer<McpInfo>(),
+        serializer<OsmChangeImportResult>(),
     ).forEach(gen::addResponse)
     listOf(
         serializer<CreateDraftRequest>(), serializer<DraftFromRuleRequest>(), serializer<RuleIssuesRequest>(), serializer<ProposeChangesRequest>(),
         serializer<ReviewRequest>(), serializer<ResolveConflictRequest>(), serializer<ManualEditRequest>(),
-        serializer<UpdateDraftRequest>(), serializer<SetTargetRequest>(),
+        serializer<UpdateDraftRequest>(), serializer<SetTargetRequest>(), serializer<OsmChangeImportRequest>(), serializer<DraftFromOsmChangeRequest>(),
     ).forEach(gen::addRequest)
     val out = File(args.firstOrNull() ?: "models.ts")
     out.parentFile.mkdirs()

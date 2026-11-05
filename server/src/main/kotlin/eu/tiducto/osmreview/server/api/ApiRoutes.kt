@@ -9,7 +9,9 @@ import eu.tiducto.osmreview.shared.AppStatus
 import eu.tiducto.osmreview.shared.Authors
 import eu.tiducto.osmreview.shared.BBox
 import eu.tiducto.osmreview.shared.CreateDraftRequest
+import eu.tiducto.osmreview.shared.DraftFromOsmChangeRequest
 import eu.tiducto.osmreview.shared.DraftFromRuleRequest
+import eu.tiducto.osmreview.shared.OsmChangeImportRequest
 import eu.tiducto.osmreview.shared.DraftStatus
 import eu.tiducto.osmreview.shared.ImagerySource
 import eu.tiducto.osmreview.shared.ManualEditRequest
@@ -23,7 +25,11 @@ import eu.tiducto.osmreview.shared.ReviewRequest
 import eu.tiducto.osmreview.shared.RuleIssuesRequest
 import eu.tiducto.osmreview.shared.SetTargetRequest
 import eu.tiducto.osmreview.shared.UpdateDraftRequest
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.request.contentType
+import io.ktor.server.request.receiveText
+import io.ktor.server.response.respondText
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
@@ -135,6 +141,9 @@ fun Route.apiRoutes(app: App) {
                 )
             }
             post("/from-rule") { call.respond(HttpStatusCode.Created, drafts.draftFromRule(call.receive<DraftFromRuleRequest>())) }
+            post("/from-osmchange") {
+                call.respond(HttpStatusCode.Created, drafts.draftFromOsmChange(call.receive<DraftFromOsmChangeRequest>(), Authors.USER))
+            }
             route("/{id}") {
                 get { call.respond(drafts.detail(call.parameters["id"]!!)) }
                 patch {
@@ -157,6 +166,19 @@ fun Route.apiRoutes(app: App) {
                 post("/changes") {
                     val req = call.receive<ProposeChangesRequest>()
                     call.respond(drafts.proposeChanges(call.parameters["id"]!!, req.changes))
+                }
+                get("/osmchange") {
+                    call.respondText(drafts.exportOsmChange(call.parameters["id"]!!), ContentType.Application.Xml)
+                }
+                post("/osmchange") {
+                    val xml = call.request.contentType().let { it.match(ContentType.Application.Xml) || it.match(ContentType.Text.Xml) }
+                    val req = if (xml) {
+                        val q = call.request.queryParameters
+                        OsmChangeImportRequest(call.receiveText(), reason = q["reason"], replace = q["replace"] == "true")
+                    } else {
+                        call.receive<OsmChangeImportRequest>()
+                    }
+                    call.respond(drafts.importOsmChange(call.parameters["id"]!!, req))
                 }
                 post("/refresh") { call.respond(drafts.refresh(call.parameters["id"]!!)) }
                 post("/approve-remaining") {
@@ -184,7 +206,8 @@ fun Route.apiRoutes(app: App) {
 
         post("/changes/{id}/review") { call.respond(drafts.review(call.parameters["id"]!!, call.receive<ReviewRequest>())) }
         post("/changes/{id}/resolve") {
-            call.respond(drafts.resolveConflict(call.parameters["id"]!!, call.receive<ResolveConflictRequest>().tags))
+            val req = call.receive<ResolveConflictRequest>()
+            call.respond(drafts.resolveConflict(call.parameters["id"]!!, req.tags, req.useLiveGeometry))
         }
         post("/manual-edits") {
             val req = call.receive<ManualEditRequest>()

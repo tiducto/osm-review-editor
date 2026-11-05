@@ -14,8 +14,11 @@ changes; you approve, tweak or skip each object; only approved changes are uploa
 Nothing reaches OSM without a human approving each object. Claude and external tools can create
 and edit drafts, never upload.
 
-> Status: early development, single-user, local or home-lab. Geometry editing is out of scope for
-> v1: geometry work is handed to iD with a deep link.
+> Status: early development, single-user, local or home-lab. Drafts can hold full osmChange
+> edits (new, moved and deleted nodes, way node lists, relation members) imported from an editor
+> session, reviewed per object with their dependencies and uploaded in dependency-safe changesets
+> ([API](docs/api.md#geometry-drafts-osmchange)); the in-browser geometry editor is not built yet,
+> so geometry work in the UI is still handed to iD with a deep link.
 
 ## Quick start (Docker)
 
@@ -144,8 +147,14 @@ queries, creates a draft with a reason per change, and reads your rejection comm
 | `get_object` | One object with its neighbours (`parents` with member roles, `connected_ways` for nodes and ways), from the mirror or live from the API (with version) |
 | `create_draft` | A draft authored by Claude, optionally scoped to an area |
 | `propose_changes` | Up to 2,000 changes: `add_tags`, `remove_tags`, `set_tags`, `reason` |
-| `update_change` | Revise or withdraw a proposed change |
+| `propose_geometry` | Up to 500 osmChange-style elements: new nodes (also inserted into existing ways), way node lists and splits, relation member lists, deletes with `if_unused` |
+| `update_change` | Revise or withdraw a proposed change (withdrawing also withdraws changes that depend on it) |
 | `list_drafts`, `get_draft` | Drafts, changes, your review decisions and comments |
+
+`propose_geometry` limits: relations can only be modified (member list), not created or deleted;
+way node lists and relation member lists are complete replacements (or `insert_nodes` for a node
+after an existing one); elements of other drafts with open changes are refused. The changes go
+through the same per-object review as tag changes.
 
 `area` is an area preset, admin boundary or place name (`"Opava"`, `"Opava-Kateřinky"`), a bbox
 `[west, south, east, north]` (or the string `"w,s,e,n"`), or a GeoJSON Polygon/MultiPolygon in WGS84

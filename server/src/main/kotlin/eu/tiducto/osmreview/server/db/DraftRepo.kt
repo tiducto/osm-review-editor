@@ -6,6 +6,8 @@ import eu.tiducto.osmreview.shared.ChangeCounts
 import eu.tiducto.osmreview.shared.ChangeStatus
 import eu.tiducto.osmreview.shared.Confidence
 import eu.tiducto.osmreview.shared.Draft
+import eu.tiducto.osmreview.shared.ElementShape
+import eu.tiducto.osmreview.server.core.DraftGraph
 import eu.tiducto.osmreview.shared.DraftStatus
 import eu.tiducto.osmreview.shared.LngLat
 import eu.tiducto.osmreview.shared.OsmRef
@@ -26,6 +28,7 @@ import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.core.min
 import org.jetbrains.exposed.v1.jdbc.andWhere
+import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -63,6 +66,24 @@ data class NewChange(
     val ruleId: String?,
     val reason: String?,
     val confidence: Confidence,
+    val baseShape: ElementShape? = null,
+    val newShape: ElementShape? = null,
+    val ifUnused: Boolean = false,
+    val status: ChangeStatus = ChangeStatus.PENDING,
+    val liveVersion: Int? = null,
+    val liveTags: Map<String, String>? = null,
+    val liveShape: ElementShape? = null,
+    val liveGeom: JsonElement? = null,
+)
+
+data class GeometryUpdate(
+    val action: ChangeAction,
+    val baseShape: ElementShape?,
+    val newShape: ElementShape?,
+    val baseGeom: JsonElement?,
+    val newGeom: JsonElement?,
+    val centroid: LngLat?,
+    val ifUnused: Boolean,
 )
 
 data class DraftMeta(
@@ -200,7 +221,17 @@ class DraftRepo(private val db: Db) {
             it[ruleId] = c.ruleId
             it[reason] = c.reason
             it[confidence] = c.confidence.wire
-            it[status] = ChangeStatus.PENDING.wire
+            it[status] = c.status.wire
+            it[baseShape] = c.baseShape
+            it[newLat] = c.newShape?.location?.lat
+            it[newLon] = c.newShape?.location?.lng
+            it[newNodes] = c.newShape?.nodes
+            it[newMembers] = c.newShape?.members
+            it[ifUnused] = c.ifUnused
+            it[liveVersion] = c.liveVersion
+            it[liveTags] = c.liveTags
+            it[liveShape] = c.liveShape
+            it[liveGeom] = c.liveGeom
             it[createdAt] = t
             it[updatedAt] = t
         }
@@ -208,11 +239,43 @@ class DraftRepo(private val db: Db) {
         changeRows { ChangesTable.id eq id }.single()
     }
 
-    suspend fun changes(draftId: UUID): List<Change> = db.tx { changeRows { ChangesTable.draftId eq draftId } }
+    suspend fun changes(draftId: UUID): List<Change> = db.tx { DraftGraph.annotate(changeRows { ChangesTable.draftId eq draftId }) }
 
-    suspend fun change(id: UUID): Change? = db.tx { changeRows { ChangesTable.id eq id }.firstOrNull() }
+    suspend fun change(id: UUID): Change? = db.tx {
+        val c = changeRows { ChangesTable.id eq id }.firstOrNull() ?: return@tx null
+        DraftGraph.annotate(changeRows { ChangesTable.draftId eq UUID.fromString(c.draftId) }).first { it.id == c.id }
+    }
 
-    suspend fun changesByIds(ids: Collection<UUID>): List<Change> = db.tx { changeRows { ChangesTable.id inList ids } }
+    suspend fun changesByIds(ids: Collection<UUID>): List<Change> = db.tx {
+        val found = changeRows { ChangesTable.id inList ids }
+        val drafts = found.map { UUID.fromString(it.draftId) }.distinct()
+        val wanted = found.map { it.id }.toSet()
+        if (drafts.isEmpty()) emptyList() else DraftGraph.annotate(changeRows { ChangesTable.draftId inList drafts }).filter { it.id in wanted }
+    }
+
+    suspend fun deleteDraft(id: UUID) = db.tx {
+        DraftsTable.deleteWhere { DraftsTable.id eq id }
+    }
+
+    suspend fun remapRefs(draftId: UUID, mapping: Map<OsmRef, Long>) {
+        if (mapping.isEmpty()) return
+        db.tx {
+            val rows = ChangesTable.selectAll().where { ChangesTable.draftId eq draftId }.toList()
+            for (row in rows) {
+                val nodes = row[ChangesTable.newNodes]
+                val members = row[ChangesTable.newMembers]
+                val newNodes = nodes?.map { n -> mapping[OsmRef(OsmType.NODE, n)] ?: n }
+                val newMembers = members?.map { m -> mapping[OsmRef(m.type, m.ref)]?.let { m.copy(ref = it) } ?: m }
+                if (newNodes != nodes || newMembers != members) {
+                    ChangesTable.update({ ChangesTable.id eq row[ChangesTable.id] }) {
+                        it[ChangesTable.newNodes] = newNodes
+                        it[ChangesTable.newMembers] = newMembers
+                        it[updatedAt] = now()
+                    }
+                }
+            }
+        }
+    }
 
     suspend fun openChangeFor(ref: OsmRef): Change? = db.tx {
         val active = listOf(DraftStatus.OPEN, DraftStatus.PARTIALLY_MERGED).map { it.wire }
@@ -224,10 +287,28 @@ class DraftRepo(private val db: Db) {
         }.firstOrNull()
     }
 
+    suspend fun openChangesFor(refs: Collection<OsmRef>): List<Change> {
+        if (refs.isEmpty()) return emptyList()
+        val wanted = refs.toSet()
+        return db.tx {
+            val active = listOf(DraftStatus.OPEN, DraftStatus.PARTIALLY_MERGED).map { it.wire }
+            val openDrafts = DraftsTable.select(DraftsTable.id).where { DraftsTable.status inList active }.map { it[DraftsTable.id] }
+            if (openDrafts.isEmpty()) return@tx emptyList()
+            wanted.map { it.id }.distinct().chunked(5000).flatMap { ids ->
+                changeRows {
+                    (ChangesTable.osmId inList ids) and (ChangesTable.draftId inList openDrafts) and
+                        (ChangesTable.status inList OPEN_CHANGE_STATES.map { it.wire })
+                }
+            }.filter { it.ref in wanted }
+        }
+    }
+
     suspend fun nextPlaceholderId(): Long = db.tx {
         val m = ChangesTable.osmId.min()
         val lowest = ChangesTable.select(m).where { ChangesTable.osmId less 0L }.firstOrNull()?.get(m) ?: 0L
-        lowest - 1
+        val p = ChangesTable.placeholderId.min()
+        val lowestUploaded = ChangesTable.select(p).firstOrNull()?.get(p) ?: 0L
+        minOf(lowest, lowestUploaded) - 1
     }
 
     suspend fun updateChange(id: UUID, block: ChangeUpdate.() -> Unit): Change = db.tx {
@@ -247,6 +328,26 @@ class DraftRepo(private val db: Db) {
             u.liveTags?.let { v -> it[liveTags] = v }
             u.changesetId?.let { v -> it[changesetId] = v }
             u.osmId?.let { v -> it[osmId] = v }
+            u.placeholderId?.let { v -> it[placeholderId] = v }
+            if (u.clearLive) {
+                it[liveShape] = null
+                it[liveGeom] = null
+            }
+            u.liveShape?.let { v -> it[liveShape] = v }
+            u.liveGeom?.let { v -> it[liveGeom] = v }
+            u.geometry?.let { g ->
+                it[action] = g.action.wire
+                it[baseShape] = g.baseShape
+                it[newLat] = g.newShape?.location?.lat
+                it[newLon] = g.newShape?.location?.lng
+                it[newNodes] = g.newShape?.nodes
+                it[newMembers] = g.newShape?.members
+                it[baseGeom] = g.baseGeom
+                it[newGeom] = g.newGeom
+                it[centroidLon] = g.centroid?.lng
+                it[centroidLat] = g.centroid?.lat
+                it[ifUnused] = g.ifUnused
+            }
             it[updatedAt] = now()
         }
         val c = changeRows { ChangesTable.id eq id }.single()
@@ -266,6 +367,10 @@ class DraftRepo(private val db: Db) {
         var clearLive: Boolean = false
         var changesetId: Long? = null
         var osmId: Long? = null
+        var placeholderId: Long? = null
+        var liveShape: ElementShape? = null
+        var liveGeom: JsonElement? = null
+        var geometry: GeometryUpdate? = null
     }
 
     suspend fun addReview(
@@ -315,11 +420,23 @@ class DraftRepo(private val db: Db) {
         val new = this[ChangesTable.newTags]
         val lon = this[ChangesTable.centroidLon]
         val lat = this[ChangesTable.centroidLat]
+        val nLat = this[ChangesTable.newLat]
+        val nLon = this[ChangesTable.newLon]
+        val nNodes = this[ChangesTable.newNodes]
+        val nMembers = this[ChangesTable.newMembers]
+        val newShape = if (nLat == null && nNodes == null && nMembers == null) {
+            null
+        } else {
+            ElementShape(if (nLat != null && nLon != null) LngLat(nLon, nLat) else null, nNodes, nMembers)
+        }
+        val action = wireEnum(ChangeAction.serializer(), this[ChangesTable.action])
+        val baseShape = this[ChangesTable.baseShape]
+        val ifUnused = this[ChangesTable.ifUnused]
         return Change(
             id = this[ChangesTable.id].toString(),
             draftId = this[ChangesTable.draftId].toString(),
             ref = OsmRef(OsmType.fromApiName(this[ChangesTable.osmType]), this[ChangesTable.osmId]),
-            action = wireEnum(ChangeAction.serializer(), this[ChangesTable.action]),
+            action = action,
             baseVersion = this[ChangesTable.baseVersion],
             baseTags = base,
             newTags = new,
@@ -337,6 +454,14 @@ class DraftRepo(private val db: Db) {
             reviews = reviews,
             createdAt = this[ChangesTable.createdAt].toInstant().toString(),
             updatedAt = this[ChangesTable.updatedAt].toInstant().toString(),
+            baseShape = baseShape,
+            newShape = newShape,
+            liveShape = this[ChangesTable.liveShape],
+            liveGeom = this[ChangesTable.liveGeom],
+            geometryChanged = action != ChangeAction.MODIFY || newShape != null,
+            geometrySummary = DraftGraph.summary(action, baseShape, newShape, ifUnused),
+            ifUnused = ifUnused,
+            placeholderId = this[ChangesTable.placeholderId],
         )
     }
 
