@@ -104,8 +104,9 @@ Opava-Kateřinky, Brno, Brno-střed, Ostrava, Olomouc, Praha). Preset names work
 does (scans, highlights, drafts, MCP `area`); rules are clipped to the polygon. Start from
 `cp config/areas.example.geojson config/areas.geojson`.
 
-**Imagery.** The imagery list lives in the settings table and is seeded with ČÚZK orthophoto, the
-ČÚZK cadastral map overlay and Esri World Imagery; Settings edits it
+**Imagery.** The imagery list lives in the settings table and is seeded with the backgrounds ČÚZK
+orthophoto (the cached Web Mercator tiles, the default), OpenStreetMap (Standard), Esri World Imagery and
+ČÚZK orthophoto over WMS, plus the ČÚZK cadastral map as an overlay; Settings edits it
 ([API](docs/api.md#imagery-sources)). Each source has a `sourceTag` for the changeset `source` tag.
 Bing aerial imagery needs `BING_KEY`: the server reads the tile URL from the Bing Maps Imagery
 Metadata API at start. Microsoft allows tracing Bing imagery for OSM only in an OSM editor; Basic keys
@@ -166,33 +167,33 @@ The server cuts vector tiles from the GOL ([`/api/tiles`](docs/api.md#vector-til
 classifies every feature like iD (way and area colours, casings, dashes, fill patterns, partial fills
 of large areas, preset icons from id-tagging-schema) and the map draws them with MapLibre. A z16 tile
 in central Opava builds in about 25 ms (z15 about 75 ms) on Apple Silicon; built tiles are cached per
-mirror generation. Imagery, when chosen, replaces the light grey background. Nothing is hidden
-automatically: the Map features switches in the Map data pane (iD's groups: points, address points,
-roads, paths, buildings, landuse, water, rail and so on) hide a group until you turn it back on, saved
-per browser.
+mirror generation.
 
-The layout follows iD: the left sidebar shows what you are working on (the inspector of the selected
-feature, the editor or the review card of a draft); it opens on its own, can be resized by dragging its
-right edge (300 px to half the window, remembered per browser) and hidden with `[`. A strip of map
-controls on the right has zoom, "show my location" and buttons for panes that open next to it, one at a
-time (`]` closes the pane or reopens the last one, `Esc` closes it):
+As in iD, the OSM data layer draws from zoom 16 (fading in from 15.75); below that only the background
+shows, with a "Zoom in to see and edit OSM data" hint, and "Edit map" waits for zoom 16 too. Highlights
+and scan or issue markers stay on the map down to zoom 13 as overlays on the background; no data tiles
+are requested below 13. The background is one choice (ČÚZK orthophoto by default, OpenStreetMap
+Standard, Esri World Imagery, None) and overlays such as the cadastral map are separate switches, both
+saved per browser. OpenStreetMap Standard uses tile.openstreetmap.org at 256 px up to zoom 19 and
+overzooms above it, loading only the tiles in view. Nothing is hidden automatically: the Map features
+switches in the Map tab (iD's groups: points, address points, roads, paths, buildings, landuse, water,
+rail and so on) hide a group until you turn it back on, saved per browser.
 
-- **Background** (`B`): imagery.
-- **Map data** (`F`, not while reviewing): Map features switches, a quick tag filter (`highway=footway !surface`, saved as a
-  highlight file with one click) and the highlight files.
-- **Validation** (`I`): validation scans (see below).
-- **Rules** (`L`): the rules folder by kind, a CodeMirror editor with live diagnostics, templates, save
+The selected feature, the editor or the review card of a draft open in the left panel; the right panel
+has four tabs and the bottom drawer lists drafts and the changes of the open draft. Panels overlay the
+map and never move it; camera moves keep the target in the part of the map they leave visible. `[`
+hides the left panel, `]` the right one. On phones the left panel becomes a bottom sheet and the right
+panel slides over the map. The UI follows the system light or dark setting (Settings, Appearance:
+System, Light or Dark); the map itself always stays light.
+
+- **Map**: background and overlays, Map features switches, a quick tag filter
+  (`highway=footway !surface`, saved as a highlight file with one click) and the highlight files.
+- **Validate**: validation scans (see below).
+- **Rules**: the rules folder by kind, a CodeMirror editor with live diagnostics, templates, save
   with conflict detection (a diff to reload or overwrite), delete to the trash, copy of built-in and
   remote files, and a live map preview of unsaved highlight edits.
-- **Presets** (`P`): iD presets by category or search, your presets and smart presets (see
+- **Presets**: iD presets by category or search, your presets and smart presets (see
   [Presets](#presets)).
-- **Drafts** (`D`, not in edit mode): the drafts with filters and Review/Merge/Close, and the change
-  list of the open draft.
-- **Settings**: account, language, API target, imagery sources, mirror status, MCP and keys.
-
-Panels overlay the map and never move it; camera moves (fit to a feature, fly to a change) keep the
-target in the part of the map they leave visible. On phones one bottom sheet shows either the sidebar
-content or the open pane, with tabs to switch and a handle to collapse it.
 
 A highlight file styles objects on the map and can carry a legend (`-ore-legend`), a coverage measure
 (`-ore-stats: length|count|area`) and `-ore-dim-others` to fade the base map. Most rules compile to
@@ -219,7 +220,7 @@ days are scanned again. Selected fixes become a draft that opens in review, dele
 
 ## Editing
 
-"Edit map" (map zoom 15 or more, iD's 16) loads the editor chunk: iD's editing core
+"Edit map" (map zoom 16 or more, as in iD) loads the editor chunk: iD's editing core
 (`@openstreetmap/id` 2.42.3, about 680 kB gzip, fetched only on entering edit mode) drives the edits,
 while MapLibre handles drawing and interaction. Live data for the view is fetched in z15 tiles through
 the read-only proxy [`/api/osm/map`](docs/api.md#live-osm) of the current API target, and the edited
@@ -240,7 +241,7 @@ graph is drawn in iD's style above the tiles.
 **Inspector.** Selecting a feature opens an inspector like iD's sidebar: the preset with its icon and
 name, "Change preset", the preset's fields from id-tagging-schema and the raw tag editor. Edits are
 undoable steps; a preset change applies to the whole multi-selection. Outside edit mode, editing a
-field starts edit mode with the feature selected (below zoom 15 the change goes to a manual draft).
+field starts edit mode with the feature selected (below zoom 16 the change goes to a manual draft).
 
 **Choosing a preset after drawing.** When you finish a new point, line or area that has no tags
 (other than `area=yes`), the inspector opens the preset picker, as iD does. Pick a preset to tag the
