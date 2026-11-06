@@ -31,7 +31,10 @@ test('the ČÚZK orthophoto is the default background', async ({ page }) => {
   expect(layers).toHaveLength(1)
   expect(layers[0].tiles).toBe('https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO_WM/MapServer/tile/{z}/{y}/{x}')
   expect(seen.some((u) => u.includes('/ORTOFOTO_WM/MapServer/tile/'))).toBe(true)
-  const hidden = await page.evaluate(() => (window as unknown as MapWindow).__oreMap.getLayoutProperty('osm-bg', 'visibility'))
+  const hidden = await page.evaluate(() => {
+    const v: unknown = (window as unknown as MapWindow).__oreMap.getLayoutProperty('osm-bg', 'visibility')
+    return String(v)
+  })
   expect(hidden).toBe('none')
 })
 

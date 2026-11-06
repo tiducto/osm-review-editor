@@ -165,7 +165,10 @@ test('zoom thresholds switch the expected layers', async ({ page }) => {
     expect(r.lines, `lines at ${z}`).toBeGreaterThan(0)
     expect(r.pins, `icons at ${z}`).toBeGreaterThan(0)
   }
-  const tiles = await page.evaluate(() => (window as unknown as { __oreMap: any }).__oreMap.getSource('ore-osm').minzoom)
+  const tiles = await page.evaluate(() => {
+    const minzoom: unknown = (window as unknown as { __oreMap: any }).__oreMap.getSource('ore-osm').minzoom
+    return Number(minzoom)
+  })
   expect(tiles).toBe(13)
   const z19 = await at(19)
   expect(z19.buildings).toBeGreaterThan(0)
