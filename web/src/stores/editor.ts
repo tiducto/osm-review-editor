@@ -14,7 +14,7 @@ import { useMapStore } from './map'
 import { useDraftsStore } from './drafts'
 import { useEditIssuesStore } from './editIssues'
 
-export const EDIT_MIN_ZOOM = 15
+export const EDIT_MIN_ZOOM = 16
 
 let session: EditSession | null = null
 
@@ -255,7 +255,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function onKey(e: KeyboardEvent) {
-    if (!session || isTyping(e) || saveDialog.value || takeOver.value || exitConfirm.value || issues.summary) return
+    if (!session || isTyping(e) || app.settingsOpen || saveDialog.value || takeOver.value || exitConfirm.value || issues.summary) return
     const mod = e.ctrlKey || e.metaKey
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key
     if (mod && key === 'z') {

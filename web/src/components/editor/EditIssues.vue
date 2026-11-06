@@ -45,17 +45,17 @@ function severityClass(i: EditIssue): string {
     :class="issues.panelCollapsed ? '' : 'max-h-[45%] min-h-[96px]'"
     data-testid="edit-issues"
   >
-    <div class="flex h-10 shrink-0 items-center gap-2 border-b border-line-strong bg-surface px-3">
+    <div class="flex h-9 shrink-0 items-center gap-2 border-b border-line bg-surface-2 px-3">
       <button
         class="flex min-w-0 flex-1 items-center gap-2 text-left"
         :aria-expanded="!issues.panelCollapsed"
-        data-testid="edit-issues-collapse"
+        data-testid="edit-issues-toggle"
         @click="issues.panelCollapsed = !issues.panelCollapsed"
       >
         <Icon name="alert" :size="14" :class="issues.errors.length ? 'text-error' : issues.warnings.length ? 'text-warning' : 'text-fg-3'" />
-        <span class="text-[13px] font-bold text-accent">{{ t('shell.issues.title') }}</span>
-        <span v-if="issues.errors.length" class="chip bg-[#fcc] text-removed">{{ issues.errors.length }}</span>
-        <span v-if="issues.warnings.length" class="chip bg-[#ffc] text-changed">{{ issues.warnings.length }}</span>
+        <span class="font-medium text-fg">{{ t('shell.issues.title') }}</span>
+        <span v-if="issues.errors.length" class="chip bg-removed-soft text-error">{{ issues.errors.length }}</span>
+        <span v-if="issues.warnings.length" class="chip bg-changed-soft text-warning">{{ issues.warnings.length }}</span>
         <Spinner v-if="issues.running" :size="11" />
         <Icon :name="issues.panelCollapsed ? 'chevron-up' : 'chevron-down'" :size="13" class="ml-auto text-fg-3" />
       </button>
@@ -66,19 +66,19 @@ function severityClass(i: EditIssue): string {
         {{ editor.editCount ? t('shell.issues.none') : t('shell.issues.editFirst') }}
       </p>
       <section v-for="g in groups" :key="g.key">
-        <h4 class="border-b border-line bg-surface-2 px-3 py-1 text-[12px] font-bold text-fg-2">{{ g.label }} ({{ g.list.length }})</h4>
+        <h4 class="bg-surface-2 px-3 py-1 text-[11px] font-semibold tracking-wide text-fg-3 uppercase">{{ g.label }} ({{ g.list.length }})</h4>
         <article
           v-for="i in g.list"
           :key="i.id"
           class="border-b border-line px-3 py-2 last:border-b-0"
-          :class="issues.focused === i.id && 'bg-accent-soft'"
+          :class="issues.focused === i.id && 'bg-accent/8'"
           :data-issue-id="i.id"
           data-testid="edit-issue"
         >
           <button class="flex w-full items-start gap-2 text-left" @click="issues.focus(i)">
             <Icon :name="i.severity === 'error' ? 'alert' : i.severity === 'warning' ? 'alert' : 'info'" :size="13" class="mt-px shrink-0" :class="severityClass(i)" />
             <span class="min-w-0">
-              <span class="block font-bold text-fg">{{ i.message }}</span>
+              <span class="block text-fg">{{ i.message }}</span>
               <span class="block truncate font-mono text-[10.5px] text-fg-3">{{ source(i) }}</span>
             </span>
           </button>
@@ -87,7 +87,7 @@ function severityClass(i: EditIssue): string {
               v-for="f in i.fixes"
               :key="f.id"
               class="btn btn-sm"
-              :class="f.ignore ? 'btn-ghost' : ''"
+              :class="f.id === 'ignore' || /ignore/i.test(f.title) ? 'btn-ghost' : ''"
               :disabled="!!f.disabled"
               :title="f.disabled ?? f.title"
               data-testid="edit-issue-fix"
@@ -99,7 +99,7 @@ function severityClass(i: EditIssue): string {
         </article>
       </section>
     </div>
-    <div v-if="!issues.panelCollapsed && (issues.sheetPaths.length || issues.sheetErrors.length)" class="shrink-0 border-t border-line-strong bg-surface-2 px-3 py-1.5 text-[11px] text-fg-3">
+    <div v-if="!issues.panelCollapsed && (issues.sheetPaths.length || issues.sheetErrors.length)" class="shrink-0 border-t border-line px-3 py-1.5 text-[11px] text-fg-3">
       {{ tn('shell.issues.sources', issues.sheetPaths.length) }}
       <span v-if="issues.sheetErrors.length" class="text-error" :title="issues.sheetErrors.join('\n')">{{ t('shell.issues.failed', { n: issues.sheetErrors.length }) }}</span>
     </div>

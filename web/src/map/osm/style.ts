@@ -2,6 +2,7 @@ import type { ExpressionSpecification, FilterSpecification, LayerSpecification, 
 import { OUT } from './transform'
 
 export const OSM_SRC = 'ore-osm'
+export const OSM_ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
 export const BACKGROUND = '#f2f2f2'
 export const SHADOW = '#f6634f'
 export const HIGHLIGHT = '#7092ff'
@@ -9,8 +10,10 @@ export const FONT = ['Bold', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 
 const HALO = 'rgba(255,255,255,0.75)'
 const TEXT = '#333'
 
-export const TILE_MIN_ZOOM = 9
+export const TILE_MIN_ZOOM = 13
 export const TILE_MAX_ZOOM = 16
+export const DATA_MIN_ZOOM = 16
+export const DATA_FADE_FROM = 15.75
 export const DETAIL_MIN_ZOOM = 15
 export const MAX_BAND_ZOOM = 20
 
@@ -117,7 +120,62 @@ function bandLayers(): LayerSpecification[] {
   return out
 }
 
+const OPACITY: Record<string, string[]> = {
+  fill: ['fill-opacity'],
+  line: ['line-opacity'],
+  symbol: ['icon-opacity', 'text-opacity'],
+  circle: ['circle-opacity', 'circle-stroke-opacity'],
+}
+
+function isZoomStep(v: unknown): v is unknown[] {
+  return Array.isArray(v) && v[0] === 'step' && Array.isArray(v[1]) && v[1][0] === 'zoom'
+}
+
+function usesZoom(v: unknown): boolean {
+  if (!Array.isArray(v)) return false
+  if (v[0] === 'zoom') return true
+  return v.some(usesZoom)
+}
+
+export function fadeIn(value: unknown, from = DATA_FADE_FROM, to = DATA_MIN_ZOOM): ExpressionSpecification | null {
+  const v = value ?? 1
+  if (isZoomStep(v)) {
+    const stops: [number, unknown][] = []
+    for (let i = 3; i < v.length; i += 2) stops.push([v[i] as number, v[i + 1]])
+    let at = v[2]
+    for (const [z, out] of stops) if (z <= to) at = out
+    const out: unknown[] = ['interpolate', ['linear'], ['zoom'], from, 0, to, at]
+    for (let i = 0; i < stops.length; i++) {
+      const [z, next] = stops[i]
+      if (z <= to) continue
+      const prev = i === 0 ? v[2] : stops[i - 1][1]
+      out.push(z - 0.001, z - 0.001 <= to ? at : prev, z, next)
+    }
+    return out as unknown as ExpressionSpecification
+  }
+  if (usesZoom(v)) return null
+  return ['interpolate', ['linear'], ['zoom'], from, 0, to, v] as unknown as ExpressionSpecification
+}
+
+function fadeLayer(layer: LayerSpecification): LayerSpecification {
+  if (!('source' in layer) || layer.source !== OSM_SRC) return layer
+  const props = OPACITY[layer.type]
+  const min = layer.minzoom ?? 0
+  if (!props || min > DATA_MIN_ZOOM) return { ...layer, minzoom: Math.max(min, DATA_MIN_ZOOM) }
+  const paint: Record<string, unknown> = { ...((layer as { paint?: Record<string, unknown> }).paint ?? {}) }
+  for (const p of props) {
+    const f = fadeIn(paint[p])
+    if (!f) return { ...layer, minzoom: Math.max(min, DATA_MIN_ZOOM) } as LayerSpecification
+    paint[p] = f
+  }
+  return { ...layer, minzoom: Math.max(min, DATA_FADE_FROM), paint } as LayerSpecification
+}
+
 export function osmLayers(lat: number, dashes: Map<string, number[]>): LayerSpecification[] {
+  return rawLayers(lat, dashes).map(fadeLayer)
+}
+
+function rawLayers(lat: number, dashes: Map<string, number[]>): LayerSpecification[] {
   const lz = lowZoomThreshold(lat)
   const fullFill = zoomSteps((z) => ['case', ['>=', ['get', '@fz'], z], 1, 0])
   const detail = DETAIL_MIN_ZOOM
@@ -410,7 +468,7 @@ export function baseStyle(tiles: string, lat: number, dashes: Map<string, number
         tiles: [tiles],
         minzoom: TILE_MIN_ZOOM,
         maxzoom: TILE_MAX_ZOOM,
-        attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+        attribution: OSM_ATTRIBUTION,
       },
     },
     layers: [{ id: LAYER.background, type: 'background', paint: { 'background-color': BACKGROUND } }, ...osmLayers(lat, dashes)],

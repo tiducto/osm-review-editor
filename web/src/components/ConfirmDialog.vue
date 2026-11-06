@@ -9,7 +9,7 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>()
 
 <template>
   <Modal :title="title" width="440px" @close="emit('cancel')">
-    <div class="px-5 py-4 text-[12px] text-fg"><slot /></div>
+    <div class="px-5 py-4 text-[13px] text-fg-2"><slot /></div>
     <template #footer>
       <button class="btn ml-auto" @click="emit('cancel')">{{ t('common.cancel') }}</button>
       <button class="btn" :class="danger ? 'btn-danger' : 'btn-primary'" @click="emit('confirm')">{{ confirmLabel ?? t('common.confirm') }}</button>

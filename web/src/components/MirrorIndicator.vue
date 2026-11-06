@@ -99,7 +99,8 @@ onBeforeUnmount(() => {
 <template>
   <div ref="root" class="relative" data-testid="mirror-indicator">
     <button
-      class="bar-btn gap-1.5 px-2 font-normal whitespace-nowrap"
+      class="btn h-8 gap-1.5 px-2.5 font-normal whitespace-nowrap text-fg-2"
+      :class="open && 'bg-surface-3'"
       :title="title"
       :aria-expanded="open"
       data-testid="mirror-pill"
@@ -111,12 +112,12 @@ onBeforeUnmount(() => {
     </button>
     <div
       v-if="open"
-      class="absolute top-full left-0 z-50 mt-1.5 w-[320px] max-w-[calc(100vw-16px)] rounded border border-line bg-surface p-3 text-[12px] text-fg shadow-pop"
+      class="absolute top-full left-0 z-40 mt-1.5 w-[320px] max-w-[calc(100vw-16px)] rounded-lg border border-line bg-surface p-3 text-[12px] text-fg shadow-pop"
       data-testid="mirror-popover"
     >
       <div class="mb-2 flex items-center gap-2">
         <span class="size-2 rounded-full" :class="dotClass" />
-        <span class="font-bold">{{ t('shell.mirror.title') }}</span>
+        <span class="font-semibold">{{ t('shell.mirror.title') }}</span>
         <span class="text-fg-2">· {{ healthLabel }}</span>
       </div>
       <p v-if="mirror.busy" class="mb-2 flex items-center gap-1.5 text-fg-2"><Spinner :size="11" /> {{ t('shell.mirror.running', { state: phaseLabel(mirror.state) }) }}</p>
@@ -126,8 +127,8 @@ onBeforeUnmount(() => {
           <dd class="min-w-0 break-words">{{ v }}</dd>
         </template>
       </dl>
-      <p v-if="mirror.lastError" class="mt-2 rounded bg-removed-soft px-2 py-1 text-removed" data-testid="mirror-error">
-        <span class="font-bold">{{ t('shell.mirror.lastError') }}:</span> {{ mirror.lastError }}
+      <p v-if="mirror.lastError" class="mt-2 rounded-md bg-removed-soft px-2 py-1 text-removed" data-testid="mirror-error">
+        <span class="font-semibold">{{ t('shell.mirror.lastError') }}:</span> {{ mirror.lastError }}
       </p>
       <p v-if="mirror.pendingReload" class="mt-2 text-fg-2">{{ t('shell.mirror.reloadHint') }}</p>
       <div class="mt-3 flex flex-wrap gap-1.5">

@@ -92,8 +92,8 @@ const pct = computed(() => (progress.value && progress.value.total ? Math.round(
   <Modal :title="t('merge.title', { title: draft?.title ?? t('merge.untitled') })" width="640px" @close="app.mergeDraftId = null">
     <template #header>
       <span
-        class="chip font-bold uppercase"
-        :class="isProd ? 'bg-prod-soft text-prod' : 'bg-surface-3 text-fg-2'"
+        class="chip font-semibold uppercase"
+        :class="isProd ? 'bg-prod-soft text-prod ring-1 ring-prod/40' : 'bg-surface-3 text-fg-2'"
       >
         {{ isProd ? t('merge.prod') : t('merge.dev') }}
       </span>
@@ -104,15 +104,15 @@ const pct = computed(() => (progress.value && progress.value.total ? Math.round(
       <div v-else-if="error" class="flex items-center gap-2 text-error"><Icon name="alert" />{{ error }}</div>
 
       <template v-else-if="preview">
-        <div v-if="isProd" class="flex gap-2.5 rounded-md border border-line-strong border-l-4 border-l-prod bg-prod-soft p-3 text-[12px]">
+        <div v-if="isProd" class="flex gap-2.5 rounded-lg border border-prod/40 bg-prod-soft p-3 text-[12.5px]">
           <Icon name="alert" class="mt-0.5 text-prod" />
           <div>
-            <div class="font-bold text-prod">{{ t('merge.liveWarning') }}</div>
+            <div class="font-semibold text-prod">{{ t('merge.liveWarning') }}</div>
             <div class="text-fg-2">{{ t('merge.liveWarningBody') }}</div>
           </div>
         </div>
 
-        <div v-if="!connected" class="flex items-center gap-3 rounded-md border border-line-strong bg-surface-2 p-3">
+        <div v-if="!connected" class="flex items-center gap-3 rounded-lg border border-line bg-surface-2 p-3">
           <Icon name="user" class="text-fg-3" />
           <span class="flex-1">
             {{ app.account?.configured === false ? t('merge.oauthMissing') : t('merge.connectPrompt') }}
@@ -121,11 +121,11 @@ const pct = computed(() => (progress.value && progress.value.total ? Math.round(
         </div>
 
         <section v-if="preview.conflicts.length" class="space-y-1.5">
-          <div class="flex items-center gap-2 text-[12px] font-bold text-changed">
+          <div class="flex items-center gap-2 text-[12.5px] font-semibold text-changed">
             <Icon name="conflict" :size="14" /> {{ tn('merge.conflictsSkipped', preview.conflicts.length) }}
           </div>
           <p class="text-[12px] text-fg-2">{{ t('merge.conflictsHint') }}</p>
-          <ul class="divide-y divide-line overflow-hidden rounded-md border border-line-strong">
+          <ul class="divide-y divide-line overflow-hidden rounded-md border border-line">
             <li v-for="id in preview.conflicts" :key="id" class="flex items-center gap-2 px-3 py-1.5">
               <span class="font-mono text-[12px]">{{ conflictTitle(id) }}</span>
               <button class="btn btn-sm ml-auto" @click="goToConflict(id)">{{ t('merge.resolve') }}</button>
@@ -138,14 +138,14 @@ const pct = computed(() => (progress.value && progress.value.total ? Math.round(
             <span class="section-title">{{ t('merge.changesets') }}</span>
             <span class="ml-auto text-[12px] text-fg-3">{{ plural(preview.groups.length, 'common.changesets') }} · {{ plural(changeCount, 'common.changes') }}</span>
           </div>
-          <div v-if="!preview.groups.length" class="rounded-md border border-line-strong bg-surface-2 px-3 py-4 text-center text-fg-3">
+          <div v-if="!preview.groups.length" class="rounded-md border border-dashed border-line px-3 py-4 text-center text-fg-3">
             {{ t('merge.nothing') }}
           </div>
-          <div v-for="g in preview.groups" :key="g.key" class="card overflow-hidden">
-            <button class="flex w-full items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-surface-3" @click="expanded = expanded === g.key ? null : g.key">
+          <div v-for="g in preview.groups" :key="g.key" class="overflow-hidden rounded-md border border-line">
+            <button class="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-surface-2" @click="expanded = expanded === g.key ? null : g.key">
               <Icon :name="expanded === g.key ? 'chevron-down' : 'chevron-right'" :size="14" class="mt-0.5 text-fg-3" />
               <div class="min-w-0 flex-1">
-                <div class="font-bold">{{ g.comment }}</div>
+                <div class="font-medium">{{ g.comment }}</div>
                 <div class="text-[11.5px] text-fg-3">
                   {{ plural(g.changeIds.length, 'common.changes') }} · <span class="font-mono">{{ g.key }}</span>
                 </div>
@@ -154,11 +154,11 @@ const pct = computed(() => (progress.value && progress.value.total ? Math.round(
                 </div>
               </div>
             </button>
-            <div v-if="expanded === g.key" class="border-t border-line-strong bg-surface-2 px-3 py-2">
+            <div v-if="expanded === g.key" class="border-t border-line bg-surface-2 px-3 py-2">
               <div class="section-title mb-1">{{ t('merge.changesetTags') }}</div>
               <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-[11.5px]">
                 <template v-for="(v, k) in g.tags" :key="k">
-                  <dt class="font-bold text-fg-2">{{ k }}</dt>
+                  <dt class="text-fg-3">{{ k }}</dt>
                   <dd class="break-words">{{ v }}</dd>
                 </template>
               </dl>
@@ -167,14 +167,14 @@ const pct = computed(() => (progress.value && progress.value.total ? Math.round(
         </section>
 
         <section v-if="progress || started" class="space-y-1.5">
-          <div class="flex items-center gap-2 text-[12px]">
+          <div class="flex items-center gap-2 text-[12.5px]">
             <Spinner v-if="running" :size="12" />
             <Icon v-else-if="progress?.failed" name="alert" :size="14" class="text-error" />
             <Icon v-else name="check" :size="14" class="text-added" />
-            <span class="font-bold">{{ progress?.message ?? t('merge.starting') }}</span>
+            <span class="font-medium">{{ progress?.message ?? t('merge.starting') }}</span>
             <span v-if="progress" class="ml-auto font-mono text-[11.5px] text-fg-3">{{ progress.done }}/{{ progress.total }}</span>
           </div>
-          <div class="h-1.5 overflow-hidden rounded-sm bg-line">
+          <div class="h-1.5 overflow-hidden rounded-full bg-surface-3">
             <div
               class="h-full transition-[width] duration-300"
               :class="progress?.failed ? 'bg-error' : progress?.finished ? 'bg-added' : 'bg-accent'"
@@ -194,7 +194,7 @@ const pct = computed(() => (progress.value && progress.value.total ? Math.round(
 
         <section v-if="uploads.length" class="space-y-1.5">
           <div class="section-title">{{ t('merge.uploads') }}</div>
-          <ul class="divide-y divide-line overflow-hidden rounded-md border border-line-strong text-[12px]">
+          <ul class="divide-y divide-line overflow-hidden rounded-md border border-line text-[12px]">
             <li v-for="u in uploads" :key="u.id" class="flex items-center gap-2 px-3 py-1.5">
               <span class="chip" :class="u.error ? 'bg-removed-soft text-removed' : 'bg-added-soft text-added'">{{ u.status }}</span>
               <span class="min-w-0 flex-1 truncate" :title="u.error ?? u.comment">{{ u.error ?? u.comment }}</span>

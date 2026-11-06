@@ -36,13 +36,13 @@ function isCurrent(d: Draft) {
 
 <template>
   <div class="flex h-full flex-col">
-    <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-line-strong bg-surface px-3 py-1.5">
-      <div class="seg max-w-full flex-wrap">
+    <div class="flex shrink-0 items-center gap-2 px-3 py-1.5">
+      <div class="flex rounded-md bg-surface-3 p-0.5">
         <button
           v-for="s in statuses"
           :key="s.id"
-          class="seg-btn"
-          :class="drafts.statusFilter === s.id && 'active'"
+          class="rounded px-2 py-0.5 text-[11.5px] font-medium transition-colors"
+          :class="drafts.statusFilter === s.id ? 'bg-surface text-fg shadow-sm' : 'text-fg-3 hover:text-fg-2'"
           @click="drafts.statusFilter = s.id"
         >
           {{ t(s.label) }}
@@ -55,51 +55,65 @@ function isCurrent(d: Draft) {
       <button class="btn btn-ghost btn-sm ml-auto text-fg-3" :title="t('common.reload')" @click="drafts.loadDrafts()"><Icon name="refresh" :size="12" /></button>
     </div>
 
-    <ul class="scroll-thin min-h-0 flex-1 overflow-auto bg-surface text-[12px]" data-testid="draft-list">
-      <li
-        v-for="d in drafts.visibleDrafts"
-        :key="d.id"
-        class="group cursor-pointer border-b border-line px-3 py-2"
-        :class="isCurrent(d) ? 'bg-accent-soft' : 'hover:bg-surface-3'"
-        :data-testid="`draft-${d.id}`"
-        @click="drafts.open(d.id)"
-      >
-        <div class="flex min-w-0 items-center gap-2">
-          <span class="min-w-0 flex-1 truncate font-bold" :title="d.title">{{ d.title }}</span>
-          <StatusPill :status="d.status" />
-        </div>
-        <div v-if="d.description" class="truncate text-[11.5px] text-fg-3" :title="d.description">{{ d.description }}</div>
-        <div class="mt-1 flex min-w-0 items-center gap-2">
-          <AuthorBadge :author="d.author" />
-          <span class="min-w-0 truncate font-mono text-[11.5px] whitespace-nowrap tabular-nums" :title="t('drafts.col.changes')">
-            <span class="text-fg">{{ d.counts.total }}</span>
-            <span class="ml-2 text-fg-3" :title="t('drafts.count.pending')">{{ d.counts.pending }}○</span>
-            <span class="ml-1.5 text-added" :title="t('drafts.count.approved')">{{ d.counts.approved }}✓</span>
-            <span class="ml-1.5 text-removed" :title="t('drafts.count.rejected')">{{ d.counts.rejected }}✕</span>
-            <span v-if="d.counts.conflict" class="ml-1.5 text-changed" :title="t('drafts.count.conflicts')">{{ d.counts.conflict }}!</span>
-            <span v-if="d.counts.uploaded" class="ml-1.5 text-accent" :title="t('drafts.count.uploaded')">{{ d.counts.uploaded }}↑</span>
-          </span>
-          <span class="ml-auto shrink-0 whitespace-nowrap text-[11.5px] text-fg-3" :title="d.updatedAt">{{ relativeTime(d.updatedAt) }}</span>
-        </div>
-        <div class="mt-1.5 flex flex-wrap gap-1" @click.stop>
-          <button class="btn btn-sm" :disabled="!d.counts.total" @click="drafts.open(d.id, { review: true })">{{ t('drafts.review') }}</button>
-          <button
-            class="btn btn-sm"
-            :disabled="!d.counts.approved || d.status === 'merged'"
-            :title="t('drafts.mergeTitle')"
-            @click="app.mergeDraftId = d.id"
+    <div class="scroll-thin min-h-0 flex-1 overflow-auto">
+      <table class="w-full border-collapse text-[12.5px]">
+        <thead class="sticky top-0 z-[1] bg-surface text-left text-[11px] text-fg-3">
+          <tr class="border-b border-line">
+            <th class="w-[38%] px-3 py-1 font-medium">{{ t('drafts.col.draft') }}</th>
+            <th class="px-2 py-1 font-medium">{{ t('drafts.col.author') }}</th>
+            <th class="px-2 py-1 font-medium">{{ t('drafts.col.status') }}</th>
+            <th class="px-2 py-1 font-medium">{{ t('drafts.col.changes') }}</th>
+            <th class="px-2 py-1 font-medium">{{ t('drafts.col.updated') }}</th>
+            <th class="w-1 px-3 py-1" />
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="d in drafts.visibleDrafts"
+            :key="d.id"
+            :data-testid="`draft-${d.id}`"
+            class="group cursor-pointer border-b border-line"
+            :class="isCurrent(d) ? 'bg-accent-soft' : 'hover:bg-surface-2'"
+            @click="drafts.open(d.id)"
           >
-            {{ t('drafts.merge') }}
-          </button>
-          <button v-if="d.status === 'open'" class="btn btn-ghost btn-sm" :title="t('drafts.closeTitle')" @click="drafts.setStatus(d.id, 'closed')">
-            {{ t('drafts.close') }}
-          </button>
-          <button v-else-if="d.status === 'closed'" class="btn btn-ghost btn-sm" @click="drafts.setStatus(d.id, 'open')">{{ t('drafts.reopen') }}</button>
-        </div>
-      </li>
-      <li v-if="!drafts.visibleDrafts.length && !drafts.listLoading" class="px-3 py-6 text-center text-fg-3">
+            <td class="max-w-0 px-3 py-1.5">
+              <div class="truncate font-medium" :title="d.title">{{ d.title }}</div>
+              <div v-if="d.description" class="truncate text-[11.5px] text-fg-3" :title="d.description">{{ d.description }}</div>
+            </td>
+            <td class="px-2 py-1.5"><AuthorBadge :author="d.author" /></td>
+            <td class="px-2 py-1.5"><StatusPill :status="d.status" /></td>
+            <td class="px-2 py-1.5 font-mono text-[11.5px] whitespace-nowrap tabular-nums">
+              <span class="text-fg">{{ d.counts.total }}</span>
+              <span class="ml-2 text-fg-3" :title="t('drafts.count.pending')">{{ d.counts.pending }}○</span>
+              <span class="ml-1.5 text-added" :title="t('drafts.count.approved')">{{ d.counts.approved }}✓</span>
+              <span class="ml-1.5 text-removed" :title="t('drafts.count.rejected')">{{ d.counts.rejected }}✕</span>
+              <span v-if="d.counts.conflict" class="ml-1.5 text-changed" :title="t('drafts.count.conflicts')">{{ d.counts.conflict }}!</span>
+              <span v-if="d.counts.uploaded" class="ml-1.5 text-accent" :title="t('drafts.count.uploaded')">{{ d.counts.uploaded }}↑</span>
+            </td>
+            <td class="px-2 py-1.5 whitespace-nowrap text-fg-3" :title="d.updatedAt">{{ relativeTime(d.updatedAt) }}</td>
+            <td class="px-3 py-1.5 whitespace-nowrap" @click.stop>
+              <div class="flex justify-end gap-1 opacity-60 group-hover:opacity-100">
+                <button class="btn btn-sm" :disabled="!d.counts.total" @click="drafts.open(d.id, { review: true })">{{ t('drafts.review') }}</button>
+                <button
+                  class="btn btn-sm"
+                  :disabled="!d.counts.approved || d.status === 'merged'"
+                  :title="t('drafts.mergeTitle')"
+                  @click="app.mergeDraftId = d.id"
+                >
+                  {{ t('drafts.merge') }}
+                </button>
+                <button v-if="d.status === 'open'" class="btn btn-ghost btn-sm" :title="t('drafts.closeTitle')" @click="drafts.setStatus(d.id, 'closed')">
+                  {{ t('drafts.close') }}
+                </button>
+                <button v-else-if="d.status === 'closed'" class="btn btn-ghost btn-sm" @click="drafts.setStatus(d.id, 'open')">{{ t('drafts.reopen') }}</button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-if="!drafts.visibleDrafts.length && !drafts.listLoading" class="px-3 py-6 text-center text-fg-3">
         {{ t('drafts.empty') }}
-      </li>
-    </ul>
+      </div>
+    </div>
   </div>
 </template>

@@ -33,24 +33,24 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-6 pt-[8vh]" @mousedown.self="emit('close')">
+    <div class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-6 pt-[8vh] backdrop-blur-[2px]" @mousedown.self="emit('close')">
       <div
         ref="box"
         tabindex="-1"
         role="dialog"
         :aria-label="title"
-        class="flex max-h-[84vh] w-full flex-col overflow-hidden rounded-md bg-surface shadow-pop outline-none"
+        class="flex max-h-[84vh] w-full flex-col rounded-xl border border-line bg-surface shadow-pop outline-none"
         :style="{ maxWidth: width }"
       >
-        <header class="flex min-h-[48px] shrink-0 items-center gap-3 border-b border-line-strong bg-surface pl-5">
-          <h2 class="text-[17px] leading-6 font-bold text-fg">{{ title }}</h2>
+        <header class="flex items-center gap-3 border-b border-line px-5 py-3.5">
+          <h2 class="text-[15px] font-semibold">{{ title }}</h2>
           <slot name="header" />
-          <button class="ml-auto grid size-12 shrink-0 place-items-center self-start text-fg hover:bg-surface-3" :title="t('app.closeEsc')" @click="emit('close')"><Icon name="x" :size="16" /></button>
+          <button class="btn btn-ghost btn-icon ml-auto" :title="t('app.closeEsc')" @click="emit('close')"><Icon name="x" /></button>
         </header>
         <div class="scroll-thin min-h-0 flex-1 overflow-y-auto">
           <slot />
         </div>
-        <footer v-if="$slots.footer" class="flex shrink-0 items-center gap-2 border-t border-line-strong bg-surface-2 px-5 py-3">
+        <footer v-if="$slots.footer" class="flex items-center gap-2 border-t border-line px-5 py-3">
           <slot name="footer" />
         </footer>
       </div>

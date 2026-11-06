@@ -114,11 +114,11 @@ defineExpose({ focus })
       @change="commit"
     />
     <div v-else class="flex min-w-0 items-stretch">
-      <div class="relative flex min-w-0 flex-1">
+      <div class="relative min-w-0 flex-1">
         <input
           ref="el"
-          class="input min-w-0"
-          :class="[invalidText && 'border-removed', link ? 'rounded-br-none' : (swatch !== null || field.type === 'colour') && 'pr-7', isNumber && 'rounded-br-none']"
+          class="input"
+          :class="[invalidText && 'border-removed', (link || swatch !== null || field.type === 'colour') && 'pr-7', isNumber && 'rounded-r-none']"
           :type="htmlType"
           :inputmode="inputMode"
           :value="state.value"
@@ -135,14 +135,14 @@ defineExpose({ focus })
           :href="link"
           target="_blank"
           rel="noopener noreferrer"
-          class="-ml-px grid w-8 shrink-0 place-items-center rounded-br-md border border-line-strong bg-surface text-fg opacity-70 hover:bg-surface-3 hover:opacity-100"
+          class="absolute inset-y-0 right-0 grid w-7 place-items-center text-fg-3 hover:text-accent"
           :title="tr(locale, 'field.openLink')"
         >
-          <Icon name="external" :size="14" />
+          <Icon name="external" :size="13" />
         </a>
         <label
           v-else-if="field.type === 'colour'"
-          class="absolute inset-y-0 right-1 my-auto grid h-5 w-5 cursor-pointer place-items-center overflow-hidden rounded-sm border border-line-strong"
+          class="absolute inset-y-0 right-1 my-auto grid h-5 w-5 cursor-pointer place-items-center overflow-hidden rounded border border-line-strong"
           :style="{ background: swatch ?? 'transparent' }"
           :title="tr(locale, 'field.pickColour')"
         >
@@ -152,25 +152,25 @@ defineExpose({ focus })
       <template v-if="isNumber">
         <button
           type="button"
-          class="-ml-px grid w-8 shrink-0 place-items-center border border-line-strong bg-surface text-fg hover:bg-surface-3 disabled:opacity-40"
+          class="grid w-7 shrink-0 place-items-center border-y border-line bg-surface-2 text-fg-2 hover:bg-surface-3 disabled:opacity-40"
           :disabled="!canStep"
           :title="tr(locale, 'field.decrement')"
           @click="step(-1)"
         >
-          <Icon name="minus" :size="14" />
+          <Icon name="minus" :size="12" />
         </button>
         <button
           type="button"
-          class="-ml-px grid w-8 shrink-0 place-items-center rounded-br-md border border-line-strong bg-surface text-fg hover:bg-surface-3 disabled:opacity-40"
+          class="grid w-7 shrink-0 place-items-center rounded-r-md border border-line bg-surface-2 text-fg-2 hover:bg-surface-3 disabled:opacity-40"
           :disabled="!canStep"
           :title="tr(locale, 'field.increment')"
           @click="step(1)"
         >
-          <Icon name="plus" :size="14" />
+          <Icon name="plus" :size="12" />
         </button>
       </template>
     </div>
-    <p v-if="invalidText" class="mt-0.5 text-[11px] text-removed">{{ invalidText }}</p>
+    <p v-if="invalidText" class="mt-0.5 text-[10.5px] text-removed">{{ invalidText }}</p>
     <MixedHint :values="state.mixed" />
   </div>
 </template>

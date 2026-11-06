@@ -9,7 +9,6 @@ test('review opens and closes without blank frames', async ({ page }) => {
 
   await openMap(page, { zoom: 17 })
   const buildings = await renderedCount(page, { building: true })
-  await panels.paneButton(page, 'drafts').click()
   await panels.draftReview(page).click()
   await expect(panels.leaveReview(page)).toBeVisible()
   await settle(page)
@@ -43,7 +42,6 @@ test('approving an untagged new node alone asks to approve its way', async ({ pa
   }
 
   await openMap(page, { zoom: 17 })
-  await panels.paneButton(page, 'drafts').click()
   await panels.draftRowReview(page, draftId).click()
   await expect(panels.reviewRef(page)).toBeVisible()
   for (let i = 0; i < 3 && !(await panels.reviewRef(page).textContent())?.startsWith('n'); i++) await panels.reviewSkip(page).click()

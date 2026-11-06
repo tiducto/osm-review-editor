@@ -65,15 +65,15 @@ defineExpose({ focus: () => el.value?.focus() })
 
 <template>
   <div class="min-w-0">
-    <div class="flex min-w-0">
-      <div v-if="!isWikidata" class="w-16 shrink-0 [&_.input]:rounded-br-none">
+    <div class="flex min-w-0 gap-1">
+      <div v-if="!isWikidata" class="w-16 shrink-0">
         <ComboInput :model-value="wp.lang" :options="langOptions" :readonly="readonly" mono :title="tr(locale, 'field.language')" @commit="commitLang" />
       </div>
-      <div class="relative flex min-w-0 flex-1">
+      <div class="relative min-w-0 flex-1">
         <input
           ref="el"
-          class="input min-w-0"
-          :class="[isWikidata && 'font-mono text-[12px]', invalid && 'border-removed', !isWikidata && '-ml-px rounded-bl-none', link && 'rounded-br-none']"
+          class="input pr-7"
+          :class="[isWikidata && 'font-mono text-[12px]', invalid && 'border-removed']"
           :value="current()"
           :placeholder="mixed ? tr(locale, 'field.multiple') : isWikidata ? tr(locale, 'field.wikidataPlaceholder') : field.placeholder || tr(locale, 'field.wikipediaTitle')"
           :title="mixed?.join('\n') ?? (invalid ? tr(locale, 'field.invalid') : undefined)"
@@ -88,10 +88,10 @@ defineExpose({ focus: () => el.value?.focus() })
           :href="link"
           target="_blank"
           rel="noopener noreferrer"
-          class="-ml-px grid w-8 shrink-0 place-items-center rounded-br-md border border-line-strong bg-surface text-fg opacity-70 hover:bg-surface-3 hover:opacity-100"
+          class="absolute inset-y-0 right-0 grid w-7 place-items-center text-fg-3 hover:text-accent"
           :title="tr(locale, 'field.openLink')"
         >
-          <Icon name="external" :size="14" />
+          <Icon name="external" :size="13" />
         </a>
       </div>
     </div>

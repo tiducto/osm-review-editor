@@ -22,7 +22,7 @@ const objects = computed(() => (r.value?.objects ?? []).map(refString))
 <template>
   <Modal v-if="r" :key="r.id" :title="title" width="480px" @close="remote.decide(false)">
     <div class="space-y-3 px-5 py-4 text-[12px] text-fg" data-testid="remote-confirm" :data-command="r.command">
-      <p class="rounded border-l-4 border-warning bg-surface-2 px-3 py-2 text-fg">{{ t('remote.warning') }}</p>
+      <p class="flex items-start gap-2 rounded-md border border-changed/30 bg-changed-soft px-3 py-2 text-changed">{{ t('remote.warning') }}</p>
       <dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1.5">
         <template v-if="r.url">
           <dt class="text-fg-3">{{ t('remote.url') }}</dt>
@@ -30,7 +30,7 @@ const objects = computed(() => (r.value?.objects ?? []).map(refString))
         </template>
         <template v-if="r.host">
           <dt class="text-fg-3">{{ t('remote.host') }}</dt>
-          <dd class="font-mono text-[12.5px] font-bold break-all" data-testid="remote-host">{{ r.host }}</dd>
+          <dd class="font-mono text-[12.5px] font-semibold break-all" data-testid="remote-host">{{ r.host }}</dd>
         </template>
         <template v-if="r.title">
           <dt class="text-fg-3">{{ t('remote.layer') }}</dt>

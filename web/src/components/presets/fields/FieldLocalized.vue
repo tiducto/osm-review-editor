@@ -128,7 +128,7 @@ defineExpose({ focus: () => mainEl.value?.focus() })
       @keydown="onKey"
     />
     <MixedHint :values="state.name.mixed" />
-    <div v-if="state.variants.length || visiblePending.length" class="mt-1.5 flex flex-col gap-1 border-l-2 border-line-strong pl-1.5 [&_.input]:rounded-md!">
+    <div v-if="state.variants.length || visiblePending.length" class="mt-1 flex flex-col gap-1 border-l-2 border-line pl-1.5">
       <div v-for="v in state.variants" :key="v.key" class="group grid grid-cols-[6.5rem_minmax(0,1fr)_20px] items-center gap-1">
         <ComboInput
           :model-value="languageName(v.lang, locale)"
@@ -154,7 +154,7 @@ defineExpose({ focus: () => mainEl.value?.focus() })
         <button
           v-if="!readonly"
           type="button"
-          class="grid h-5 w-5 place-items-center rounded-sm text-fg opacity-50 hover:bg-surface-3 hover:text-removed hover:opacity-100"
+          class="grid h-5 w-5 place-items-center rounded text-fg-3 hover:bg-surface-3 hover:text-removed"
           :title="tr(locale, 'field.remove')"
           @click="removeVariant(v.lang)"
         >
@@ -178,12 +178,12 @@ defineExpose({ focus: () => mainEl.value?.focus() })
           @change="commitPending(p, $event)"
           @keydown="onKey"
         />
-        <button type="button" class="grid h-5 w-5 place-items-center rounded-sm text-fg opacity-50 hover:bg-surface-3 hover:text-removed hover:opacity-100" :title="tr(locale, 'field.remove')" @click="dropPending(p)">
+        <button type="button" class="grid h-5 w-5 place-items-center rounded text-fg-3 hover:bg-surface-3 hover:text-removed" :title="tr(locale, 'field.remove')" @click="dropPending(p)">
           <Icon name="x" :size="11" />
         </button>
       </div>
     </div>
-    <button v-if="!readonly" type="button" class="btn btn-ghost btn-sm mt-1 -ml-1.5 text-accent" @click="addLanguage">
+    <button v-if="!readonly" type="button" class="btn btn-ghost btn-sm mt-0.5 -ml-1.5 text-fg-3" @click="addLanguage">
       <Icon name="plus" :size="12" />
       {{ tr(locale, 'field.addLanguage') }}
     </button>

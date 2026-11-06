@@ -17,7 +17,7 @@ const title = computed(() =>
 <template>
   <span
     v-if="info.kind === 'claude'"
-    class="chip bg-claude-soft text-claude"
+    class="chip bg-claude-soft text-claude ring-1 ring-claude/30"
     :title="t('app.author.claudeTitle')"
   >
     <Icon name="sparkle" :size="12" :stroke="2" />Claude

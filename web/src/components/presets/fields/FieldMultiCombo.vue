@@ -43,11 +43,11 @@ defineExpose({ focus: () => combo.value?.focus() })
 
 <template>
   <div class="min-w-0">
-    <div v-if="state.items.length" class="flex flex-wrap gap-1 border border-b-0 border-line-strong bg-surface p-1.5 last:rounded-b-md last:border-b">
+    <div v-if="state.items.length" class="mb-1 flex flex-wrap gap-1">
       <span
         v-for="item in state.items"
         :key="item.key + ':' + item.index"
-        class="chip h-5 max-w-full border bg-[#eeeeee] pr-0.5 font-normal text-fg"
+        class="chip max-w-full border bg-surface-3 pr-0.5 text-fg"
         :class="[item.mixed ? 'border-dashed border-line-strong text-fg-2 italic' : 'border-transparent', item.state === 'no' && 'text-fg-3 line-through']"
         :title="chipTitle(item)"
       >
@@ -63,7 +63,7 @@ defineExpose({ focus: () => combo.value?.focus() })
         <button
           v-if="!readonly"
           type="button"
-          class="grid h-4 w-4 place-items-center rounded-sm text-fg opacity-50 hover:bg-surface-3 hover:text-removed hover:opacity-100"
+          class="grid h-4 w-4 place-items-center rounded-full text-fg-3 hover:bg-surface hover:text-removed"
           :title="tr(locale, 'field.remove')"
           @click="remove(item)"
         >

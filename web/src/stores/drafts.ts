@@ -4,7 +4,7 @@ import type { Change, Draft, DraftDetail, DraftStatus, MapFeature, OsmRef, Revie
 import type { MergeProgress } from '@/generated/models'
 import { api, ApiError } from '@/api/client'
 import { useAppStore } from './app'
-import { useMapStore } from './map'
+import { OSM_STANDARD, useMapStore } from './map'
 import { useRulesStore } from './rules'
 import { asGeometry, bboxAround, geometryBBox } from '@/lib/geo'
 import { isDecided, orphanRisk, type OrphanRisk } from '@/lib/changes'
@@ -42,6 +42,7 @@ export const useDraftsStore = defineStore('drafts', () => {
   const busy = ref(false)
   const context = shallowRef<ChangeContext | null>(null)
 
+  const drawerOpen = ref(true)
   const drawerTab = ref<DrawerTab>('drafts')
 
   const progress = reactive(new Map<string, MergeProgress>())
@@ -237,9 +238,10 @@ export const useDraftsStore = defineStore('drafts', () => {
   }
 
   function imageryTag(): string | null {
-    const i = mapStore.activeImagery
-    if (!i) return null
-    return i.sourceTag.trim() || i.name
+    const tags = [mapStore.activeImagery, ...mapStore.activeOverlays]
+      .filter((i): i is NonNullable<typeof i> => !!i && i.id !== OSM_STANDARD)
+      .map((i) => i.sourceTag.trim() || i.name)
+    return tags.length ? tags.join(';') : null
   }
 
   const approve = () => review({ decision: 'approve', imagery: imageryTag() })
@@ -446,7 +448,7 @@ export const useDraftsStore = defineStore('drafts', () => {
   return {
     drafts, visibleDrafts, listLoading, statusFilter, authorFilter,
     current, currentLoading, reviewing, index, showBefore, busy, context,
-    drawerTab, progress,
+    drawerOpen, drawerTab, progress,
     changes, currentChange, decidedCount, pendingCount, approvedCount, conflictCount,
     loadDrafts, open, startReview, stopReview, close, focusCurrent, goTo, next, prev, nextOpen,
     review, cascadePrompt, approve, reject, editTags, reset, sendToId, resolve, approveRemaining, refreshLive, fromRule,

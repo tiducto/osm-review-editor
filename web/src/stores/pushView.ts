@@ -4,7 +4,7 @@ import { useMapStore } from './map'
 import { useDraftsStore } from './drafts'
 import { useHighlightsStore } from './highlights'
 import { useScansStore } from './scans'
-import { usePanelStore, type PaneName } from './panel'
+import { usePanelStore, type PanelTab } from './panel'
 import { currentEditSession, useEditorStore } from './editor'
 import { t, tn } from '@/i18n'
 
@@ -20,7 +20,7 @@ interface ViewSnapshot {
   reviewing: boolean
   selected: OsmRef | null
   editSelection: string[]
-  pane: PaneName | null
+  tab: PanelTab
 }
 
 function editId(ref: OsmRef): string {
@@ -62,15 +62,14 @@ export function usePushView() {
       reviewing: drafts.reviewing,
       selected: mapStore.selected,
       editSelection: [...editor.selected],
-      pane: panel.pane,
+      tab: panel.tab,
     }
   }
 
   async function restore(s: ViewSnapshot) {
     const map = mapStore.instance()
     highlights.active = [...s.highlights]
-    if (s.pane) panel.open(s.pane)
-    else panel.close()
+    panel.tab = s.tab
     if ((mapStore.area?.name ?? null) !== s.areaName) await mapStore.setArea(s.areaName, false)
     if ((scans.report?.scan.id ?? null) !== s.scanId) {
       if (s.scanId) await scans.openScan(s.scanId)
@@ -92,11 +91,13 @@ export function usePushView() {
       if (e.replaceHighlights) highlights.active = [...new Set(e.highlights)]
       else for (const p of e.highlights) highlights.toggle(p, true)
       if (!highlights.loaded) void highlights.load()
-      panel.open('map-data')
+      panel.tab = 'map'
+      panel.open = true
     }
     if (e.areaName && !editor.active) await mapStore.setArea(e.areaName, false)
     if (e.scanId) {
-      panel.open('validation')
+      panel.tab = 'validate'
+      panel.open = true
       await scans.openScan(e.scanId)
     }
     if (e.draftId) {
