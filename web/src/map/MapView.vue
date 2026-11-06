@@ -11,6 +11,7 @@ import { useDraftsStore } from '@/stores/drafts'
 import { INTERACTIVE, ISSUE_LAYERS, SRC, imageryKey, installLayers, setData, setImagery, setOverlays, setVisible } from './layers'
 import { areaToGeoJSON, beforeToGeoJSON, changesToGeoJSON, empty, featuresToGeoJSON, issuesToGeoJSON, selectionToGeoJSON } from './data'
 import { asGeometry } from '@/lib/geo'
+import { refString } from '@/lib/osm'
 import { PolygonDraw, drawJustEnded, type DrawState } from './draw'
 import { applyFeatureFilters } from './osm/features'
 import { changeKindColor, changeKindLabel, type ChangeKind } from '@/lib/colors'
@@ -219,16 +220,41 @@ function osmRef(f: MapGeoJSONFeature): OsmRef | null {
   return id && type ? { type, id } : null
 }
 
-function topFeature(e: MapMouseEvent): MapGeoJSONFeature | null {
-  if (!map) return null
+const osmRank = (f: MapGeoJSONFeature) => (f.layer.type === 'circle' || f.layer.type === 'symbol' ? 0 : f.layer.type === 'line' ? 1 : 2)
+const rank = (f: MapGeoJSONFeature) => (f.source !== OSM_SRC ? -1 : osmRank(f))
+
+function hitsAt(e: MapMouseEvent): MapGeoJSONFeature[] {
+  if (!map) return []
   const pad = 4
   const box: [maplibregl.PointLike, maplibregl.PointLike] = [
     [e.point.x - pad, e.point.y - pad],
     [e.point.x + pad, e.point.y + pad],
   ]
   const hits = map.queryRenderedFeatures(box, { layers: interactiveLayers() }).filter((f) => f.source !== OSM_SRC || osmRef(f))
-  const rank = (f: MapGeoJSONFeature) => (f.source !== OSM_SRC ? -1 : f.layer.type === 'circle' || f.layer.type === 'symbol' ? 0 : f.layer.type === 'line' ? 1 : 2)
-  return hits.sort((a, b) => rank(a) - rank(b))[0] ?? null
+  return hits.sort((a, b) => rank(a) - rank(b))
+}
+
+function topFeature(e: MapMouseEvent): MapGeoJSONFeature | null {
+  return hitsAt(e)[0] ?? null
+}
+
+function overlayKey(f: MapGeoJSONFeature): string | null {
+  const props = f.properties as Record<string, unknown>
+  if (f.layer.id.startsWith('ore-changes')) {
+    const c = drafts.changes[props.i as number]
+    return c ? refString(c.ref) : null
+  }
+  return typeof props.key === 'string' && props.key ? props.key : null
+}
+
+function osmUnder(hits: MapGeoJSONFeature[]): MapGeoJSONFeature | null {
+  const keys = new Set(hits.filter((f) => f.source !== OSM_SRC).map(overlayKey))
+  const osm = hits.filter((f) => f.source === OSM_SRC)
+  const miss = (f: MapGeoJSONFeature) => {
+    const r = osmRef(f)
+    return r && keys.has(refString(r)) ? 0 : 1
+  }
+  return osm.sort((a, b) => osmRank(a) - osmRank(b) || miss(a) - miss(b))[0] ?? null
 }
 
 async function onClick(e: MapMouseEvent) {
@@ -304,8 +330,10 @@ function onMouseMove(e: MapMouseEvent) {
     setHoverState(null)
     return
   }
-  const f = topFeature(e)
-  map.getCanvas().style.cursor = f ? 'pointer' : ''
+  const hits = hitsAt(e)
+  const top = hits[0] ?? null
+  map.getCanvas().style.cursor = top ? 'pointer' : ''
+  const f = top && top.source !== OSM_SRC && drafts.reviewing ? (osmUnder(hits) ?? top) : top
   if (!f) {
     setHoverState(null)
     return
