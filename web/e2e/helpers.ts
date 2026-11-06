@@ -24,6 +24,11 @@ export { expect }
 
 export async function openMap(page: Page, opts: { center?: [number, number]; zoom?: number; storage?: Record<string, string> } = {}) {
   const view = { c: opts.center ?? CENTRE, z: opts.zoom ?? 16.5 }
+  const throttle = Number(process.env.E2E_CPU_THROTTLE ?? 0)
+  if (throttle > 1) {
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: throttle })
+  }
   await page.addInitScript(
     ([view, storage]) => {
       if (sessionStorage.getItem('ore-e2e-init')) return
@@ -46,17 +51,30 @@ export async function settle(page: Page) {
     () =>
       new Promise<boolean>((resolve) => {
         const m = (window as unknown as MapWindow).__oreMap
-        let n = 0
-        const tick = () => {
-          if (m.loaded() && m.areTilesLoaded() && !m.isMoving()) {
-            if (++n >= 3) return resolve(true)
-          } else n = 0
-          setTimeout(tick, 100)
+        let changed = true
+        const onChange = () => {
+          changed = true
         }
-        tick()
+        m.on('sourcedata', onChange)
+        m.on('styledata', onChange)
+        const done = () => {
+          m.off('sourcedata', onChange)
+          m.off('styledata', onChange)
+          resolve(true)
+        }
+        const next = () => {
+          m.once('idle', () => {
+            const clean = !changed && m.loaded() && m.areTilesLoaded() && !m.isMoving()
+            changed = false
+            if (clean) return done()
+            setTimeout(next, 50)
+          })
+          m.triggerRepaint()
+        }
+        next()
       }),
     undefined,
-    { timeout: 30_000 },
+    { timeout: 60_000 },
   )
 }
 
