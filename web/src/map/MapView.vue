@@ -8,7 +8,7 @@ import type { OsmRef, OsmType } from '@/generated/models'
 import { setDashState, useMapStore } from '@/stores/map'
 import { useRulesStore } from '@/stores/rules'
 import { useDraftsStore } from '@/stores/drafts'
-import { INTERACTIVE, ISSUE_LAYERS, SRC, installLayers, setData, setImagery, setVisible } from './layers'
+import { INTERACTIVE, ISSUE_LAYERS, SRC, imageryKey, installLayers, setData, setImagery, setOverlays, setVisible } from './layers'
 import { areaToGeoJSON, beforeToGeoJSON, changesToGeoJSON, empty, featuresToGeoJSON, issuesToGeoJSON, selectionToGeoJSON } from './data'
 import { asGeometry } from '@/lib/geo'
 import { PolygonDraw, drawJustEnded, type DrawState } from './draw'
@@ -127,6 +127,7 @@ function syncContext() {
 }
 function syncImagery() {
   if (!map || !styleReady) return
+  setOverlays(map, mapStore.activeOverlays)
   setImagery(map, mapStore.activeImagery)
 }
 function syncAll() {
@@ -175,7 +176,7 @@ watch(
 
 watch(() => [drafts.current, drafts.index, drafts.reviewing, drafts.showBefore], syncChanges)
 watch(() => [drafts.context, drafts.reviewing], syncContext)
-watch(() => mapStore.activeImagery, syncImagery)
+watch(() => [imageryKey(mapStore.activeImagery), ...mapStore.activeOverlays.map(imageryKey)].join(' '), syncImagery)
 watch(
   () => mapStore.tilesVersion,
   (v) => {

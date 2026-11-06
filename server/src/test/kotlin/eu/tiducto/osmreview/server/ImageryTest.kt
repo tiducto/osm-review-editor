@@ -26,8 +26,35 @@ class ImageryTest {
     @Test
     fun defaultsAreValid() {
         assertEquals(ImageryStore.DEFAULTS, ImageryStore.validate(ImageryStore.DEFAULTS))
-        assertTrue(ImageryStore.DEFAULTS.all { it.sourceTag.isNotBlank() })
+        assertTrue(ImageryStore.DEFAULTS.filter { it.id != "osm-standard" }.all { it.sourceTag.isNotBlank() })
         assertEquals("ČÚZK ortofoto", ImageryStore.DEFAULTS.first { it.id == "cuzk-ortofoto" }.sourceTag)
+    }
+
+    @Test
+    fun defaultsPutTheOrthophotoFirstAndTheCadastreAsAnOverlay() {
+        assertEquals(ImageryStore.DEFAULT_BACKGROUND, ImageryStore.DEFAULTS.first().id)
+        assertEquals("tms", ImageryStore.DEFAULTS.first().type)
+        val osm = ImageryStore.DEFAULTS.first { it.id == "osm-standard" }
+        assertEquals("https://tile.openstreetmap.org/{z}/{x}/{y}.png", osm.url)
+        assertEquals(19, osm.maxZoom)
+        assertEquals("© OpenStreetMap contributors", osm.attribution)
+        assertEquals(listOf("cuzk-km"), ImageryStore.DEFAULTS.filter { it.overlay }.map { it.id })
+    }
+
+    @Test
+    fun upgradeMovesOldListsToTheNewDefaults() {
+        val old = listOf(
+            ImageryStore.ORTHO_WMS.copy(id = "cuzk-ortofoto", name = "ČÚZK orthophoto"),
+            ImageryStore.CADASTRE.copy(name = "ČÚZK cadastral map (overlay)", overlay = false),
+            ImageryStore.ESRI,
+        )
+        val up = ImageryStore.upgrade(old)
+        assertEquals(listOf("cuzk-ortofoto", "osm-standard", "cuzk-km", "esri-world-imagery", "cuzk-ortofoto-wms"), up.map { it.id })
+        assertEquals(ImageryStore.ORTHO, up.first { it.id == "cuzk-ortofoto" })
+        assertTrue(up.first { it.id == "cuzk-km" }.overlay)
+        val custom = listOf(tms)
+        assertEquals(listOf(ImageryStore.OSM_STANDARD, tms), ImageryStore.upgrade(custom))
+        assertEquals(ImageryStore.DEFAULTS.toSet(), ImageryStore.upgrade(ImageryStore.DEFAULTS).toSet())
     }
 
     @Test
@@ -95,6 +122,11 @@ class ImageryTest {
                 val settings = SettingsRepo(db)
                 val store = ImageryStore(settings)
                 assertNull(settings.get(ImageryStore.KEY))
+                settings.put(ImageryStore.KEY, kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(ImagerySource.serializer()), listOf(ImageryStore.ESRI)))
+                assertEquals(listOf("osm-standard", "esri-world-imagery"), store.configured().map { it.id })
+                assertEquals("2", settings.get(ImageryStore.VERSION_KEY))
+                assertEquals(listOf("osm-standard", "esri-world-imagery"), store.configured().map { it.id })
+                assertEquals(ImageryStore.DEFAULTS, store.reset())
                 assertEquals(ImageryStore.DEFAULTS, store.configured())
                 assertTrue(settings.get(ImageryStore.KEY)!!.contains("ČÚZK ortofoto"))
 

@@ -3,7 +3,7 @@ import type { ExpressionSpecification, GeoJSONSource, LayerSpecification, Map as
 import type { ImagerySource } from '@/generated/models'
 import { accent, contextColor, severityColor } from '@/lib/colors'
 import { empty } from './data'
-import { FONT, LAYER, SHADOW } from './osm/style'
+import { FONT, LAYER, OSM_ATTRIBUTION, SHADOW } from './osm/style'
 
 export const SRC = {
   area: 'ore-area',
@@ -308,17 +308,48 @@ export function setVisible(map: MlMap, layerIds: string[], visible: boolean): vo
 
 export const ISSUE_LAYERS = ['ore-issues-cluster', 'ore-issues-count', 'ore-issues-point']
 
+const OVERLAY_PREFIX = 'ore-overlay-'
+
+function rasterSource(src: ImagerySource) {
+  return {
+    type: 'raster' as const,
+    tiles: [src.url],
+    tileSize: 256,
+    maxzoom: src.maxZoom || 22,
+    attribution: /^©\s*OpenStreetMap contributors$/i.test(src.attribution.trim()) ? OSM_ATTRIBUTION : src.attribution,
+  }
+}
+
+function overlayLayerIds(map: MlMap): string[] {
+  return map.getStyle().layers.filter((l) => l.id.startsWith(OVERLAY_PREFIX)).map((l) => l.id)
+}
+
+export function imageryKey(src: ImagerySource | null): string {
+  return src ? `${src.id}|${src.url}|${src.maxZoom}` : ''
+}
+
 export function setImagery(map: MlMap, src: ImagerySource | null): void {
   if (map.getLayer(IMAGERY_LAYER)) map.removeLayer(IMAGERY_LAYER)
   if (map.getSource(IMAGERY_SRC)) map.removeSource(IMAGERY_SRC)
   setVisible(map, [LAYER.background], !src)
   if (!src) return
-  map.addSource(IMAGERY_SRC, {
-    type: 'raster',
-    tiles: [src.url],
-    tileSize: 256,
-    maxzoom: src.maxZoom || 22,
-    attribution: src.attribution,
-  })
-  map.addLayer({ id: IMAGERY_LAYER, type: 'raster', source: IMAGERY_SRC, paint: { 'raster-fade-duration': 150 } }, LAYER.firstData)
+  map.addSource(IMAGERY_SRC, rasterSource(src))
+  const before = overlayLayerIds(map)[0] ?? LAYER.firstData
+  map.addLayer({ id: IMAGERY_LAYER, type: 'raster', source: IMAGERY_SRC, paint: { 'raster-fade-duration': 150 } }, before)
+}
+
+export function setOverlays(map: MlMap, list: ImagerySource[]): void {
+  const want = new Map(list.map((s) => [OVERLAY_PREFIX + s.id, s]))
+  for (const id of overlayLayerIds(map)) {
+    const s = want.get(id)
+    const src = map.getSource(id) as { tiles?: string[] } | undefined
+    if (s && src?.tiles?.[0] === s.url) continue
+    map.removeLayer(id)
+    if (map.getSource(id)) map.removeSource(id)
+  }
+  for (const [id, s] of want) {
+    if (map.getLayer(id)) continue
+    map.addSource(id, rasterSource(s))
+    map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-fade-duration': 150 } }, LAYER.firstData)
+  }
 }

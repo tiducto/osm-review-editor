@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref, shallowRef } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import type { Map as MlMap } from 'maplibre-gl'
 import type { Polygon } from 'geojson'
 import type { Area, BBox, ImagerySource, LngLat, MapFeature, OsmRef } from '@/generated/models'
@@ -11,6 +11,10 @@ import { t } from '@/i18n'
 import { readHiddenFeatures, writeHiddenFeatures, type FeatureGroup } from '@/map/osm/features'
 
 const IMAGERY_KEY = 'ore.imagery'
+const OVERLAYS_KEY = 'ore.overlays'
+const NONE = 'none'
+export const DEFAULT_BACKGROUND = 'cuzk-ortofoto'
+export const OSM_STANDARD = 'osm-standard'
 
 let map: MlMap | null = null
 
@@ -60,23 +64,53 @@ export const useMapStore = defineStore('map', () => {
   const extraImagery = ref<ImagerySource[]>([])
   const imageryId = ref<string | null>(readImagery())
   const allImagery = computed(() => [...app.imagery, ...extraImagery.value.filter((x) => !app.imagery.some((i) => i.id === x.id))])
-  const activeImagery = computed(() => allImagery.value.find((i) => i.id === imageryId.value) ?? null)
+  const backgrounds = computed(() => allImagery.value.filter((i) => !i.overlay))
+  const overlays = computed(() => allImagery.value.filter((i) => i.overlay))
+  const activeImagery = computed(() => backgrounds.value.find((i) => i.id === imageryId.value) ?? null)
+  const overlayIds = ref<string[]>(readOverlays())
+  const activeOverlays = computed(() => overlays.value.filter((o) => overlayIds.value.includes(o.id)))
 
   function readImagery(): string | null {
     try {
-      return localStorage.getItem(IMAGERY_KEY)
+      const v = localStorage.getItem(IMAGERY_KEY)
+      if (v === null || v === '') return DEFAULT_BACKGROUND
+      return v === NONE ? null : v
     } catch {
-      return null
+      return DEFAULT_BACKGROUND
+    }
+  }
+
+  function readOverlays(): string[] {
+    try {
+      const v = JSON.parse(localStorage.getItem(OVERLAYS_KEY) ?? '[]')
+      return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+    } catch {
+      return []
     }
   }
 
   function setImagery(id: string | null) {
     imageryId.value = id
     try {
-      if (id) localStorage.setItem(IMAGERY_KEY, id)
-      else localStorage.removeItem(IMAGERY_KEY)
+      localStorage.setItem(IMAGERY_KEY, id ?? NONE)
     } catch {}
   }
+
+  function setOverlay(id: string, on: boolean) {
+    const next = overlayIds.value.filter((x) => x !== id)
+    if (on) next.push(id)
+    overlayIds.value = next
+    try {
+      localStorage.setItem(OVERLAYS_KEY, JSON.stringify(next))
+    } catch {}
+  }
+
+  watch(overlays, (list) => {
+    const id = imageryId.value
+    if (!id || !list.some((o) => o.id === id)) return
+    setOverlay(id, true)
+    setImagery(backgrounds.value.some((b) => b.id === DEFAULT_BACKGROUND) ? DEFAULT_BACKGROUND : null)
+  })
 
   function addImagery(src: ImagerySource) {
     if (!allImagery.value.some((i) => i.id === src.id)) extraImagery.value.push(src)
@@ -217,7 +251,7 @@ export const useMapStore = defineStore('map', () => {
     ready, bbox, zoom, tilesVersion, refreshTiles,
     selected, selectedFeature, selectedLoading, highlighted,
     area, areaLoading, polygon, drawing, scopeName, setPolygon,
-    imageryId, allImagery, activeImagery, setImagery, addImagery,
+    imageryId, allImagery, backgrounds, overlays, activeImagery, overlayIds, activeOverlays, setImagery, setOverlay, addImagery,
     attach, detach, instance, insets, setInsets, fitPadding, visibleOffset, visibleContains, fitBBox, flyTo, easeTo, updateView,
     hiddenFeatures, setFeatureVisible, setHiddenFeatures,
     select, patchSelectedTags, setArea,

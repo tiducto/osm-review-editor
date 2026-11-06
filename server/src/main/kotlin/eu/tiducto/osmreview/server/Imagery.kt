@@ -23,9 +23,14 @@ class ImageryStore(private val settings: SettingsRepo) {
 
     fun configured(): List<ImagerySource> {
         val stored = settings.get(KEY)?.let { runCatching { WireJson.decodeFromString(LIST, it) }.getOrNull() }
-        if (stored != null) return stored
-        save(DEFAULTS)
-        return DEFAULTS
+        if (stored == null) {
+            save(DEFAULTS)
+            return DEFAULTS
+        }
+        if ((settings.get(VERSION_KEY)?.toIntOrNull() ?: 1) >= VERSION) return stored
+        val upgraded = upgrade(stored)
+        save(upgraded)
+        return upgraded
     }
 
     fun all(): List<ImagerySource> {
@@ -45,10 +50,15 @@ class ImageryStore(private val settings: SettingsRepo) {
         return DEFAULTS
     }
 
-    private fun save(list: List<ImagerySource>) = settings.put(KEY, WireJson.encodeToString(LIST, list))
+    private fun save(list: List<ImagerySource>) {
+        settings.put(KEY, WireJson.encodeToString(LIST, list))
+        settings.put(VERSION_KEY, VERSION.toString())
+    }
 
     companion object {
         const val KEY = "imagery"
+        const val VERSION_KEY = "imagery.version"
+        const val VERSION = 2
         val TYPES = setOf("tms", "wms")
         private val LIST = ListSerializer(ImagerySource.serializer())
         private val ID = Regex("^[a-z0-9][a-z0-9._-]{0,63}$")
@@ -94,37 +104,84 @@ class ImageryStore(private val settings: SettingsRepo) {
             }.getOrDefault(false)
         }
 
-        val DEFAULTS = listOf(
-            ImagerySource(
-                id = "cuzk-ortofoto",
-                name = "ČÚZK orthophoto",
-                type = "wms",
-                url = "https://ags.cuzk.gov.cz/arcgis1/services/ORTOFOTO/MapServer/WMSServer?FORMAT=image/png&TRANSPARENT=TRUE" +
-                    "&VERSION=1.3.0&SERVICE=WMS&REQUEST=GetMap&LAYERS=0&STYLES=&CRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}",
-                attribution = "© ČÚZK",
-                maxZoom = 20,
-                sourceTag = "ČÚZK ortofoto",
-            ),
-            ImagerySource(
-                id = "cuzk-km",
-                name = "ČÚZK cadastral map (overlay)",
-                type = "wms",
-                url = "https://wms.cuzk.cz/wms.asp?LAYERS=parcelni_cisla_i,obrazy_parcel_i,RST_KMD_I,hranice_parcel_i,DEF_BUDOVY,RST_KN_I,dalsi_p_mapy_i" +
-                    "&STYLES=&FORMAT=image/png&TRANSPARENT=TRUE&CRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}&VERSION=1.3.0&SERVICE=WMS&REQUEST=GetMap",
-                attribution = "© ČÚZK",
-                maxZoom = 21,
-                sourceTag = "ČÚZK katastrální mapa",
-            ),
-            ImagerySource(
-                id = "esri-world-imagery",
-                name = "Esri World Imagery",
-                type = "tms",
-                url = "https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-                attribution = "Esri, Maxar, Earthstar Geographics",
-                maxZoom = 22,
-                sourceTag = "Esri World Imagery",
-            ),
+        const val DEFAULT_BACKGROUND = "cuzk-ortofoto"
+
+        private const val ORTHO_WMS_URL =
+            "https://ags.cuzk.gov.cz/arcgis1/services/ORTOFOTO/MapServer/WMSServer?FORMAT=image/png&TRANSPARENT=TRUE" +
+                "&VERSION=1.3.0&SERVICE=WMS&REQUEST=GetMap&LAYERS=0&STYLES=&CRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}"
+
+        val ORTHO = ImagerySource(
+            id = DEFAULT_BACKGROUND,
+            name = "ČÚZK orthophoto",
+            type = "tms",
+            url = "https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO_WM/MapServer/tile/{z}/{y}/{x}",
+            attribution = "© ČÚZK",
+            maxZoom = 20,
+            sourceTag = "ČÚZK ortofoto",
         )
+
+        val ORTHO_WMS = ImagerySource(
+            id = "cuzk-ortofoto-wms",
+            name = "ČÚZK orthophoto (WMS)",
+            type = "wms",
+            url = ORTHO_WMS_URL,
+            attribution = "© ČÚZK",
+            maxZoom = 20,
+            sourceTag = "ČÚZK ortofoto",
+        )
+
+        val OSM_STANDARD = ImagerySource(
+            id = "osm-standard",
+            name = "OpenStreetMap (Standard)",
+            type = "tms",
+            url = "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+            attribution = "© OpenStreetMap contributors",
+            maxZoom = 19,
+            sourceTag = "",
+        )
+
+        val CADASTRE = ImagerySource(
+            id = "cuzk-km",
+            name = "ČÚZK cadastral map",
+            type = "wms",
+            url = "https://wms.cuzk.cz/wms.asp?LAYERS=parcelni_cisla_i,obrazy_parcel_i,RST_KMD_I,hranice_parcel_i,DEF_BUDOVY,RST_KN_I,dalsi_p_mapy_i" +
+                "&STYLES=&FORMAT=image/png&TRANSPARENT=TRUE&CRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}&VERSION=1.3.0&SERVICE=WMS&REQUEST=GetMap",
+            attribution = "© ČÚZK",
+            maxZoom = 21,
+            sourceTag = "ČÚZK katastrální mapa",
+            overlay = true,
+        )
+
+        val ESRI = ImagerySource(
+            id = "esri-world-imagery",
+            name = "Esri World Imagery",
+            type = "tms",
+            url = "https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            attribution = "Esri, Maxar, Earthstar Geographics",
+            maxZoom = 22,
+            sourceTag = "Esri World Imagery",
+        )
+
+        val DEFAULTS = listOf(ORTHO, OSM_STANDARD, ESRI, ORTHO_WMS, CADASTRE)
+
+        fun upgrade(list: List<ImagerySource>): List<ImagerySource> {
+            val out = list.map {
+                when {
+                    it.id == ORTHO.id && it.type == "wms" && it.url == ORTHO_WMS_URL -> ORTHO
+                    it.id == CADASTRE.id && it.url == CADASTRE.url -> it.copy(name = CADASTRE.name, overlay = true)
+                    else -> it
+                }
+            }.toMutableList()
+            if (out.none { it.id == OSM_STANDARD.id }) {
+                val at = out.indexOfFirst { it.id == ORTHO.id }
+                out.add(if (at >= 0) at + 1 else 0, OSM_STANDARD)
+            }
+            if (out.any { it.id == ORTHO.id && it.url == ORTHO.url } && out.none { it.id == ORTHO_WMS.id }) {
+                val at = out.indexOfLast { !it.overlay }
+                out.add(at + 1, ORTHO_WMS)
+            }
+            return out
+        }
     }
 }
 

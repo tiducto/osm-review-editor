@@ -3,18 +3,17 @@ import { computed, onMounted, ref } from 'vue'
 import type { McpInfo, OsmTarget } from '@/generated/models'
 import { api } from '@/api/client'
 import { useAppStore } from '@/stores/app'
-import { useMapStore } from '@/stores/map'
 import { dateTime, relativeTime } from '@/lib/format'
 import Modal from './Modal.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import ImageryEditor from './ImageryEditor.vue'
+import BackgroundPicker from './BackgroundPicker.vue'
 import Icon from './Icon.vue'
 import { LOCALES, useI18n, type MessageKey } from '@/i18n'
 import { THEME_PREFS, setThemePref, themePref } from '@/lib/theme'
 
 const { t, locale, setLocale } = useI18n()
 const app = useAppStore()
-const mapStore = useMapStore()
 const confirmProd = ref(false)
 const editingImagery = ref(false)
 const sidecar = computed(() => app.mirror?.sidecar ?? null)
@@ -161,22 +160,7 @@ const shortcuts: [string, MessageKey][] = [
           </button>
         </div>
         <ImageryEditor v-if="editingImagery" @close="editingImagery = false" />
-        <div v-else class="overflow-hidden rounded-md border border-line">
-          <label class="flex cursor-pointer items-center gap-2.5 border-b border-line px-3 py-1.5 hover:bg-surface-2">
-            <input type="radio" name="imagery" :checked="!mapStore.imageryId" @change="mapStore.setImagery(null)" />
-            <span>{{ t('common.none') }}</span>
-          </label>
-          <label
-            v-for="s in mapStore.allImagery"
-            :key="s.id"
-            class="flex cursor-pointer items-center gap-2.5 border-b border-line px-3 py-1.5 last:border-b-0 hover:bg-surface-2"
-          >
-            <input type="radio" name="imagery" :checked="mapStore.imageryId === s.id" @change="mapStore.setImagery(s.id)" />
-            <span class="min-w-0 flex-1 truncate">{{ s.name }}</span>
-            <span class="chip bg-surface-3 font-mono text-fg-3 uppercase">{{ s.type }}</span>
-            <span class="text-[11px] text-fg-3">z{{ s.maxZoom }}</span>
-          </label>
-        </div>
+        <BackgroundPicker v-else details name="settings-background" />
       </section>
 
       <section class="space-y-2 px-5 py-4">

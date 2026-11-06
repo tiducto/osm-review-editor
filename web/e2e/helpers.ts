@@ -22,8 +22,17 @@ export const test = base.extend<{ errors: string[] }>({
 
 export { expect }
 
-export async function openMap(page: Page, opts: { center?: [number, number]; zoom?: number; storage?: Record<string, string> } = {}) {
+export const TILE_HOSTS = /ags\.cuzk\.gov\.cz|wms\.cuzk\.cz|tile\.openstreetmap\.org|arcgisonline\.com|virtualearth\.net/
+export const BLANK_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=', 'base64')
+
+export async function openMap(
+  page: Page,
+  opts: { center?: [number, number]; zoom?: number; storage?: Record<string, string>; background?: string | null; stubTiles?: boolean } = {},
+) {
   const view = { c: opts.center ?? CENTRE, z: opts.zoom ?? 16.5 }
+  if (opts.stubTiles !== false) await page.route(TILE_HOSTS, (r) => r.fulfill({ status: 200, contentType: 'image/png', body: BLANK_PNG }))
+  const storage: Record<string, string> = opts.background === null ? {} : { 'ore.imagery': opts.background ?? 'none' }
+  Object.assign(storage, opts.storage ?? {})
   await page.addInitScript(
     ([view, storage]) => {
       if (sessionStorage.getItem('ore-e2e-init')) return
@@ -31,7 +40,7 @@ export async function openMap(page: Page, opts: { center?: [number, number]; zoo
       localStorage.setItem('ore.view', JSON.stringify(view))
       for (const [k, v] of Object.entries(storage)) localStorage.setItem(k, v)
     },
-    [view, opts.storage ?? {}] as const,
+    [view, storage] as const,
   )
   await page.goto('/')
   await page.waitForFunction(() => {

@@ -53,7 +53,7 @@ onMounted(async () => {
 })
 
 function add() {
-  const r: Row = { uid: ++uid, src: { id: '', name: '', type: 'tms', url: 'https://', attribution: '', maxZoom: 20, sourceTag: '' } }
+  const r: Row = { uid: ++uid, src: { id: '', name: '', type: 'tms', url: 'https://', attribution: '', maxZoom: 20, sourceTag: '', overlay: false } }
   rows.value.push(r)
   expanded.value = r.uid
 }
@@ -210,6 +210,10 @@ const textFields: { f: Field; label: MessageKey; placeholder: MessageKey; mono?:
                 <span v-for="m in errs(i, 'maxZoom')" :key="m" class="mt-0.5 block text-error">{{ m }}</span>
               </label>
             </div>
+            <label class="flex items-center gap-2 text-[11.5px] text-fg-2">
+              <input v-model="r.src.overlay" type="checkbox" class="accent-accent" data-field="overlay" />
+              {{ t('imagery.overlay') }}
+            </label>
           </div>
         </div>
         <div v-if="!rows.length" class="px-3 py-3 text-center text-[12px] text-fg-3">{{ t('imagery.empty') }}</div>

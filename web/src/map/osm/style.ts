@@ -2,6 +2,7 @@ import type { ExpressionSpecification, FilterSpecification, LayerSpecification, 
 import { OUT } from './transform'
 
 export const OSM_SRC = 'ore-osm'
+export const OSM_ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
 export const BACKGROUND = '#f2f2f2'
 export const SHADOW = '#f6634f'
 export const HIGHLIGHT = '#7092ff'
@@ -410,7 +411,7 @@ export function baseStyle(tiles: string, lat: number, dashes: Map<string, number
         tiles: [tiles],
         minzoom: TILE_MIN_ZOOM,
         maxzoom: TILE_MAX_ZOOM,
-        attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+        attribution: OSM_ATTRIBUTION,
       },
     },
     layers: [{ id: LAYER.background, type: 'background', paint: { 'background-color': BACKGROUND } }, ...osmLayers(lat, dashes)],

@@ -1,18 +1,17 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { HighlightFile } from '@/generated/models'
-import { useMapStore } from '@/stores/map'
 import { useHighlightsStore } from '@/stores/highlights'
 import { useRuleFilesStore } from '@/stores/ruleFiles'
 import Icon from './Icon.vue'
 import Spinner from './Spinner.vue'
 import Modal from './Modal.vue'
 import MapFeaturesPanel from './MapFeaturesPanel.vue'
+import BackgroundPicker from './BackgroundPicker.vue'
 import { useI18n } from '@/i18n'
 import type { Scope } from '@/lib/scope'
 
 const emit = defineEmits<{ edit: [path: string] }>()
-const mapStore = useMapStore()
 const hl = useHighlightsStore()
 const ruleFiles = useRuleFilesStore()
 const { t } = useI18n()
@@ -52,19 +51,8 @@ async function save() {
 <template>
   <div>
     <section class="space-y-2 border-b border-line px-3 py-3">
-      <div class="section-title">{{ t('highlight.imagery') }}</div>
-      <div class="relative">
-        <Icon name="image" :size="14" class="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-fg-3" />
-        <select
-          class="input appearance-none pr-7 pl-7"
-          :value="mapStore.imageryId ?? ''"
-          @change="mapStore.setImagery(($event.target as HTMLSelectElement).value || null)"
-        >
-          <option value="">{{ t('common.none') }}</option>
-          <option v-for="s in mapStore.allImagery" :key="s.id" :value="s.id">{{ s.name }}</option>
-        </select>
-        <Icon name="chevron-down" :size="13" class="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-fg-3" />
-      </div>
+      <div class="section-title">{{ t('imagery.background') }}</div>
+      <BackgroundPicker />
     </section>
 
     <MapFeaturesPanel />

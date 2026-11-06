@@ -281,6 +281,7 @@ data class ImagerySource(
     val attribution: String = "",
     val maxZoom: Int = 20,
     val sourceTag: String = "",
+    val overlay: Boolean = false,
 )
 
 @Serializable

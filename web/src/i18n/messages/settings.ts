@@ -83,13 +83,16 @@ export const settingsEn = {
   'imagery.empty': 'No sources. Add one or reset to the defaults.',
   'imagery.add': 'Add source',
   'imagery.resetDefaults': 'Reset to defaults',
+  'imagery.background': 'Background',
+  'imagery.overlays': 'Overlays',
+  'imagery.overlay': 'Overlay over the background',
   'imagery.saved': 'Imagery sources saved',
   'imagery.saveFailed': 'Saving imagery',
   'imagery.resetDone': 'Imagery sources reset to the defaults',
   'imagery.resetFailed': 'Reset imagery',
   'imagery.resetTitle': 'Reset imagery sources?',
   'imagery.resetBody':
-    'This replaces the list with the defaults (ČÚZK orthophoto, ČÚZK cadastral map, Esri World Imagery). Sources you added are removed.',
+    'This replaces the list with the defaults: backgrounds ČÚZK orthophoto, OpenStreetMap (Standard), Esri World Imagery and ČÚZK orthophoto (WMS), and the ČÚZK cadastral map overlay. Sources you added are removed.',
   'imagery.duplicateId': "duplicate id '{id}'",
 }
 
@@ -176,12 +179,15 @@ export const settingsCs: Translation<typeof settingsEn> = {
   'imagery.empty': 'Žádné zdroje. Přidejte nový nebo obnovte výchozí.',
   'imagery.add': 'Přidat zdroj',
   'imagery.resetDefaults': 'Obnovit výchozí',
+  'imagery.background': 'Pozadí',
+  'imagery.overlays': 'Překryvné vrstvy',
+  'imagery.overlay': 'Překryv nad pozadím',
   'imagery.saved': 'Zdroje snímků byly uloženy',
   'imagery.saveFailed': 'Uložení snímků',
   'imagery.resetDone': 'Zdroje snímků byly obnoveny na výchozí',
   'imagery.resetFailed': 'Obnovení snímků',
   'imagery.resetTitle': 'Obnovit výchozí zdroje snímků?',
   'imagery.resetBody':
-    'Seznam se nahradí výchozími zdroji (ortofoto ČÚZK, katastrální mapa ČÚZK, Esri World Imagery). Zdroje, které jste přidali, budou odebrány.',
+    'Seznam se nahradí výchozími zdroji: pozadí ortofoto ČÚZK, OpenStreetMap (Standard), Esri World Imagery a ortofoto ČÚZK (WMS) a překryvná katastrální mapa ČÚZK. Zdroje, které jste přidali, budou odebrány.',
   'imagery.duplicateId': 'duplicitní ID „{id}“',
 }

@@ -161,6 +161,7 @@ export interface ImagerySource {
   attribution: string
   maxZoom: number
   sourceTag: string
+  overlay: boolean
 }
 
 export interface UiEventDraftUpdated {
