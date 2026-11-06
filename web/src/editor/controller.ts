@@ -85,6 +85,7 @@ export class EditController {
   private hoverId: string | null = null
   private pointer: Pointer | null = null
   private suppressClick = false
+  private pointerType = 'mouse'
   private frame = 0
   private midFrame = 0
   private stateIds = new Map<string, Set<string>>()
@@ -117,6 +118,7 @@ export class EditController {
     m.on('move', this.onMapMove)
     m.on('moveend', this.onMoveEnd)
     m.on('mouseout', this.onOut)
+    m.getCanvasContainer().addEventListener('pointerdown', this.onPointerDown, true)
     m.boxZoom.disable()
     this.unsubscribe = this.adapter.onChange((diff) => {
       this.hooks.historyChanged()
@@ -136,6 +138,7 @@ export class EditController {
     m.off('move', this.onMapMove)
     m.off('moveend', this.onMoveEnd)
     m.off('mouseout', this.onOut)
+    m.getCanvasContainer().removeEventListener('pointerdown', this.onPointerDown, true)
     m.boxZoom.enable()
     m.doubleClickZoom.enable()
     m.getCanvas().style.cursor = ''
@@ -581,6 +584,15 @@ export class EditController {
     }
   }
 
+  private onPointerDown = (e: PointerEvent) => {
+    this.pointerType = e.pointerType || 'mouse'
+  }
+
+  private isTouch(e: MapMouseEvent): boolean {
+    const type = (e.originalEvent as PointerEvent).pointerType || this.pointerType
+    return type === 'touch' || type === 'pen'
+  }
+
   private onMapMove = () => {
     this.syncView()
     if (this.mode === 'select' && !this.midFrame) {
@@ -735,7 +747,9 @@ export class EditController {
         return
       }
       case 'add-point': {
-        const id = this.adapter.addPoint(this.snapAt(p, null, e.originalEvent.altKey))
+        let target = this.snapAt(p, null, e.originalEvent.altKey)
+        if (target.kind === 'node' && this.isTouch(e)) target = this.snapAt(p, null, true)
+        const id = this.adapter.addPoint(target)
         this.select([id])
         this.hooks.featureCreated?.(id)
         return

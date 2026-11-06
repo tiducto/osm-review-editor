@@ -136,6 +136,7 @@ fun main(args: Array<String>) {
         serializer<IdSchemaInfo>(), serializer<SmartPreset>(), serializer<Preset>(),
         serializer<HighlightList>(), serializer<HighlightEvaluation>(), serializer<CoverageStats>(),
         serializer<Scan>(), serializer<ScanReport>(), serializer<ScanDiff>(), serializer<ScanIssue>(), serializer<ScanDraftResult>(),
+        serializer<RemoteRequest>(),
     ).forEach(gen::addResponse)
     listOf(
         serializer<CreateDraftRequest>(), serializer<DraftFromRuleRequest>(), serializer<RuleIssuesRequest>(), serializer<ProposeChangesRequest>(),
@@ -144,6 +145,7 @@ fun main(args: Array<String>) {
         serializer<WriteRuleFileRequest>(), serializer<CreateRuleFileRequest>(), serializer<ValidateRuleFileRequest>(),
         serializer<PresetMatchRequest>(), serializer<PresetApplyRequest>(), serializer<ImportPresetRequest>(), serializer<DetachPresetRequest>(), serializer<PresetBulkApplyRequest>(),
         serializer<RunScanRequest>(), serializer<ScanDraftRequest>(), serializer<HighlightStatsRequest>(),
+        serializer<RemoteDecision>(),
     ).forEach(gen::addRequest)
     val out = File(args.firstOrNull() ?: "models.ts")
     out.parentFile.mkdirs()

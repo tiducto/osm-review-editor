@@ -3,6 +3,7 @@ package eu.tiducto.osmreview.server.api
 import eu.tiducto.osmreview.rules.PolygonScopes
 import eu.tiducto.osmreview.server.App
 import eu.tiducto.osmreview.server.core.DraftService
+import eu.tiducto.osmreview.server.core.NotFoundException
 import eu.tiducto.osmreview.server.core.ResolvedScope
 import eu.tiducto.osmreview.server.core.StateException
 import eu.tiducto.osmreview.shared.AppStatus
@@ -19,6 +20,7 @@ import eu.tiducto.osmreview.shared.MapFeature
 import eu.tiducto.osmreview.shared.OsmRef
 import eu.tiducto.osmreview.shared.OsmTarget
 import eu.tiducto.osmreview.shared.ProposeChangesRequest
+import eu.tiducto.osmreview.shared.RemoteDecision
 import eu.tiducto.osmreview.shared.ResolveConflictRequest
 import eu.tiducto.osmreview.shared.RuleRunResult
 import eu.tiducto.osmreview.shared.ReviewRequest
@@ -197,6 +199,7 @@ fun Route.apiRoutes(app: App) {
                     val id = call.parameters["id"]!!
                     app.account.requireToken()
                     if (app.merge.isMerging) throw StateException("Another merge is running")
+                    app.merge.requireNoOrphans(drafts.detail(id).changes)
                     app.scope.launch {
                         runCatching { app.merge.merge(id) }.onFailure { e ->
                             app.events.emit(
@@ -212,6 +215,13 @@ fun Route.apiRoutes(app: App) {
             }
         }
 
+        get("/remote/pending") { call.respond(app.remoteConfirmations.pending()) }
+        post("/remote/pending/{id}") {
+            val id = call.parameters["id"]!!
+            val decision = call.receive<RemoteDecision>()
+            if (!app.remoteConfirmations.decide(id, decision.accept)) throw NotFoundException("Remote-control request $id is no longer waiting for confirmation")
+            call.respond(HttpStatusCode.NoContent)
+        }
         post("/changes/{id}/review") { call.respond(drafts.review(call.parameters["id"]!!, call.receive<ReviewRequest>())) }
         post("/changes/{id}/resolve") {
             val req = call.receive<ResolveConflictRequest>()

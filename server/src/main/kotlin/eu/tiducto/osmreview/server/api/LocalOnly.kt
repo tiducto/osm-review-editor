@@ -22,7 +22,8 @@ val LocalOnly = createRouteScopedPlugin("LocalOnly", ::LocalOnlyConfig) {
             return@onCall
         }
         val origin = call.request.headers["Origin"] ?: return@onCall
-        if (call.request.httpMethod == HttpMethod.Get || call.request.httpMethod == HttpMethod.Head) return@onCall
+        val upgrade = call.request.headers["Upgrade"]?.equals("websocket", ignoreCase = true) == true
+        if (!upgrade && (call.request.httpMethod == HttpMethod.Get || call.request.httpMethod == HttpMethod.Head)) return@onCall
         val originHost = runCatching { Url(origin).host }.getOrNull()
         if (originHost == null || originHost !in hosts) {
             call.respond(HttpStatusCode.Forbidden, ApiError("Forbidden", "Cross-site request from $origin refused"))

@@ -3,6 +3,7 @@ import { draftsEn } from './messages/drafts'
 import { editorEn } from './messages/editor'
 import { mapEn } from './messages/map'
 import { presetsEn } from './messages/presets'
+import { remoteEn } from './messages/remote'
 import { reviewEn } from './messages/review'
 import { rulesEn } from './messages/rules'
 import { settingsEn } from './messages/settings'
@@ -21,5 +22,6 @@ export const en = {
   ...reviewEn,
   ...editorEn,
   ...presetsEn,
+  ...remoteEn,
   ...shellEn,
 }

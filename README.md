@@ -280,7 +280,10 @@ the full preset editor. Keys: `↵` approve, `E` edit, `S` skip, `R` reject (wit
 read), `O` open in iD, `J`/`K` next and previous, `Space` toggle before/after, `F` zoom to the change (so the Map data pane has no key while reviewing).
 
 Changes that depend on each other (a way and its new nodes, a delete of a node a way no longer uses)
-are reviewed per object with their dependencies and always uploaded together. Before upload every
+are reviewed per object with their dependencies and always uploaded together. An untagged new node
+can only be approved together with a way that uses it (the review asks to approve the way too), and
+rejecting a way also drops the untagged new nodes only it used, so no upload leaves orphan nodes
+behind; the server enforces this for API and MCP callers as well. Before upload every
 change is checked against the live version: tag-only changes are rebased automatically, geometry
 conflicts and stale deletes are marked for a three-way resolve. The merge splits approved changes into
 changesets of up to 500 by rule and area, with `comment` and `source` tags from the draft and the
@@ -363,10 +366,15 @@ The app listens on `127.0.0.1:8111` like JOSM (`/version`, `/zoom`, `/load_and_z
 tab to the object. If no tab is open, the command is queued and replayed when one connects. Real JOSM
 cannot run at the same time (same port).
 
-- `addtags` on `/load_and_zoom` and `/load_object` creates one one-change draft per selected object,
-  ready to approve; `changeset_comment` and `changeset_source` become the changeset's tags.
+- `addtags` on `/load_and_zoom` and `/load_object` creates one one-change draft per selected object
+  once you confirm it, ready to review; `changeset_comment` and `changeset_source` become the changeset's tags.
 - `/load_object` with `relation_members=true` also frames the relation's members; objects missing
   from the mirror are fetched live.
+- Remote control is treated as untrusted, like JOSM does: `/import`, `/load_data`, `/add_node` and
+  `addtags` only run after you confirm them in the open tab (the dialog shows the URL and host or
+  the tags), and even then only create a draft for review. `/import` fetches only `http(s)` URLs
+  whose host is a public address (no loopback, private, link-local or similar targets, also after
+  redirects), with a size and time limit.
 - `/import` and `/load_data` import tag changes of existing objects and new tagged nodes. They do not
   import geometry: moved nodes, changed way node lists or relation members, deletions, new ways and
   relations and untagged new nodes are skipped and counted in the response and the draft description.

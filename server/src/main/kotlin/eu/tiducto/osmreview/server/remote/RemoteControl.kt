@@ -16,14 +16,10 @@ import eu.tiducto.osmreview.shared.ProposalOutcome
 import eu.tiducto.osmreview.shared.ProposedChange
 import eu.tiducto.osmreview.shared.TagEdit
 import eu.tiducto.osmreview.shared.UiEvent
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.statement.bodyAsText
+import eu.tiducto.osmreview.shared.RemoteRequest
 import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
-import io.ktor.http.isSuccess
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.request.receiveParameters
@@ -33,6 +29,8 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.options
 import io.ktor.server.routing.post
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -77,9 +75,9 @@ fun Route.remoteControlRoutes(app: App) {
         val p = call.request.queryParameters
         val bbox = p.bbox() ?: return@get call.josmError("Missing left/right/top/bottom")
         val select = parseRefs(p["select"])
-        val draftIds = draftsFromAddTags(app, select, p)
+        val (draftIds, note) = confirmedAddTags(app, call, select, p) ?: return@get
         app.events.emit(UiEvent.RemoteCommand("load_and_zoom", bbox = bbox, select = select, draftId = draftIds.firstOrNull(), draftIds = draftIds))
-        call.ok()
+        call.ok(note)
     }
 
     get("/load_object") {
@@ -88,24 +86,40 @@ fun Route.remoteControlRoutes(app: App) {
         if (refs.isEmpty()) return@get call.josmError("Missing objects")
         val members = if (p["relation_members"].toBoolean()) relationMembers(app, refs) else emptyList()
         val bbox = bboxFor(app, (refs + members).distinct())
-        val draftIds = draftsFromAddTags(app, refs, p)
+        val (draftIds, note) = confirmedAddTags(app, call, refs, p) ?: return@get
         app.events.emit(UiEvent.RemoteCommand("load_object", bbox = bbox, select = refs, draftId = draftIds.firstOrNull(), draftIds = draftIds))
-        call.ok()
+        call.ok(note)
     }
 
     get("/import") {
         val p = call.request.queryParameters
-        val url = p["url"] ?: return@get call.josmError("Missing url")
-        val resp = app.http.get(url) { header(HttpHeaders.UserAgent, app.config.userAgent) }
-        check(resp.status.isSuccess()) { "Could not fetch $url: ${resp.status}" }
-        val result = draftFromOsmXml(app, resp.bodyAsText(), "Imported from $url", p.meta())
+        val url = p["url"]?.trim()?.ifEmpty { null } ?: return@get call.josmError("Missing url")
+        val target = withContext(Dispatchers.IO) { app.remoteFetcher.target(url) }
+        val verdict = call.confirm(app) { id, created, expires ->
+            RemoteRequest(
+                id, "import", url = url, host = target.host.removePrefix("[").removeSuffix("]"),
+                changesetComment = p["changeset_comment"], changesetSource = p["changeset_source"], createdAt = created, expiresAt = expires,
+            )
+        } ?: return@get
+        if (verdict != RemoteVerdict.ACCEPTED) return@get call.denied(app, verdict)
+        val xml = app.remoteFetcher.fetch(url)
+        val result = draftFromOsmXml(app, xml, "Imported from $url", p.meta())
         app.events.emit(UiEvent.RemoteCommand("import", draftId = result.draftId, draftIds = listOf(result.draftId), message = result.skipped))
         call.ok(result.skipped)
     }
 
     suspend fun loadData(call: ApplicationCall, params: Parameters) {
         val data = params["data"] ?: return call.josmError("Missing data")
-        val result = draftFromOsmXml(app, data, params["layer_name"] ?: "Loaded data", params.meta())
+        val elements = parseOsmXml(data)
+        val title = params["layer_name"]?.trim()?.ifEmpty { null } ?: "Loaded data"
+        val verdict = call.confirm(app) { id, created, expires ->
+            RemoteRequest(
+                id, "load_data", title = title, objectCount = elements.size,
+                changesetComment = params["changeset_comment"], changesetSource = params["changeset_source"], createdAt = created, expiresAt = expires,
+            )
+        } ?: return
+        if (verdict != RemoteVerdict.ACCEPTED) return call.denied(app, verdict)
+        val result = draftFromOsmXml(app, data, title, params.meta())
         app.events.emit(UiEvent.RemoteCommand("load_data", draftId = result.draftId, draftIds = listOf(result.draftId), message = result.skipped))
         call.ok(result.skipped)
     }
@@ -114,9 +128,16 @@ fun Route.remoteControlRoutes(app: App) {
 
     get("/add_node") {
         val p = call.request.queryParameters
-        val lat = p["lat"]?.toDoubleOrNull() ?: return@get call.josmError("Missing lat")
-        val lon = p["lon"]?.toDoubleOrNull() ?: return@get call.josmError("Missing lon")
+        val lat = p["lat"]?.toDoubleOrNull()?.takeIf { it in -90.0..90.0 } ?: return@get call.josmError("Missing lat")
+        val lon = p["lon"]?.toDoubleOrNull()?.takeIf { it in -180.0..180.0 } ?: return@get call.josmError("Missing lon")
         val tags = parseAddTags(p["addtags"])
+        val verdict = call.confirm(app) { id, created, expires ->
+            RemoteRequest(
+                id, "add_node", tags = tags, location = LngLat(lon, lat),
+                changesetComment = p["changeset_comment"], changesetSource = p["changeset_source"], createdAt = created, expiresAt = expires,
+            )
+        } ?: return@get
+        if (verdict != RemoteVerdict.ACCEPTED) return@get call.denied(app, verdict)
         val draft = app.drafts.createDraft("Add node at $lat,$lon", "From JOSM remote control", Authors.REMOTE, meta = p.meta())
         app.drafts.proposeChanges(
             draft.id,
@@ -130,6 +151,8 @@ fun Route.remoteControlRoutes(app: App) {
     get("/imagery") {
         val p = call.request.queryParameters
         val url = p["url"] ?: return@get call.josmError("Missing url")
+        val scheme = url.substringBefore("://", "").lowercase()
+        if (scheme != "http" && scheme != "https") return@get call.josmError("Only http and https imagery URLs are allowed")
         val type = p["type"]?.lowercase() ?: "tms"
         val source = ImagerySource(
             id = "remote-${url.hashCode().toUInt()}",
@@ -145,9 +168,39 @@ fun Route.remoteControlRoutes(app: App) {
 
 private fun Parameters.meta() = DraftMeta(changesetComment = this["changeset_comment"], changesetSource = this["changeset_source"])
 
-private suspend fun draftsFromAddTags(app: App, refs: List<OsmRef>, p: Parameters): List<String> {
+private suspend fun confirmedAddTags(app: App, call: ApplicationCall, refs: List<OsmRef>, p: Parameters): Pair<List<String>, String?>? {
     val tags = parseAddTags(p["addtags"])
-    if (tags.isEmpty() || refs.isEmpty()) return emptyList()
+    if (tags.isEmpty() || refs.isEmpty()) return emptyList<String>() to null
+    val verdict = call.confirm(app) { id, created, expires ->
+        RemoteRequest(
+            id, "addtags", tags = tags, objects = refs,
+            changesetComment = p["changeset_comment"], changesetSource = p["changeset_source"], createdAt = created, expiresAt = expires,
+        )
+    } ?: return null
+    if (verdict != RemoteVerdict.ACCEPTED) return emptyList<String>() to "Tags not added: ${verdictText(app, verdict)}"
+    return draftsFromAddTags(app, refs, tags, p) to null
+}
+
+private suspend fun ApplicationCall.confirm(app: App, build: (String, String, String) -> RemoteRequest): RemoteVerdict? =
+    try {
+        app.remoteConfirmations.ask(build)
+    } catch (e: TooManyRemoteRequestsException) {
+        respondText(e.message!!, ContentType.Text.Plain, HttpStatusCode.TooManyRequests)
+        null
+    }
+
+private fun verdictText(app: App, verdict: RemoteVerdict) = when (verdict) {
+    RemoteVerdict.REJECTED -> "the request was rejected in the editor"
+    else -> "the request was not confirmed in the editor within ${app.remoteConfirmations.timeout.inWholeSeconds} s"
+}
+
+private suspend fun ApplicationCall.denied(app: App, verdict: RemoteVerdict) =
+    respondText(verdictText(app, verdict).replaceFirstChar { it.uppercase() }, ContentType.Text.Plain, HttpStatusCode.Forbidden)
+
+private fun parseOsmXml(xml: String): List<OsmElement> =
+    runCatching { OsmXml.parseElements(xml) }.getOrElse { throw IllegalArgumentException("Could not parse OSM XML: ${it.message}") }
+
+private suspend fun draftsFromAddTags(app: App, refs: List<OsmRef>, tags: Map<String, String>, p: Parameters): List<String> {
     val summary = tags.entries.joinToString(", ") { "${it.key}=${it.value}" }
     val comment = p["changeset_comment"]?.trim()?.ifBlank { null }
     val ids = LinkedHashSet<String>()
@@ -173,7 +226,7 @@ private suspend fun draftsFromAddTags(app: App, refs: List<OsmRef>, p: Parameter
 private data class ImportResult(val draftId: String, val skipped: String?)
 
 private suspend fun draftFromOsmXml(app: App, xml: String, title: String, meta: DraftMeta): ImportResult {
-    val els = runCatching { OsmXml.parseElements(xml) }.getOrElse { throw IllegalArgumentException("Could not parse OSM XML: ${it.message}") }
+    val els = parseOsmXml(xml)
     val marked = els.any { it.action != null }
     val deleted = els.filter { it.action == "delete" || !it.visible }
     val kept = els.filterNot { it.action == "delete" || !it.visible }

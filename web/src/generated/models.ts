@@ -208,6 +208,17 @@ export interface UiEventRemoteCommand {
   message: string | null
 }
 
+export interface UiEventRemoteConfirm {
+  type: 'remote_confirm'
+  request: RemoteRequest
+}
+
+export interface UiEventRemoteConfirmResolved {
+  type: 'remote_confirm_resolved'
+  id: string
+  accepted: boolean
+}
+
 export interface UiEventRulesChanged {
   type: 'rules_changed'
   changed: string[]
@@ -221,13 +232,14 @@ export interface UiEventScanFinished {
   issueCount: number
 }
 
-export type UiEvent = UiEventDraftUpdated | UiEventMergeProgress | UiEventMirrorStatus | UiEventMirrorSwapped | UiEventPushView | UiEventRemoteCommand | UiEventRulesChanged | UiEventScanFinished
+export type UiEvent = UiEventDraftUpdated | UiEventMergeProgress | UiEventMirrorStatus | UiEventMirrorSwapped | UiEventPushView | UiEventRemoteCommand | UiEventRemoteConfirm | UiEventRemoteConfirmResolved | UiEventRulesChanged | UiEventScanFinished
 
 export interface ApiError {
   error: string
   detail: string | null
   code: string | null
   openChanges: OpenChangeElsewhere[] | null
+  refs: OsmRef[] | null
 }
 
 export interface SearchHit {
@@ -481,6 +493,22 @@ export interface ScanDraftResult {
   skipped: number
 }
 
+export interface RemoteRequest {
+  id: string
+  command: string
+  url: string | null
+  host: string | null
+  tags: Record<string, string>
+  objects: OsmRef[]
+  location: LngLat | null
+  title: string | null
+  objectCount: number | null
+  changesetComment: string | null
+  changesetSource: string | null
+  createdAt: string
+  expiresAt: string
+}
+
 export interface CreateDraftRequest {
   title: string
   description?: string
@@ -636,6 +664,10 @@ export interface HighlightStatsRequest {
   area?: string | null
   bbox?: BBox | null
   polygon?: JsonValue | null
+}
+
+export interface RemoteDecision {
+  accept: boolean
 }
 
 export type DraftStatus = 'open' | 'merged' | 'partially_merged' | 'closed'

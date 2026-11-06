@@ -374,7 +374,8 @@ class GeometryDraftTest {
         )
         val way = ch.getValue(w(-1))
         val node = ch.getValue(n(-1))
-        d.changes.forEach { drafts.review(it.id, ReviewRequest(ReviewDecision.APPROVE)) }
+        drafts.review(way.id, ReviewRequest(ReviewDecision.APPROVE, cascade = true))
+        assertTrue(drafts.detail(d.draft.id).changes.all { it.status == ChangeStatus.APPROVED })
 
         val blocked = assertFailsWith<StateException> { drafts.review(node.id, ReviewRequest(ReviewDecision.REJECT, comment = "no")) }
         assertTrue("cascade" in blocked.message!!, blocked.message)
@@ -385,13 +386,129 @@ class GeometryDraftTest {
         val w = reload(way)
         assertEquals(ChangeStatus.REJECTED, w.status)
         assertTrue("depends on" in w.reviews.last().comment!!)
-        assertEquals(ChangeStatus.APPROVED, reload(ch.getValue(n(-2))).status)
+        val other = reload(ch.getValue(n(-2)))
+        assertEquals(ChangeStatus.REJECTED, other.status)
+        assertTrue(other.reviews.last().comment!!.startsWith("dropped with"), other.reviews.last().comment)
 
         drafts.review(way.id, ReviewRequest(ReviewDecision.RESET))
         assertFailsWith<StateException> { drafts.review(way.id, ReviewRequest(ReviewDecision.APPROVE)) }
         drafts.review(node.id, ReviewRequest(ReviewDecision.RESET))
+        drafts.review(other.id, ReviewRequest(ReviewDecision.RESET))
         drafts.review(way.id, ReviewRequest(ReviewDecision.APPROVE, cascade = true))
         assertEquals(ChangeStatus.APPROVED, reload(node).status)
+    }
+
+    @Test
+    fun untaggedNewNodeCannotBeApprovedWithoutItsWay(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        connect()
+        val (d, ch) = import(
+            osmChange(
+                create = """<node id="-1" lon="17.95" lat="49.95"/><node id="-2" lon="17.951" lat="49.951"/>""" +
+                    """<node id="-3" lon="17.952" lat="49.952"><tag k="amenity" v="bench"/></node>""" +
+                    """<way id="-1"><nd ref="-1"/><nd ref="-2"/><tag k="highway" v="footway"/></way>""",
+            ),
+        )
+        val way = ch.getValue(w(-1))
+        val node = ch.getValue(n(-1))
+        val bench = ch.getValue(n(-3))
+
+        val refused = assertFailsWith<OrphanNodeException> { drafts.review(node.id, ReviewRequest(ReviewDecision.APPROVE)) }
+        assertTrue("${node.ref} is an untagged new node used only by ${way.ref} (pending)" in refused.message!!, refused.message)
+        assertTrue("orphan" in refused.message!!, refused.message)
+        assertEquals(listOf(node.ref), refused.nodes)
+        assertEquals(listOf(way.ref), refused.owners)
+        assertEquals(ChangeStatus.PENDING, reload(node).status)
+        assertEquals(ChangeStatus.PENDING, reload(way).status)
+        assertFailsWith<OrphanNodeException> { drafts.review(node.id, ReviewRequest(ReviewDecision.EDIT, tags = emptyMap())) }
+
+        drafts.review(bench.id, ReviewRequest(ReviewDecision.APPROVE))
+        assertEquals(ChangeStatus.APPROVED, reload(bench).status)
+
+        drafts.review(node.id, ReviewRequest(ReviewDecision.APPROVE, cascade = true))
+        val after = drafts.detail(d.draft.id).changes
+        assertTrue(after.all { it.status == ChangeStatus.APPROVED }, after.map { it.ref to it.status }.toString())
+        assertTrue(reload(way).reviews.last().comment!!.contains("orphan"))
+
+        assertTrue(merge.preview(d.draft.id).blocked.isEmpty())
+        merge.merge(d.draft.id)
+        val xml = osm.uploads.single()
+        assertTrue("<way id=\"${way.ref.id}\"" in xml, xml)
+    }
+
+    @Test
+    fun untaggedNewNodeWithTagsAddedInReviewStandsAlone(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        val (_, ch) = import(
+            osmChange(
+                create = """<node id="-1" lon="17.95" lat="49.95"/><node id="-2" lon="17.951" lat="49.951"/>""" +
+                    """<way id="-1"><nd ref="-1"/><nd ref="-2"/><tag k="highway" v="footway"/></way>""",
+            ),
+        )
+        val node = ch.getValue(n(-1))
+        drafts.review(node.id, ReviewRequest(ReviewDecision.EDIT, tags = mapOf("barrier" to "gate")))
+        assertEquals(ChangeStatus.APPROVED, reload(node).status)
+        assertEquals(ChangeStatus.PENDING, reload(ch.getValue(w(-1))).status)
+    }
+
+    @Test
+    fun rejectingAWayDropsOnlyItsExclusiveUntaggedNodes(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        connect()
+        val (d, ch) = import(
+            osmChange(
+                create = """<node id="-1" lon="17.95" lat="49.95"/><node id="-2" lon="17.951" lat="49.951"/>""" +
+                    """<node id="-3" lon="17.952" lat="49.952"/><node id="-4" lon="17.953" lat="49.953"><tag k="barrier" v="gate"/></node>""" +
+                    """<way id="-1"><nd ref="-1"/><nd ref="-2"/><nd ref="-4"/><tag k="highway" v="footway"/></way>""" +
+                    """<way id="-2"><nd ref="-2"/><nd ref="-3"/><tag k="highway" v="footway"/></way>""",
+            ),
+        )
+        val a = ch.getValue(w(-1))
+        val b = ch.getValue(w(-2))
+        drafts.review(a.id, ReviewRequest(ReviewDecision.APPROVE, cascade = true))
+        drafts.review(b.id, ReviewRequest(ReviewDecision.APPROVE, cascade = true))
+        assertTrue(drafts.detail(d.draft.id).changes.all { it.status == ChangeStatus.APPROVED })
+
+        drafts.review(a.id, ReviewRequest(ReviewDecision.REJECT, comment = "not there"))
+        val exclusive = reload(ch.getValue(n(-1)))
+        assertEquals(ChangeStatus.REJECTED, exclusive.status)
+        assertTrue(exclusive.reviews.last().comment!!.startsWith("dropped with ${a.ref}"), exclusive.reviews.last().comment)
+        assertEquals(ChangeStatus.APPROVED, reload(ch.getValue(n(-2))).status)
+        assertEquals(ChangeStatus.APPROVED, reload(ch.getValue(n(-3))).status)
+        assertEquals(ChangeStatus.APPROVED, reload(ch.getValue(n(-4))).status)
+
+        val preview = merge.preview(d.draft.id)
+        assertTrue(preview.blocked.isEmpty(), preview.blocked.toString())
+        assertEquals(4, preview.groups.sumOf { it.changeIds.size })
+
+        drafts.review(b.id, ReviewRequest(ReviewDecision.SEND_TO_ID))
+        assertEquals(ChangeStatus.REJECTED, reload(ch.getValue(n(-2))).status)
+        assertEquals(ChangeStatus.REJECTED, reload(ch.getValue(n(-3))).status)
+        assertEquals(ChangeStatus.APPROVED, reload(ch.getValue(n(-4))).status)
+    }
+
+    @Test
+    fun mergeRefusesApprovedOrphanNodes(): Unit = runBlocking {
+        if (!docker) return@runBlocking println("Docker not available, skipping")
+        connect()
+        val (d, ch) = import(
+            osmChange(
+                create = """<node id="-1" lon="17.95" lat="49.95"/><node id="-2" lon="17.951" lat="49.951"/>""" +
+                    """<way id="-1"><nd ref="-1"/><nd ref="-2"/><tag k="highway" v="footway"/></way>""",
+            ),
+        )
+        val node = ch.getValue(n(-1))
+        repo.updateChange(java.util.UUID.fromString(node.id)) { status = ChangeStatus.APPROVED }
+
+        val preview = merge.preview(d.draft.id)
+        val blocked = preview.blocked.single()
+        assertEquals(node.id, blocked.changeId)
+        assertTrue("orphan" in blocked.message, blocked.message)
+        assertTrue(preview.groups.isEmpty())
+
+        val refused = assertFailsWith<OrphanNodeException> { merge.merge(d.draft.id) }
+        assertTrue("${node.ref}" in refused.message!! && "orphan" in refused.message!!, refused.message)
+        assertTrue(osm.uploads.isEmpty())
     }
 
     @Test
