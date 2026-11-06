@@ -14,7 +14,7 @@ import { useMapStore } from './map'
 import { useDraftsStore } from './drafts'
 import { useEditIssuesStore } from './editIssues'
 
-export const EDIT_MIN_ZOOM = 15
+export const EDIT_MIN_ZOOM = 16
 
 let session: EditSession | null = null
 

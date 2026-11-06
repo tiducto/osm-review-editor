@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useEditorStore } from '@/stores/editor'
+import { EDIT_MIN_ZOOM, useEditorStore } from '@/stores/editor'
 import { useMapStore } from '@/stores/map'
 import { useEditIssuesStore } from '@/stores/editIssues'
 import { useI18n } from '@/i18n'
@@ -44,8 +44,8 @@ function isActive(mode: string) {
     <div v-if="!editor.active" class="flex items-center gap-2 rounded-lg border border-line bg-surface/95 p-1 shadow-panel backdrop-blur">
       <button
         class="btn btn-primary btn-sm"
-        :disabled="editor.starting || mapStore.zoom < 15"
-        :title="mapStore.zoom < 15 ? t('toolbar.zoomToEdit') : t('toolbar.enterTitle')"
+        :disabled="editor.starting || mapStore.zoom < EDIT_MIN_ZOOM"
+        :title="mapStore.zoom < EDIT_MIN_ZOOM ? t('toolbar.zoomToEdit') : t('toolbar.enterTitle')"
         data-testid="edit-enter"
         @click="editor.enter()"
       >

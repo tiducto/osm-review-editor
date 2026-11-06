@@ -28,15 +28,19 @@ async function featurePoint(page: Page): Promise<[number, number]> {
   }, rect)
 }
 
-test('buildings render at every zoom step from 13 to 19', async ({ page }) => {
+test('buildings render at every zoom step from 16 to 19 and not below 16', async ({ page }) => {
   test.setTimeout(240_000)
   await openMap(page)
   const counts: string[] = []
-  for (let z = 13; z <= 19.001; z += 0.25) {
+  for (let z = 16; z <= 19.001; z += 0.25) {
     await jumpTo(page, z)
     const n = await renderedCount(page, { building: true })
     counts.push(`${z.toFixed(2)}:${n}`)
     expect(n, `buildings at zoom ${z.toFixed(2)} (${counts.join(' ')})`).toBeGreaterThan(0)
+  }
+  for (const z of [12, 13, 14, 15, 15.7]) {
+    await jumpTo(page, z)
+    expect(await renderedCount(page, { building: true }), `buildings at zoom ${z}`).toBe(0)
   }
 })
 
@@ -142,20 +146,27 @@ test('zoom thresholds switch the expected layers', async ({ page }) => {
       buildings: await renderedCount(page, { building: true }),
     }
   }
-  const z14 = await at(14.5)
-  expect(z14.dots).toBeGreaterThan(0)
-  expect(z14.pins).toBe(0)
-  expect(z14.vertices).toBe(0)
-  expect(z14.lines).toBeGreaterThan(0)
+  const hint = page.getByTestId('zoom-hint')
+  for (const z of [12, 14.5, 15.7]) {
+    const r = await at(z)
+    expect(r, `nothing from the OSM layer at ${z}`).toEqual({ dots: 0, pins: 0, addr: 0, vertices: 0, lines: 0, buildings: 0 })
+    await expect(hint).toHaveText('Zoom in to see and edit OSM data')
+    await expect(page.getByTestId('edit-enter')).toBeDisabled()
+  }
   const z16 = await at(16)
   expect(z16.dots).toBe(0)
   expect(z16.pins).toBeGreaterThan(0)
   expect(z16.addr).toBeGreaterThan(0)
   expect(z16.vertices).toBeGreaterThan(0)
-  for (const z of [12, 13, 15, 17, 18]) {
+  await expect(page.getByText('Zoom in to see and edit OSM data')).toHaveCount(0)
+  await expect(page.getByTestId('edit-enter')).toBeEnabled()
+  for (const z of [17, 18]) {
     const r = await at(z)
     expect(r.lines, `lines at ${z}`).toBeGreaterThan(0)
+    expect(r.pins, `icons at ${z}`).toBeGreaterThan(0)
   }
+  const tiles = await page.evaluate(() => (window as unknown as { __oreMap: any }).__oreMap.getSource('ore-osm').minzoom)
+  expect(tiles).toBe(13)
   const z19 = await at(19)
   expect(z19.buildings).toBeGreaterThan(0)
   expect(z19.lines).toBeGreaterThan(0)
@@ -194,6 +205,20 @@ test('quick filter highlights draw and clear', async ({ page }) => {
   })
   expect(hl).toBeGreaterThan(0)
   expect(await renderedCount(page, { building: true })).toBeGreaterThan(0)
+  for (const z of [14, 15.5]) {
+    await jumpTo(page, z)
+    const below = await page.evaluate(() => {
+      const m = (window as unknown as { __oreMap: any }).__oreMap
+      const ids = m.getStyle().layers.filter((l: any) => l.id.startsWith('ore-hl-') && l.id !== 'ore-hl-dim').map((l: any) => l.id)
+      return m.queryRenderedFeatures({ layers: ids }).length
+    })
+    expect(below, `highlights at ${z}`).toBeGreaterThan(0)
+    const baseHidden = await page.evaluate(() => {
+      const m = (window as unknown as { __oreMap: any }).__oreMap
+      return ['osm-fill', 'osm-pin', 'osm-ground-stroke'].every((id) => m.style.getLayer(id).isHidden(m.getZoom()))
+    })
+    expect(baseHidden, `base layer hidden at ${z}`).toBe(true)
+  }
   await page.getByTestId('quick-filter').fill('')
   await expect.poll(async () => (await hlLayers()).length).toBe(0)
 })

@@ -17,6 +17,7 @@ export const panels = {
   imageryOptions: (page: Page): Locator => page.getByTestId('imagery-list').locator('input[type="radio"]'),
   background: (page: Page, id: string): Locator => page.getByTestId(`background-${id}`).locator('input'),
   overlay: (page: Page, id: string): Locator => page.getByTestId(`overlay-${id}`).locator('input'),
+  zoomHint: (page: Page): Locator => page.getByTestId('zoom-hint'),
   draftRow: (page: Page, id: string): Locator => page.getByTestId(`draft-${id}`),
   draftRowReview: (page: Page, id: string): Locator => page.getByTestId(`draft-${id}`).getByRole('button', { name: 'Review' }),
   reviewRef: (page: Page): Locator => page.getByTestId('review-ref'),

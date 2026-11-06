@@ -14,7 +14,7 @@ import { asGeometry } from '@/lib/geo'
 import { PolygonDraw, drawJustEnded, type DrawState } from './draw'
 import { applyFeatureFilters } from './osm/features'
 import { changeKindColor, changeKindLabel, type ChangeKind } from '@/lib/colors'
-import { baseStyle, DASHED_LAYERS, dashExpr, HOVER_LAYERS, INTERACTIVE_OSM, lowZoomThreshold, OSM_SRC, parseDash } from './osm/style'
+import { baseStyle, DATA_MIN_ZOOM, DASHED_LAYERS, dashExpr, HOVER_LAYERS, INTERACTIVE_OSM, lowZoomThreshold, OSM_SRC, parseDash } from './osm/style'
 import { clearTileCache, gateTiles, registerTileProtocol, tileUrl } from './osm/protocol'
 import { addOneway, addPatterns, addShield } from './osm/icons'
 import { PATTERN_IMAGES } from './osm/patterns'
@@ -416,6 +416,7 @@ onBeforeUnmount(() => {
 
 const zoomHint = computed(() => {
   if (drafts.reviewing) return null
+  if (mapStore.zoom < DATA_MIN_ZOOM) return t('shell.map.zoomForData')
   if (rules.needsZoom) return t('shell.map.needsZoom')
   return null
 })
@@ -469,7 +470,7 @@ const currentHasGeometryChange = computed(() => {
         </span>
       </div>
       <Transition name="fade">
-        <div v-if="zoomHint" class="rounded-full border border-line bg-surface/95 px-3 py-1 text-[12px] text-fg-2 shadow-panel backdrop-blur">
+        <div v-if="zoomHint" data-testid="zoom-hint" class="rounded-full border border-line bg-surface/95 px-3 py-1 text-[12px] text-fg-2 shadow-panel backdrop-blur">
           {{ zoomHint }}
         </div>
       </Transition>
