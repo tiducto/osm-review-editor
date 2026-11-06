@@ -5,6 +5,7 @@ import { draftsCs } from './messages/drafts'
 import { editorCs } from './messages/editor'
 import { mapCs } from './messages/map'
 import { presetsCs } from './messages/presets'
+import { remoteCs } from './messages/remote'
 import { reviewCs } from './messages/review'
 import { rulesCs } from './messages/rules'
 import { settingsCs } from './messages/settings'
@@ -25,5 +26,6 @@ export const cs: Messages = {
   ...reviewCs,
   ...editorCs,
   ...presetsCs,
+  ...remoteCs,
   ...shellCs,
 }

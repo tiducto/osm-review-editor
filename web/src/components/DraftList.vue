@@ -71,6 +71,7 @@ function isCurrent(d: Draft) {
           <tr
             v-for="d in drafts.visibleDrafts"
             :key="d.id"
+            :data-testid="`draft-${d.id}`"
             class="group cursor-pointer border-b border-line"
             :class="isCurrent(d) ? 'bg-accent-soft' : 'hover:bg-surface-2'"
             @click="drafts.open(d.id)"

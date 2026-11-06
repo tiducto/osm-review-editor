@@ -314,7 +314,7 @@ const shortcuts = computed(() => [
             </div>
           </div>
           <div class="mt-0.5 flex items-center gap-2 font-mono text-[11.5px] text-fg-3">
-            {{ refString(c.ref) }}<span v-if="c.baseVersion">· v{{ c.baseVersion }}</span>
+            <span data-testid="review-ref">{{ refString(c.ref) }}</span><span v-if="c.baseVersion">· v{{ c.baseVersion }}</span>
             <span class="font-sans">· {{ relativeTime(c.createdAt) }}</span>
           </div>
         </div>
@@ -428,13 +428,13 @@ const shortcuts = computed(() => [
 
     <ConfirmDialog
       v-if="drafts.cascadePrompt"
-      :title="drafts.cascadePrompt.decision === 'approve' || drafts.cascadePrompt.decision === 'edit' ? t('shell.review.cascadeApproveTitle') : t('shell.review.cascadeRejectTitle')"
-      :confirm-label="drafts.cascadePrompt.decision === 'approve' || drafts.cascadePrompt.decision === 'edit' ? t('shell.review.approveAll') : t('shell.review.rejectAll')"
+      :title="drafts.cascadePrompt.orphan ? t('shell.review.orphanTitle') : drafts.cascadePrompt.decision === 'approve' || drafts.cascadePrompt.decision === 'edit' ? t('shell.review.cascadeApproveTitle') : t('shell.review.cascadeRejectTitle')"
+      :confirm-label="drafts.cascadePrompt.orphan ? t('shell.review.approveWithWay') : drafts.cascadePrompt.decision === 'approve' || drafts.cascadePrompt.decision === 'edit' ? t('shell.review.approveAll') : t('shell.review.rejectAll')"
       :danger="drafts.cascadePrompt.decision === 'reject' || drafts.cascadePrompt.decision === 'send_to_id'"
       @confirm="drafts.cascadePrompt.resolve(true)"
       @cancel="drafts.cascadePrompt.resolve(false)"
     >
-      <p>{{ drafts.cascadePrompt.message }}</p>
+      <p data-testid="cascade-message">{{ drafts.cascadePrompt.message }}</p>
       <p v-if="drafts.cascadePrompt.links.length" class="mt-2 font-mono text-[11.5px]" data-testid="cascade-refs">
         {{ drafts.cascadePrompt.links.map((l) => refString(l.ref)).join(' ') }}
       </p>
@@ -444,13 +444,14 @@ const shortcuts = computed(() => [
       <div class="grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-1.5">
         <button
           class="btn btn-primary h-8"
+          data-testid="review-approve"
           :disabled="drafts.busy || c.status === 'conflict' || c.status === 'uploaded' || c.status === 'approved'"
           @click="drafts.approve()"
         >
           <Spinner v-if="drafts.busy" :size="12" /><Icon v-else name="check" :size="14" :stroke="2.2" /> {{ t('shell.review.approve') }} <span class="kbd border-white/30 bg-white/15 text-white">↵</span>
         </button>
         <button class="btn h-8" :disabled="c.status === 'uploaded'" :title="t('shell.review.editTitle')" @click="startEdit"><Icon name="edit" :size="13" /> {{ t('common.edit') }}</button>
-        <button class="btn h-8" :title="t('shell.review.skipTitle')" @click="drafts.nextOpen()"><Icon name="skip" :size="13" /> {{ t('shell.review.skip') }}</button>
+        <button class="btn h-8" data-testid="review-skip" :title="t('shell.review.skipTitle')" @click="drafts.nextOpen()"><Icon name="skip" :size="13" /> {{ t('shell.review.skip') }}</button>
         <button class="btn h-8 hover:text-removed" :disabled="c.status === 'uploaded'" :title="t('shell.review.rejectTitle')" @click="startReject">
           <Icon name="x" :size="13" /> {{ t('shell.review.reject') }}
         </button>

@@ -7,6 +7,7 @@ import { draftsCs, draftsEn } from './messages/drafts'
 import { editorCs, editorEn } from './messages/editor'
 import { mapCs, mapEn } from './messages/map'
 import { presetsCs, presetsEn } from './messages/presets'
+import { remoteCs, remoteEn } from './messages/remote'
 import { reviewCs, reviewEn } from './messages/review'
 import { rulesCs, rulesEn } from './messages/rules'
 import { settingsCs, settingsEn } from './messages/settings'
@@ -20,6 +21,7 @@ const areas: [string, object, object][] = [
   ['editor', editorEn, editorCs],
   ['map', mapEn, mapCs],
   ['presets', presetsEn, presetsCs],
+  ['remote', remoteEn, remoteCs],
   ['review', reviewEn, reviewCs],
   ['rules', rulesEn, rulesCs],
   ['settings', settingsEn, settingsCs],

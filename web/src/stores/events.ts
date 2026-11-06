@@ -10,6 +10,7 @@ import { useRuleFilesStore } from './ruleFiles'
 import { useScansStore } from './scans'
 import { usePushView } from './pushView'
 import { usePresetsStore } from './presets'
+import { useRemoteStore } from './remote'
 import { t, tn } from '@/i18n'
 
 export function connectEvents(): () => void {
@@ -22,6 +23,7 @@ export function connectEvents(): () => void {
   const scans = useScansStore()
   const pushView = usePushView()
   const presets = usePresetsStore()
+  const remoteRequests = useRemoteStore()
 
   function remote(cmd: UiEventRemoteCommand) {
     if (cmd.imagery) {
@@ -55,6 +57,12 @@ export function connectEvents(): () => void {
     switch (e.type) {
       case 'remote_command':
         remote(e)
+        break
+      case 'remote_confirm':
+        remoteRequests.add(e.request)
+        break
+      case 'remote_confirm_resolved':
+        remoteRequests.remove(e.id)
         break
       case 'draft_updated':
         void drafts.onDraftUpdated(e.draftId)
@@ -94,6 +102,7 @@ export function connectEvents(): () => void {
   let wasOpen = false
   const stream = new EventStream(handle, (s) => {
     app.connection = s
+    if (s === 'open') void remoteRequests.load()
     if (s === 'open' && wasOpen) {
       void app.loadStatus()
       void drafts.loadDrafts()

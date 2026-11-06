@@ -14,6 +14,8 @@ import eu.tiducto.osmreview.shared.OsmChangeImportRequest
 import eu.tiducto.osmreview.shared.OsmChangeImportResult
 import eu.tiducto.osmreview.shared.OsmRef
 import eu.tiducto.osmreview.shared.OsmType
+import eu.tiducto.osmreview.shared.ReviewDecision
+import eu.tiducto.osmreview.shared.ReviewRequest
 import eu.tiducto.osmreview.shared.WireJson
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -158,6 +160,34 @@ class OsmChangeImportApiTest {
         val dropped = app.drafts.detail(first.draft.draft.id).changes.single()
         assertEquals(ChangeStatus.REJECTED, dropped.status)
         assertTrue(dropped.reviews.last().comment.orEmpty().contains(target.id))
+    }
+
+    @Test
+    fun orphanNodeApprovalAndMergeAreRefusedWithACode() = api {
+        val xml = """<osmChange version="0.6"><create><node id="-1" lat="49.95" lon="17.95"/><node id="-2" lat="49.951" lon="17.951"/>""" +
+            """<way id="-1"><nd ref="-1"/><nd ref="-2"/><tag k="highway" v="footway"/></way></create><modify/><delete/></osmChange>"""
+        val r = postJson("/api/drafts/from-osmchange", DraftFromOsmChangeRequest("Path", xml), DraftFromOsmChangeRequest.serializer())
+        assertEquals(HttpStatusCode.Created, r.status, r.bodyAsText())
+        val draft = r.decode(OsmChangeImportResult.serializer()).draft
+        val node = draft.changes.first { it.ref.type == OsmType.NODE }
+        val way = draft.changes.first { it.ref.type == OsmType.WAY }
+
+        val refused = postJson("/api/changes/${node.id}/review", ReviewRequest(ReviewDecision.APPROVE), ReviewRequest.serializer())
+        assertEquals(HttpStatusCode.Conflict, refused.status)
+        val error = refused.decode(ApiError.serializer())
+        assertEquals(ApiErrorCodes.ORPHAN_NODE, error.code)
+        assertEquals(listOf(node.ref), error.refs)
+        assertTrue(error.detail.orEmpty().contains("used only by ${way.ref}"), error.detail)
+
+        app.repo.updateChange(java.util.UUID.fromString(node.id)) { status = ChangeStatus.APPROVED }
+        val merge = client.post("/api/drafts/${draft.draft.id}/merge")
+        assertEquals(HttpStatusCode.Conflict, merge.status)
+        assertEquals(ApiErrorCodes.ORPHAN_NODE, merge.decode(ApiError.serializer()).code)
+        assertTrue(osm.uploads.isEmpty())
+
+        val cascade = postJson("/api/changes/${node.id}/review", ReviewRequest(ReviewDecision.APPROVE, cascade = true), ReviewRequest.serializer())
+        assertEquals(HttpStatusCode.OK, cascade.status, cascade.bodyAsText())
+        assertTrue(app.drafts.detail(draft.draft.id).changes.all { it.status == ChangeStatus.APPROVED })
     }
 
     @Test

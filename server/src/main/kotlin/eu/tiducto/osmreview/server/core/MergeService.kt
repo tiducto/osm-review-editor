@@ -15,6 +15,7 @@ import eu.tiducto.osmreview.shared.Draft
 import eu.tiducto.osmreview.shared.DraftStatus
 import eu.tiducto.osmreview.shared.MergePreview
 import eu.tiducto.osmreview.shared.MergeProgress
+import eu.tiducto.osmreview.shared.OrphanNodes
 import eu.tiducto.osmreview.shared.OsmRef
 import eu.tiducto.osmreview.shared.OsmType
 import eu.tiducto.osmreview.shared.ReviewDecision
@@ -54,7 +55,8 @@ class MergeService(
 
     fun blocked(all: List<Change>, candidates: List<Change>): List<BlockedChange> {
         val edges = DraftGraph.edges(all)
-        if (edges.isEmpty()) return emptyList()
+        val users = OrphanNodes.users(all)
+        if (edges.isEmpty() && candidates.none { OrphanNodes.isUntaggedNewNode(it) }) return emptyList()
         val byId = all.associateBy { it.id }
         val ready = candidates.map { it.id }.toMutableSet()
         val out = LinkedHashMap<String, BlockedChange>()
@@ -62,19 +64,47 @@ class MergeService(
         while (changed) {
             changed = false
             for (id in ready.toList()) {
+                val c = byId.getValue(id)
                 val missing = closure(edges, id).mapNotNull { byId[it] }.filter { it.id !in ready && it.status != ChangeStatus.UPLOADED }
                 if (missing.isNotEmpty()) {
-                    val c = byId.getValue(id)
                     ready -= id
                     out[id] = BlockedChange(
                         id, c.ref,
                         "${c.ref} needs " + missing.joinToString { "${it.ref} (${it.status.name.lowercase()})" } + " in the same upload",
                     )
                     changed = true
+                    continue
+                }
+                if (!OrphanNodes.isUntaggedNewNode(c)) continue
+                val owners = users[c.ref].orEmpty()
+                if (owners.none { it.id in ready || it.status == ChangeStatus.UPLOADED }) {
+                    ready -= id
+                    out[id] = BlockedChange(
+                        id, c.ref,
+                        if (owners.isEmpty()) {
+                            "${c.ref} is an untagged new node that no way uses; it would be uploaded as an orphan node"
+                        } else {
+                            "${c.ref} is an untagged new node and none of " + owners.joinToString { "${it.ref} (${it.status.name.lowercase()})" } +
+                                " is in the same upload; it would be uploaded as an orphan node"
+                        },
+                    )
+                    changed = true
                 }
             }
         }
         return out.values.toList()
+    }
+
+    fun requireNoOrphans(all: List<Change>) {
+        val approved = all.filter { it.status == ChangeStatus.APPROVED }.map { it.id }.toSet()
+        val orphans = OrphanNodes.unowned(all, approved)
+        if (orphans.isEmpty()) return
+        throw OrphanNodeException(
+            "Approved untagged new node${if (orphans.size == 1) "" else "s"} " + orphans.joinToString { it.ref.toString() } +
+                " would be uploaded as orphan nodes: " + orphans.take(5).joinToString("; ") { OrphanNodes.describe(it, OrphanNodes.owners(all, it)) },
+            orphans.map { it.ref },
+            orphans.flatMap { OrphanNodes.owners(all, it) }.map { it.ref }.distinct(),
+        )
     }
 
     private fun closure(edges: Map<String, Set<String>>, start: String): Set<String> {
@@ -160,6 +190,7 @@ class MergeService(
 
         val approved = start.changes.filter { it.status == ChangeStatus.APPROVED }
         if (approved.isEmpty()) throw StateException("Nothing approved to merge")
+        requireNoOrphans(start.changes)
         val live = api.fetch(approved.filter { it.action != ChangeAction.CREATE }.map { it.ref })
         val checked = approved.filter { c -> c.action == ChangeAction.CREATE || drafts.checkConflict(c, live[c.ref]) }
         val current = repo.changes(UUID.fromString(draftId))

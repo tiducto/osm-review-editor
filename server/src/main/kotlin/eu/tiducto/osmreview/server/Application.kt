@@ -7,6 +7,8 @@ import eu.tiducto.osmreview.server.api.osmProxyRoutes
 import eu.tiducto.osmreview.server.core.NotAuthorizedException
 import eu.tiducto.osmreview.server.core.NotFoundException
 import eu.tiducto.osmreview.server.core.OpenChangeElsewhereException
+import eu.tiducto.osmreview.server.core.OrphanNodeException
+import eu.tiducto.osmreview.server.remote.RemoteFetchException
 import eu.tiducto.osmreview.server.core.StateException
 import eu.tiducto.osmreview.server.mcp.mcpRoutes
 import eu.tiducto.osmreview.server.osm.OsmApiException
@@ -116,9 +118,21 @@ fun Application.installErrorPages(remoteControlPort: Int) {
         exception<Throwable> { call, e ->
             if (call.request.local.localPort == remoteControlPort) {
                 val bad = e is IllegalArgumentException || e is BadRequestException || e is SerializationException
-                if (!bad) log.error("Remote control error on {}", call.request.path(), e)
-                val status = if (bad) HttpStatusCode.BadRequest else HttpStatusCode.InternalServerError
+                val upstream = e is RemoteFetchException
+                if (!bad && !upstream) log.error("Remote control error on {}", call.request.path(), e)
+                val status = when {
+                    bad -> HttpStatusCode.BadRequest
+                    upstream -> HttpStatusCode.BadGateway
+                    else -> HttpStatusCode.InternalServerError
+                }
                 call.respondText(e.message ?: status.description, ContentType.Text.Plain, status)
+                return@exception
+            }
+            if (e is OrphanNodeException) {
+                call.respond(
+                    HttpStatusCode.Conflict,
+                    ApiError(HttpStatusCode.Conflict.description, e.message, ApiErrorCodes.ORPHAN_NODE, refs = e.nodes),
+                )
                 return@exception
             }
             if (e is OpenChangeElsewhereException) {

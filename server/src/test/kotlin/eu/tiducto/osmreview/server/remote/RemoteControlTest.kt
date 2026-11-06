@@ -18,6 +18,8 @@ import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.options
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
@@ -27,7 +29,15 @@ import io.ktor.http.parameters
 import io.ktor.server.engine.connector
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import eu.tiducto.osmreview.shared.RemoteDecision
+import eu.tiducto.osmreview.shared.RemoteRequest
+import eu.tiducto.osmreview.shared.WireJson
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.builtins.ListSerializer
+import kotlin.time.Duration.Companion.milliseconds
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.postgresql.PostgreSQLContainer
 import java.nio.file.Files
@@ -114,14 +124,43 @@ class RemoteControlTest {
         assertTrue(r.headers["Access-Control-Allow-Methods"]!!.contains("GET"))
     }
 
+    private suspend fun ApplicationTestBuilder.decide(accept: Boolean): RemoteRequest {
+        val until = System.currentTimeMillis() + 10_000
+        while (app.remoteConfirmations.pending().isEmpty()) {
+            check(System.currentTimeMillis() < until) { "no remote-control request is waiting" }
+            delay(20)
+        }
+        val pending = client.get("http://localhost:${app.config.port}/api/remote/pending")
+        val request = WireJson.decodeFromString(ListSerializer(RemoteRequest.serializer()), pending.bodyAsText()).single()
+        val r = client.post("http://localhost:${app.config.port}/api/remote/pending/${request.id}") {
+            contentType(ContentType.Application.Json)
+            setBody(WireJson.encodeToString(RemoteDecision.serializer(), RemoteDecision(accept)))
+        }
+        assertEquals(HttpStatusCode.NoContent, r.status)
+        return request
+    }
+
+    private suspend fun ApplicationTestBuilder.confirmed(accept: Boolean, send: suspend ApplicationTestBuilder.() -> HttpResponse): Pair<HttpResponse, RemoteRequest> =
+        coroutineScope {
+            val response = async { send() }
+            val request = decide(accept)
+            response.await() to request
+        }
+
     @Test
     fun addTagsMakesOneDraftPerObjectWithChangesetMetadata() = rc {
-        val r = josm(
-            "/load_and_zoom?left=17.89&right=17.93&top=49.93&bottom=49.89&select=node101,w55" +
-                "&addtags=lit%3Dyes&changeset_comment=Lamps%20from%20survey&changeset_source=survey",
-        )
+        val (r, asked) = confirmed(true) {
+            josm(
+                "/load_and_zoom?left=17.89&right=17.93&top=49.93&bottom=49.89&select=node101,w55" +
+                    "&addtags=lit%3Dyes&changeset_comment=Lamps%20from%20survey&changeset_source=survey",
+            )
+        }
         assertEquals(HttpStatusCode.OK, r.status)
         assertEquals("OK\r\n", r.bodyAsText())
+        assertEquals("addtags", asked.command)
+        assertEquals(mapOf("lit" to "yes"), asked.tags)
+        assertEquals(listOf(OsmRef(OsmType.NODE, 101), OsmRef(OsmType.WAY, 55)), asked.objects)
+        assertEquals("Lamps from survey", asked.changesetComment)
 
         val drafts = remoteDrafts()
         assertEquals(2, drafts.size)
@@ -163,7 +202,10 @@ class RemoteControlTest {
               <node id="102" version="1" action="delete" lat="49.9" lon="17.9"/>
             </osm>
         """.trimIndent()
-        val r = client.submitForm("http://localhost:$RC/load_data", parameters { append("data", data) })
+        val (r, asked) = confirmed(true) { client.submitForm("http://localhost:$RC/load_data", parameters { append("data", data); append("layer_name", "Survey") }) }
+        assertEquals("load_data", asked.command)
+        assertEquals("Survey", asked.title)
+        assertEquals(7, asked.objectCount)
         assertEquals(HttpStatusCode.OK, r.status)
         val body = r.bodyAsText()
         assertTrue(body.startsWith("OK\r\n"), body)
@@ -176,6 +218,85 @@ class RemoteControlTest {
         assertEquals("paved", changes.first { it.ref == OsmRef(OsmType.WAY, 55) }.newTags["surface"])
         assertTrue(changes.any { it.newTags["amenity"] == "bench" && it.status == ChangeStatus.PENDING })
         assertEquals(DraftStatus.OPEN, draft.status)
+    }
+
+    @Test
+    fun rejectedOrUnansweredRequestsChangeNothing() = rc {
+        val (addTags, _) = confirmed(false) { josm("/load_object?objects=n101&addtags=lit%3Dyes") }
+        assertEquals(HttpStatusCode.OK, addTags.status)
+        assertTrue(addTags.bodyAsText().contains("Tags not added: the request was rejected in the editor"))
+        val zoomed = commands().single()
+        assertEquals(listOf(OsmRef(OsmType.NODE, 101)), zoomed.select)
+        assertTrue(zoomed.draftIds.isEmpty())
+
+        val (node, asked) = confirmed(false) { josm("/add_node?lat=49.9&lon=17.9&addtags=amenity%3Dbench") }
+        assertEquals(HttpStatusCode.Forbidden, node.status)
+        assertEquals(mapOf("amenity" to "bench"), asked.tags)
+
+        app.remoteConfirmations.timeout = 300.milliseconds
+        val late = client.submitForm("http://localhost:$RC/load_data", parameters { append("data", "<osm version=\"0.6\"/>") })
+        assertEquals(HttpStatusCode.Forbidden, late.status)
+        assertTrue(late.bodyAsText().contains("not confirmed in the editor"))
+        assertTrue(app.remoteConfirmations.pending().isEmpty())
+        assertTrue(remoteDrafts().isEmpty())
+
+        val gone = client.post("http://localhost:${app.config.port}/api/remote/pending/nope") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"accept":true}""")
+        }
+        assertEquals(HttpStatusCode.NotFound, gone.status)
+    }
+
+    @Test
+    fun importRefusesInternalTargetsBeforeAsking() = rc {
+        for (url in listOf("http://127.0.0.1:${app.config.port}/api/drafts", "http://2130706433/", "http://[::ffff:127.0.0.1]/", "http://localhost./", "file:///etc/passwd")) {
+            val r = josm("/import?url=" + java.net.URLEncoder.encode(url, Charsets.UTF_8))
+            assertEquals(HttpStatusCode.BadRequest, r.status, url)
+            assertTrue(r.bodyAsText().let { it.startsWith("Refusing") || it.startsWith("Only http") }, url)
+        }
+        assertTrue(app.remoteConfirmations.pending().isEmpty())
+        assertTrue(remoteDrafts().isEmpty())
+    }
+
+    @Test
+    fun importFetchesOnlyAfterConfirmation() = rc {
+        val hits = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), 0), 0)
+        server.createContext("/survey.osm") { ex ->
+            hits += ex.requestURI.toString()
+            val body = """<osm version="0.6"><node id="-1" lat="49.95" lon="17.95"><tag k="amenity" v="bench"/></node></osm>""".toByteArray()
+            ex.sendResponseHeaders(200, body.size.toLong())
+            ex.responseBody.use { it.write(body) }
+        }
+        server.start()
+        try {
+            val trusted = java.net.InetAddress.getByAddress("survey.test", byteArrayOf(127, 0, 0, 1))
+            app.remoteFetcher = SafeFetcher("test", resolver = { listOf(trusted) }, allowed = { it === trusted })
+            val url = "http://survey.test:${server.address.port}/survey.osm"
+            val path = "/import?url=" + java.net.URLEncoder.encode(url, Charsets.UTF_8)
+
+            val (rejected, asked) = confirmed(false) { josm(path) }
+            assertEquals(HttpStatusCode.Forbidden, rejected.status)
+            assertEquals("import", asked.command)
+            assertEquals(url, asked.url)
+            assertEquals("survey.test", asked.host)
+            assertTrue(hits.isEmpty(), "nothing is fetched before confirmation")
+            assertTrue(remoteDrafts().isEmpty())
+
+            val (ok, _) = confirmed(true) { josm(path) }
+            assertEquals(HttpStatusCode.OK, ok.status, ok.bodyAsText())
+            assertEquals(listOf("/survey.osm"), hits)
+            val draft = remoteDrafts().single()
+            assertEquals("bench", app.drafts.detail(draft.id).changes.single().newTags["amenity"])
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun imageryNeedsAnHttpUrl() = rc {
+        assertEquals(HttpStatusCode.BadRequest, josm("/imagery?url=javascript%3Aalert(1)").status)
+        assertEquals(HttpStatusCode.OK, josm("/imagery?url=https%3A%2F%2Ftiles.example%2F%7Bzoom%7D%2F%7Bx%7D%2F%7By%7D.png").status)
     }
 
     @Test
