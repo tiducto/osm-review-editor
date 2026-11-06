@@ -333,7 +333,35 @@ sealed interface UiEvent {
         val select: List<OsmRef> = emptyList(),
         val message: String? = null,
     ) : UiEvent
+
+    @Serializable
+    @SerialName("remote_confirm")
+    data class RemoteConfirm(val request: RemoteRequest) : UiEvent
+
+    @Serializable
+    @SerialName("remote_confirm_resolved")
+    data class RemoteConfirmResolved(val id: String, val accepted: Boolean) : UiEvent
 }
+
+@Serializable
+data class RemoteRequest(
+    val id: String,
+    val command: String,
+    val url: String? = null,
+    val host: String? = null,
+    val tags: Map<String, String> = emptyMap(),
+    val objects: List<OsmRef> = emptyList(),
+    val location: LngLat? = null,
+    val title: String? = null,
+    val objectCount: Int? = null,
+    val changesetComment: String? = null,
+    val changesetSource: String? = null,
+    val createdAt: String,
+    val expiresAt: String,
+)
+
+@Serializable
+data class RemoteDecision(val accept: Boolean)
 
 @Serializable
 data class ApiError(
@@ -341,6 +369,7 @@ data class ApiError(
     val detail: String? = null,
     val code: String? = null,
     val openChanges: List<OpenChangeElsewhere>? = null,
+    val refs: List<OsmRef>? = null,
 )
 
 @Serializable
@@ -356,6 +385,7 @@ object ApiErrorCodes {
     const val OPEN_CHANGE_ELSEWHERE = "open_change_elsewhere"
     const val AREA_TOO_LARGE = "area_too_large"
     const val OSM_API_ERROR = "osm_api_error"
+    const val ORPHAN_NODE = "orphan_node"
 }
 
 @Serializable

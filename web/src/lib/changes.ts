@@ -1,4 +1,4 @@
-import type { Change, ChangeStatus, Review } from '@/generated/models'
+import type { Change, ChangeLink, ChangeStatus, Review } from '@/generated/models'
 import type { ChangeKind } from './colors'
 import { t, tn } from '@/i18n'
 
@@ -30,6 +30,22 @@ export const statusLabel: Record<ChangeStatus, string> = {
   get uploaded() {
     return t('status.uploaded')
   },
+}
+
+export function isUntaggedNewNode(c: Change, tags: Record<string, string> = c.newTags): boolean {
+  return c.action === 'create' && c.ref.type === 'node' && Object.keys(tags).length === 0
+}
+
+export interface OrphanRisk {
+  pending: ChangeLink[]
+  blocked: ChangeLink[]
+}
+
+export function orphanRisk(c: Change, tags: Record<string, string> = c.newTags): OrphanRisk | null {
+  if (!isUntaggedNewNode(c, tags)) return null
+  const owners = c.requiredBy.filter((l) => l.action !== 'delete')
+  if (owners.some((l) => l.status === 'approved' || l.status === 'uploaded')) return null
+  return { pending: owners.filter((l) => l.status === 'pending'), blocked: owners.filter((l) => l.status !== 'pending') }
 }
 
 export function isDecided(c: Change): boolean {

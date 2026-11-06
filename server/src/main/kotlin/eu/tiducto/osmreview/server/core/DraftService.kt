@@ -30,6 +30,7 @@ import eu.tiducto.osmreview.shared.DraftFromRuleRequest
 import eu.tiducto.osmreview.shared.DraftStatus
 import eu.tiducto.osmreview.shared.LngLat
 import eu.tiducto.osmreview.shared.MapFeature
+import eu.tiducto.osmreview.shared.OrphanNodes
 import eu.tiducto.osmreview.shared.OsmRef
 import eu.tiducto.osmreview.shared.OsmType
 import eu.tiducto.osmreview.shared.ProposalOutcome
@@ -253,24 +254,34 @@ class DraftService(
         if (c.status == ChangeStatus.CONFLICT && req.decision in setOf(ReviewDecision.APPROVE, ReviewDecision.EDIT)) {
             throw StateException("Resolve the conflict first: the live object moved to v${c.liveVersion}")
         }
-        val all = if (c.dependsOn.isEmpty() && c.requiredBy.isEmpty()) emptyList() else repo.changes(UUID.fromString(c.draftId))
+        val linked = c.dependsOn.isNotEmpty() || c.requiredBy.isNotEmpty() || OrphanNodes.isUntaggedNewNode(c)
+        val all = if (linked) repo.changes(UUID.fromString(c.draftId)) else emptyList()
+        var rejected = false
         when (req.decision) {
             ReviewDecision.APPROVE -> {
                 approveDependencies(c, all, req.cascade)
+                approveOwners(c, c.newTags, all, req.cascade)
                 repo.updateChange(id) { status = ChangeStatus.APPROVED }
             }
             ReviewDecision.EDIT -> {
                 val tags = req.tags?.withoutPseudoTags() ?: throw IllegalArgumentException("An edit needs the full tag set")
                 val noOp = c.action == ChangeAction.MODIFY && c.newShape == null && TagDiff.between(c.baseTags, tags).isNoOp
-                if (noOp) rejectDependents(c, all, req.cascade) else approveDependencies(c, all, req.cascade)
+                if (noOp) {
+                    rejectDependents(c, all, req.cascade)
+                } else {
+                    approveDependencies(c, all, req.cascade)
+                    approveOwners(c, tags, all, req.cascade)
+                }
                 repo.updateChange(id) {
                     newTags = tags
                     status = if (noOp) ChangeStatus.REJECTED else ChangeStatus.APPROVED
                 }
+                rejected = noOp
             }
             ReviewDecision.REJECT, ReviewDecision.SEND_TO_ID -> {
                 rejectDependents(c, all, req.cascade)
                 repo.updateChange(id) { status = ChangeStatus.REJECTED }
+                rejected = true
             }
             ReviewDecision.RESET -> repo.updateChange(id) { status = if (c.liveVersion != null) ChangeStatus.CONFLICT else ChangeStatus.PENDING }
         }
@@ -281,8 +292,39 @@ class DraftService(
             req.tags.takeIf { req.decision == ReviewDecision.EDIT },
             req.imagery?.trim()?.ifBlank { null },
         )
+        if (rejected) dropAbandonedNodes(c.draftId, c.ref)
         emitUpdated(c.draftId)
         return repo.change(id)!!
+    }
+
+    private suspend fun approveOwners(c: Change, tags: Map<String, String>, all: List<Change>, cascade: Boolean) {
+        if (!OrphanNodes.isUntaggedNewNode(c, tags)) return
+        val owners = OrphanNodes.owners(all, c)
+        if (owners.any { it.status == ChangeStatus.APPROVED || it.status == ChangeStatus.UPLOADED }) return
+        val pending = owners.filter { it.status == ChangeStatus.PENDING }
+        if (!cascade || pending.isEmpty()) {
+            val message = if (cascade) {
+                "${c.ref} is an untagged new node used only by " + owners.joinToString { "${it.ref} (${it.status.name.lowercase()})" } +
+                    "; reset or resolve ${if (owners.size == 1) "that way" else "one of them"} first, give the node tags or reject it"
+            } else {
+                OrphanNodes.describe(c, owners)
+            }
+            throw OrphanNodeException(message, listOf(c.ref), owners.map { it.ref })
+        }
+        for (o in pending) {
+            approveDependencies(o, all, cascade = true)
+            val oid = UUID.fromString(o.id)
+            repo.updateChange(oid) { status = ChangeStatus.APPROVED }
+            repo.addReview(oid, ReviewDecision.APPROVE, "approved with ${c.ref} so that it is not uploaded as an orphan node", null)
+        }
+    }
+
+    private suspend fun dropAbandonedNodes(draftId: String, cause: OsmRef) {
+        for (n in OrphanNodes.abandoned(repo.changes(UUID.fromString(draftId)))) {
+            val nid = UUID.fromString(n.id)
+            repo.updateChange(nid) { status = ChangeStatus.REJECTED }
+            repo.addReview(nid, ReviewDecision.REJECT, "dropped with $cause: an untagged new node that no remaining way uses", null)
+        }
     }
 
     private suspend fun approveDependencies(c: Change, all: List<Change>, cascade: Boolean) {
@@ -330,6 +372,7 @@ class DraftService(
             if (c.requiredBy.isNotEmpty()) rejectDependents(c, repo.changes(UUID.fromString(c.draftId)), cascade = true)
             repo.updateChange(id) { status = ChangeStatus.REJECTED }
             repo.addReview(id, ReviewDecision.REJECT, "withdrawn by the author" + (reason?.let { ": $it" } ?: ""), null)
+            dropAbandonedNodes(c.draftId, c.ref)
         } else {
             val e = edit ?: throw IllegalArgumentException("Give new tags or withdraw")
             val tags = e.applyTo(c.newTags)
@@ -346,9 +389,12 @@ class DraftService(
 
     suspend fun approveRemaining(draftId: String, ruleId: String?): DraftDetail {
         val d = detail(draftId)
-        d.changes.filter {
+        val candidates = d.changes.filter {
             it.status == ChangeStatus.PENDING && it.confidence == Confidence.DETERMINISTIC && (ruleId == null || it.ruleId == ruleId)
-        }.forEach { c ->
+        }
+        val selected = (d.changes.filter { it.status == ChangeStatus.APPROVED } + candidates).map { it.id }.toSet()
+        val orphans = OrphanNodes.unowned(d.changes, selected).map { it.id }.toSet()
+        candidates.filter { it.id !in orphans }.forEach { c ->
             repo.updateChange(UUID.fromString(c.id)) { status = ChangeStatus.APPROVED }
             repo.addReview(UUID.fromString(c.id), ReviewDecision.APPROVE, "approved in bulk (deterministic rule)", null)
         }
@@ -560,6 +606,7 @@ class DraftService(
             if (fresh.requiredBy.isNotEmpty()) rejectDependents(fresh, repo.changes(UUID.fromString(fresh.draftId)), cascade = true)
             repo.updateChange(id) { status = ChangeStatus.REJECTED }
             repo.addReview(id, ReviewDecision.REJECT, why, null)
+            dropAbandonedNodes(fresh.draftId, fresh.ref)
         }
         changes.map { it.draftId }.distinct().forEach { emitUpdated(it) }
     }
@@ -642,4 +689,6 @@ data class ResolvedScope(
 
 class NotFoundException(message: String) : RuntimeException(message)
 
-class StateException(message: String) : RuntimeException(message)
+open class StateException(message: String) : RuntimeException(message)
+
+class OrphanNodeException(message: String, val nodes: List<OsmRef>, val owners: List<OsmRef>) : StateException(message)

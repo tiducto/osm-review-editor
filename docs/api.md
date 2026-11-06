@@ -152,6 +152,8 @@ and the file path as the rule id.
 | GET | `/api/drafts/{id}/merge-preview` | | `MergePreview` (changeset groups with comment and tags, ids of changes in conflict) |
 | POST | `/api/drafts/{id}/merge` | | `202`; progress arrives as `merge_progress` events |
 | GET | `/api/drafts/{id}/uploads` | | `Upload[]` |
+| GET | `/api/remote/pending` | | `RemoteRequest[]`: remote-control requests waiting for confirmation (see [JOSM remote control](#josm-remote-control-8111)) |
+| POST | `/api/remote/pending/{id}` | `RemoteDecision` `{accept}` | 204; the waiting remote-control call continues (`accept: true`) or is refused; 404 when it no longer waits |
 | POST | `/api/changes/{id}/review` | `ReviewRequest` | `Change` (`approve`, `edit` with full `tags`, `reject` with `comment`, `send_to_id`, `reset`; `cascade` see [dependencies](#dependencies)) |
 | POST | `/api/changes/{id}/resolve` | `ResolveConflictRequest` `{tags, useLiveGeometry?}` | `Change` (final tags after a three-way pick; back to pending on the live version; a geometry change keeps its geometry unless `useLiveGeometry`) |
 | POST | `/api/manual-edits` | `ManualEditRequest` `{ref, tags, reason?, baseTags?}` | `Change` in the open manual draft (created on demand) |
@@ -226,9 +228,22 @@ Review stays per object, with these rules:
 - `approve` and `edit` are refused while a dependency is `rejected`; with `cascade: true` the pending
   dependencies are approved too (a dependency in conflict is refused).
 - MCP `update_change` with `withdraw` rejects the dependents as well.
+- An untagged new node that only new or modified ways (or relations) of the draft use can never be
+  uploaded on its own, since it would become an orphan node in OSM. `approve` (and an `edit` that
+  leaves it without tags) is refused with 409, `code: "orphan_node"` and `refs` (the node) unless one
+  of those ways is already approved or uploaded; with `cascade: true` the pending ways are approved
+  too, together with their own dependencies. When every such way is rejected or in conflict, or no
+  way uses the node, the approval is refused even with `cascade`.
+- Rejecting a way (`reject`, `send_to_id`, an `edit` that is a no-op, MCP withdraw, takeover or a
+  cascade) also rejects its exclusively new untagged nodes: those whose every using way is now
+  rejected. Each gets the review comment `dropped with <way>: ...`. Nodes still used by another way
+  and tagged new nodes stay as they are.
 
 `MergePreview.blocked` lists approved changes that cannot be uploaded because a dependency is not
-approved or uploaded (`{changeId, ref, message}`); the merge skips them.
+approved or uploaded, or because they are untagged new nodes without an approved way in the same
+upload (`{changeId, ref, message}`); the merge skips them. `POST /api/drafts/{id}/merge` is refused
+with 409 `code: "orphan_node"` (`refs` the nodes) while an approved untagged new node has no approved
+or uploaded way, so no API or MCP caller can upload an orphan node.
 
 ### Changeset metadata
 
@@ -658,6 +673,8 @@ the client.
 
 | `type` | Fields | Meaning |
 | --- | --- | --- |
+| `remote_confirm` | `request`: `RemoteRequest` `{id, command, url?, host?, tags, objects, location?, title?, objectCount?, changesetComment?, changesetSource?, createdAt, expiresAt}` | A JOSM remote-control request that changes data waits for the user: show it with Load and Cancel and answer with `POST /api/remote/pending/{id}`. `command` is `import`, `load_data`, `add_node` or `addtags`. |
+| `remote_confirm_resolved` | `id`, `accepted` | The request was answered (in any tab) or timed out; close its dialog. |
 | `remote_command` | `command`, `bbox?`, `select`, `draftId?`, `draftIds`, `imagery?`, `message?` | A JOSM remote-control request (`command` is `zoom`, `load_and_zoom`, `load_object`, `import`, `load_data`, `add_node` or `imagery`). Fly to `bbox`, select `select`, open `draftId` if set, add `imagery` (`ImagerySource`). `draftIds` lists every draft the command created (one per object for `addtags`; `draftId` is the first). `message` reports what an import skipped. |
 | `push_view` | `bbox?`, `center?`, `zoom?`, `areaName?`, `highlights`, `replaceHighlights`, `scanId?`, `draftId?`, `select`, `message?` | Claude moved the view with the MCP `push_view` tool. `bbox` is `{west, south, east, north}` (the resolved area or, with only `select`, the selected objects), `center` is `{lng, lat}` with `zoom` (0–22, 17 when only a center was given), `areaName` is set when the area was given by name, `highlights` are highlight file paths (`replaceHighlights: false` adds them to the active ones, `true` makes exactly these active), `select` is an `OsmRef` list. The UI shows a toast "Claude changed the view" with undo. |
 | `draft_updated` | `draftId` | A draft changed (Claude proposed changes, a takeover withdrew changes, a draft was edited); refetch it. |
@@ -668,7 +685,9 @@ the client.
 | `scan_finished` | `scanId`, `scope`, `issueCount` | A validation scan finished, for example the automatic re-run after a mirror swap. |
 
 `remote_command` and `push_view` events emitted while no tab is connected are queued (the 20 most
-recent, in order) and replayed to the next tab that connects.
+recent, in order) and replayed to the next tab that connects. `remote_confirm` is not queued: a tab
+that connects loads the waiting requests with `GET /api/remote/pending`. The WebSocket upgrade is
+refused (403) when its `Origin` is not the app's own host.
 
 ## MCP `/mcp`
 
@@ -725,8 +744,27 @@ The app answers JOSM's remote-control protocol on `127.0.0.1:8111` (`REMOTE_CONT
 response carries `Access-Control-Allow-Origin: *`, and `OPTIONS` preflights are answered (with
 `Access-Control-Allow-Private-Network: true`) so QA websites can call it. Success is `OK` as
 `text/plain`, followed by a second line when an import skipped something; errors are plain text, 400
-for missing or invalid parameters and 500 otherwise. Every command is sent to the UI as a
+for missing or invalid parameters (including refused import URLs), 403 when the user cancelled or
+did not answer a confirmation, 429 when 5 requests already wait, 502 when an import URL could not
+be fetched and 500 otherwise. Every command is sent to the UI as a
 [`remote_command`](#websocket-apievents) event.
+
+Remote control is untrusted input: any website may call it. Commands that change data (`/import`,
+`/load_data`, `/add_node` and `addtags` on `/load_and_zoom` and `/load_object`) wait until the user
+confirms them in the open tab (a [`remote_confirm`](#websocket-apievents) event; the dialog shows the
+URL and host, the tags, objects or location, with Load or Create draft and Cancel). Nothing is fetched
+or created before that. A cancelled or unanswered request (2 minutes) changes nothing and answers 403;
+for `addtags` the zoom and selection still happen and the answer is `OK` with `Tags not added: ...`.
+Confirmed data only ever becomes a draft for review, never an upload.
+
+`/import` fetches only `http` and `https` URLs without user info. The host (also decimal, octal or
+hex IPv4 forms, IPv6 literals and names, which are resolved) must not be or resolve to a loopback,
+private, carrier-grade NAT, link-local, unique-local, site-local, multicast, reserved or unspecified
+address, including IPv4-mapped, IPv4-compatible, NAT64, 6to4 and Teredo IPv6 forms, and `localhost`
+names; every resolved address must be allowed. The server connects to exactly the address it
+validated (no second DNS lookup), with TLS verified against the URL's host. Redirects (at most 5) are
+validated the same way on every hop. The response may be at most 50 MiB (also after gzip) and the
+whole fetch at most 60 seconds. `/imagery` accepts only `http` and `https` URLs.
 
 | Method | Path | Parameters | Effect |
 | --- | --- | --- | --- |
@@ -734,7 +772,7 @@ for missing or invalid parameters and 500 otherwise. Every command is sent to th
 | GET | `/zoom` | `left`, `right`, `top`, `bottom` | Fly to the bbox |
 | GET | `/load_and_zoom` | `left`, `right`, `top`, `bottom`, `select`, `addtags`, `changeset_comment`, `changeset_source` | Fly to the bbox and select the objects; with `addtags` one draft per selected object |
 | GET | `/load_object` | `objects`, `relation_members`, `addtags`, `changeset_comment`, `changeset_source` | Frame and select the objects (with `relation_members=true` also the members); objects missing from the mirror are fetched live to frame them; `addtags` as above |
-| GET | `/import` | `url`, `changeset_comment`, `changeset_source` | Fetch OSM XML from `url` and turn it into a draft |
+| GET | `/import` | `url`, `changeset_comment`, `changeset_source` | After confirmation, fetch OSM XML from `url` (see the address rules above) and turn it into a draft |
 | GET, POST | `/load_data` | `data` (OSM XML), `layer_name`, `changeset_comment`, `changeset_source` | Turn the XML into a draft titled `layer_name`; POST takes form parameters |
 | GET | `/add_node` | `lat`, `lon`, `addtags` | A draft with one new node |
 | GET | `/imagery` | `url`, `title`, `type` (`tms` default, or `wms`) | Add an imagery layer to the open tab (JOSM's `{zoom}`, `{bbox}`, `{proj}`, `{width}`, `{height}` are translated) |

@@ -15,6 +15,8 @@ import type {
   MapFeature,
   McpInfo,
   MergePreview,
+  RemoteDecision,
+  RemoteRequest,
   ProposalResult,
   ProposeChangesRequest,
   ResolveConflictRequest,
@@ -145,6 +147,8 @@ export const api = {
   uploads: (id: string) => get<Upload[]>(`/api/drafts/${enc(id)}/uploads`),
 
   review: (changeId: string, req: ReviewRequest) => post<Change>(`/api/changes/${enc(changeId)}/review`, req),
+  remotePending: () => get<RemoteRequest[]>('/api/remote/pending'),
+  remoteDecide: (id: string, req: RemoteDecision) => post<void>(`/api/remote/pending/${enc(id)}`, req),
   resolve: (changeId: string, req: ResolveConflictRequest) => post<Change>(`/api/changes/${enc(changeId)}/resolve`, req),
   manualEdit: (req: ManualEditRequest) => post<Change>('/api/manual-edits', req),
 

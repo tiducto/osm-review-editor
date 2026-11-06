@@ -22,6 +22,7 @@ import Inspector from '@/components/Inspector.vue'
 import ReviewCard from '@/components/ReviewCard.vue'
 import MergeDialog from '@/components/MergeDialog.vue'
 import Toasts from '@/components/Toasts.vue'
+import RemoteConfirmDialog from '@/components/RemoteConfirmDialog.vue'
 import Icon from '@/components/Icon.vue'
 import EditInspector from '@/components/editor/EditInspector.vue'
 import EditDialogs from '@/components/editor/EditDialogs.vue'
@@ -324,6 +325,7 @@ onBeforeUnmount(() => {
 
     <MergeDialog v-if="app.mergeDraftId" :draft-id="app.mergeDraftId" />
     <EditDialogs />
+    <RemoteConfirmDialog />
     <Toasts />
   </div>
 </template>

@@ -7,7 +7,7 @@ import { useAppStore } from './app'
 import { useMapStore } from './map'
 import { useRulesStore } from './rules'
 import { asGeometry, bboxAround, geometryBBox } from '@/lib/geo'
-import { isDecided } from '@/lib/changes'
+import { isDecided, orphanRisk, type OrphanRisk } from '@/lib/changes'
 import { refString } from '@/lib/osm'
 import { parseAuthor, type AuthorKind } from '@/lib/authors'
 import { t, tn } from '@/i18n'
@@ -152,15 +152,22 @@ export const useDraftsStore = defineStore('drafts', () => {
     return counts
   }
 
-  const cascadePrompt = shallowRef<{ decision: ReviewRequest['decision']; message: string; links: Change['dependsOn']; resolve: (ok: boolean) => void } | null>(null)
+  const cascadePrompt = shallowRef<{
+    decision: ReviewRequest['decision']
+    message: string
+    links: Change['dependsOn']
+    orphan: boolean
+    resolve: (ok: boolean) => void
+  } | null>(null)
 
-  function askCascade(c: Change, req: ReviewRequest, message: string): Promise<boolean> {
-    const links = req.decision === 'approve' || req.decision === 'edit' ? c.dependsOn : c.requiredBy
+  function askCascade(c: Change, req: ReviewRequest, message: string, orphanLinks?: Change['dependsOn']): Promise<boolean> {
+    const links = orphanLinks ?? (req.decision === 'approve' || req.decision === 'edit' ? c.dependsOn : c.requiredBy)
     return new Promise((resolve) => {
       cascadePrompt.value = {
         decision: req.decision,
         message,
         links,
+        orphan: !!orphanLinks,
         resolve: (ok) => {
           cascadePrompt.value = null
           resolve(ok)
@@ -169,17 +176,52 @@ export const useDraftsStore = defineStore('drafts', () => {
     })
   }
 
+  function orphanMessage(c: Change, risk: OrphanRisk): string {
+    const node = refString(c.ref)
+    if (risk.pending.length) return t('shell.review.orphanNode', { node, ways: risk.pending.map((l) => refString(l.ref)).join(', ') })
+    if (risk.blocked.length) return t('shell.review.orphanBlocked', { node, ways: risk.blocked.map((l) => refString(l.ref)).join(', ') })
+    return t('shell.review.orphanUnused', { node })
+  }
+
+  function reviewTags(c: Change, req: ReviewRequest): Record<string, string> {
+    return req.decision === 'edit' && req.tags ? req.tags : c.newTags
+  }
+
+  async function confirmOrphan(c: Change, req: ReviewRequest, risk: OrphanRisk): Promise<boolean> {
+    if (!risk.pending.length) {
+      app.toast(orphanMessage(c, risk), 'error', 9000, { testId: 'orphan-blocked' })
+      return false
+    }
+    return askCascade(c, req, orphanMessage(c, risk), risk.pending)
+  }
+
   async function review(req: ReviewRequest, advance = true): Promise<boolean> {
     const c = currentChange.value
     if (!c || busy.value) return false
+    const approving = req.decision === 'approve' || req.decision === 'edit'
+    const risk = approving && !req.cascade ? orphanRisk(c, reviewTags(c, req)) : null
+    if (risk) {
+      if (!(await confirmOrphan(c, req, risk))) return false
+      req = { ...req, cascade: true }
+    }
     busy.value = true
     try {
       try {
         replaceChange(await api.review(c.id, req))
+        if (req.cascade) setDetail(await api.draft(c.draftId))
       } catch (e) {
         if (!(e instanceof ApiError) || e.status !== 409 || req.cascade || req.decision === 'reset') throw e
         busy.value = false
-        if (!(await askCascade(c, req, e.detail ?? e.error))) return false
+        if (e.code === 'orphan_node') {
+          const fresh = await api.draft(c.draftId)
+          setDetail(fresh)
+          const now = fresh.changes.find((x) => x.id === c.id) ?? c
+          const again = orphanRisk(now, reviewTags(now, req))
+          if (!again) throw e
+          if (!(await confirmOrphan(now, req, again))) return false
+        } else if (!(await askCascade(c, req, e.detail ?? e.error))) {
+          return false
+        }
         busy.value = true
         replaceChange(await api.review(c.id, { ...req, cascade: true }))
         setDetail(await api.draft(c.draftId))

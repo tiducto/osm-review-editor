@@ -48,6 +48,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.jsonPrimitive
+import eu.tiducto.osmreview.server.remote.RemoteConfirmations
+import eu.tiducto.osmreview.server.remote.SafeFetcher
 import org.slf4j.LoggerFactory
 import java.security.SecureRandom
 import java.util.Base64
@@ -73,6 +75,8 @@ class App(
     val drafts = DraftService(repo, account, mirror, queries, rules, events, areas::find)
     val merge = MergeService(config, repo, drafts, account, rules, events)
     val search = Search(queries)
+    val remoteConfirmations = RemoteConfirmations(events)
+    var remoteFetcher = SafeFetcher(config.userAgent)
     val imagery = ImageryStore(settings)
     val idPresets = IdPresetData.fromResources()
     val ruleFiles = RulesFolder(
