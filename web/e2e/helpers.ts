@@ -79,7 +79,12 @@ export async function settle(page: Page) {
 }
 
 export async function jumpTo(page: Page, zoom: number, center: [number, number] = CENTRE) {
-  await page.evaluate(([c, z]) => (window as unknown as MapWindow).__oreMap.jumpTo({ center: c, zoom: z }), [center, zoom] as const)
+  await page.evaluate(
+    ([c, z]) => {
+      ;(window as unknown as MapWindow).__oreMap.jumpTo({ center: c, zoom: z })
+    },
+    [center, zoom] as const,
+  )
   await settle(page)
 }
 
@@ -142,6 +147,8 @@ async function waitForNewFrame(page: Page, frames: string[], seen: number, label
   }
 }
 
+const FRAME_WIDTH = 480
+
 export async function captureTransition(page: Page, action: () => Promise<unknown>, ms = 700): Promise<Capture> {
   const before = await visibleMapRect(page)
   const cdp = await page.context().newCDPSession(page)
@@ -155,7 +162,14 @@ export async function captureTransition(page: Page, action: () => Promise<unknow
     [before.x + before.w * 0.7, before.y + before.h * 0.2],
     [before.x + before.w * 0.4, before.y + 40],
   ]
-  await cdp.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 })
+  const viewport = page.viewportSize() ?? { width: 1440, height: 900 }
+  const scale = Math.min(1, FRAME_WIDTH / viewport.width)
+  await cdp.send('Page.startScreencast', {
+    format: 'png',
+    everyNthFrame: 1,
+    maxWidth: Math.round(viewport.width * scale),
+    maxHeight: Math.round(viewport.height * scale),
+  })
   await waitForNewFrame(page, frames, 0, 'before the action')
   await page.evaluate(
     ([probes, ms]) => {
@@ -194,7 +208,7 @@ export async function captureTransition(page: Page, action: () => Promise<unknow
   const after = await visibleMapRect(page)
   const rect = intersect(before, after)
   const ratios = await page.evaluate(
-    async ([frames, rect]) => {
+    async ([frames, rect, width]) => {
       const out: number[] = []
       for (const b64 of frames) {
         const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
@@ -202,10 +216,13 @@ export async function captureTransition(page: Page, action: () => Promise<unknow
         const c = new OffscreenCanvas(bmp.width, bmp.height)
         const g = c.getContext('2d')!
         g.drawImage(bmp, 0, 0)
-        const d = g.getImageData(rect.x, rect.y, rect.w, rect.h).data
+        const k = bmp.width / width
+        const x = Math.floor(rect.x * k)
+        const y = Math.floor(rect.y * k)
+        const d = g.getImageData(x, y, Math.max(1, Math.min(bmp.width - x, Math.floor(rect.w * k))), Math.max(1, Math.min(bmp.height - y, Math.floor(rect.h * k)))).data
         let bg = 0
         let n = 0
-        for (let i = 0; i < d.length; i += 16) {
+        for (let i = 0; i < d.length; i += 4) {
           n++
           const near = (r: number, gg: number, b: number) => Math.abs(d[i] - r) < 5 && Math.abs(d[i + 1] - gg) < 5 && Math.abs(d[i + 2] - b) < 5
           if (near(0xf2, 0xf2, 0xf2) || near(0xf4, 0xf5, 0xf7) || near(255, 255, 255)) bg++
@@ -214,7 +231,7 @@ export async function captureTransition(page: Page, action: () => Promise<unknow
       }
       return out
     },
-    [frames, rect] as const,
+    [frames, rect, viewport.width] as const,
   )
   return { ratios, drift: probe.drift, canvasSizes: probe.sizes, framesBefore, framesAfter: frames.length - framesBefore }
 }
