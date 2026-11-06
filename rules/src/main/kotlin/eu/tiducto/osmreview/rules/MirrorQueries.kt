@@ -206,9 +206,12 @@ class ExistingIds(
     private val nodes: LongHashSet,
     private val ways: LongHashSet,
     private val relations: LongHashSet,
+    val wayNodes: Map<Long, LongArray> = emptyMap(),
 ) {
+    private val anonymous = LongHashSet().also { s -> wayNodes.values.forEach { ids -> ids.forEach { s.add(it) } } }
+
     fun contains(type: OsmType, id: Long): Boolean = when (type) {
-        OsmType.NODE -> nodes.contains(id)
+        OsmType.NODE -> nodes.contains(id) || anonymous.contains(id)
         OsmType.WAY -> ways.contains(id)
         OsmType.RELATION -> relations.contains(id)
     }
@@ -216,13 +219,17 @@ class ExistingIds(
     val size: Int get() = nodes.size() + ways.size() + relations.size()
 }
 
-fun FeatureLibrary.existingIds(nodes: LongArray, ways: LongArray, relations: LongArray): ExistingIds {
+fun FeatureLibrary.existingIds(nodes: LongArray, ways: LongArray, relations: LongArray, withWayNodes: Boolean = false): ExistingIds {
     val filter = IdSetFilter(LongHashSet.newSetWith(*nodes), LongHashSet.newSetWith(*ways), LongHashSet.newSetWith(*relations))
     val found = mapOf(OsmType.NODE to LongHashSet(), OsmType.WAY to LongHashSet(), OsmType.RELATION to LongHashSet())
+    val wayNodes = HashMap<Long, LongArray>()
     if (filter.acceptedTypes() != 0) {
-        for (f in select(filter)) found.getValue(f.ref.type).add(f.id())
+        for (f in select(filter)) {
+            found.getValue(f.ref.type).add(f.id())
+            if (withWayNodes && f.isWay) WayNodeIds.of(f)?.let { wayNodes[f.id()] = it }
+        }
     }
-    return ExistingIds(found.getValue(OsmType.NODE), found.getValue(OsmType.WAY), found.getValue(OsmType.RELATION))
+    return ExistingIds(found.getValue(OsmType.NODE), found.getValue(OsmType.WAY), found.getValue(OsmType.RELATION), wayNodes)
 }
 
 private class IdSetFilter(

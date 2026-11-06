@@ -44,7 +44,7 @@ class OscElement(
 }
 
 object OscDiff {
-    private val DROPPED_ATTRS = setOf("user", "uid")
+    private val DROPPED_ATTRS = setOf("user", "uid", "visible")
     private val TYPES = mapOf("node" to OsmType.NODE, "way" to OsmType.WAY, "relation" to OsmType.RELATION)
     private val inputs = XMLInputFactory.newFactory().apply {
         setProperty(XMLInputFactory.SUPPORT_DTD, false)
@@ -54,10 +54,12 @@ object OscDiff {
 
     fun parseGz(gz: ByteArray): List<OscElement> = GZIPInputStream(ByteArrayInputStream(gz)).use { parse(it.readBytes()) }
 
-    fun parse(xml: ByteArray): List<OscElement> {
+    fun parseOsm(xml: ByteArray): List<OscElement> = parse(xml, OscAction.MODIFY, skipInvisible = true)
+
+    fun parse(xml: ByteArray, defaultAction: OscAction? = null, skipInvisible: Boolean = false): List<OscElement> {
         val r = inputs.createXMLStreamReader(ByteArrayInputStream(xml))
         val out = ArrayList<OscElement>()
-        var action: OscAction? = null
+        var action: OscAction? = defaultAction
         var current: Triple<OsmType, List<Pair<String, String>>, MutableList<OscChild>>? = null
         try {
             while (r.hasNext()) {
@@ -77,10 +79,11 @@ object OscDiff {
                         val cur = current
                         if (name in TYPES && cur != null && action != null) {
                             val id = cur.second.first { it.first == "id" }.second.toLong()
-                            out += OscElement(action, cur.first, id, cur.second.filter { it.first !in DROPPED_ATTRS }, cur.third)
+                            val invisible = cur.second.any { it.first == "visible" && it.second == "false" }
+                            if (!(skipInvisible && invisible)) out += OscElement(action, cur.first, id, cur.second.filter { it.first !in DROPPED_ATTRS }, cur.third)
                             current = null
                         } else if (OscAction.entries.any { it.tag == name }) {
-                            action = null
+                            action = defaultAction
                         }
                     }
                 }

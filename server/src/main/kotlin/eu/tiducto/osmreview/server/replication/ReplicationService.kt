@@ -2,6 +2,7 @@ package eu.tiducto.osmreview.server.replication
 
 import eu.tiducto.osmreview.rules.ClipArea
 import eu.tiducto.osmreview.rules.GolMirror
+import eu.tiducto.osmreview.rules.WayNodeIds
 import eu.tiducto.osmreview.rules.existingIds
 import eu.tiducto.osmreview.shared.ReplicationStatus
 import kotlinx.coroutines.CoroutineScope
@@ -13,6 +14,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import org.eclipse.collections.impl.set.mutable.primitive.LongHashSet
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
 import java.time.Duration
@@ -26,7 +28,9 @@ data class ReplicationConfig(
     val intervalSeconds: Long = 60,
     val batchSize: Int = 60,
     val area: String? = null,
-    val bufferMeters: Double = 2000.0,
+    val bufferMeters: Double = 0.0,
+    val outerMeters: Double = 10_000.0,
+    val fillApiUrl: String? = DEFAULT_FILL_API,
     val keepDays: Long = 3,
     val rebaseMarginMinutes: Long = 15,
     val generator: String = "OSM Review Editor clipper",
@@ -34,6 +38,7 @@ data class ReplicationConfig(
     companion object {
         const val DEFAULT_SOURCE = "https://planet.openstreetmap.org/replication/minute"
         const val BUNDLED_AREA = "czech-republic.poly"
+        const val DEFAULT_FILL_API = "https://api.openstreetmap.org/api/0.6"
     }
 }
 
@@ -46,13 +51,14 @@ class ReplicationService(
     private val onChange: (ReplicationStatus) -> Unit = {},
     private val clock: () -> Instant = Instant::now,
     private val reference: () -> Instant? = { mirror.peerHeaders().mapNotNull { it.timestamp }.minOrNull() },
+    private val fetcher: NodeFetcher? = null,
 ) {
     private val log = LoggerFactory.getLogger(ReplicationService::class.java)
     private val dir = ReplicationDir(config.dir)
     private val mutex = Mutex()
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val state = AtomicReference(ReplicationStatus(enabled = config.enabled, source = source.url))
-    private var area: ClipArea? = null
+    private var area: Pair<ClipArea, ClipArea>? = null
     private var tracked: TrackedIds? = null
     private var lastPrune: Instant = Instant.EPOCH
 
@@ -114,7 +120,7 @@ class ReplicationService(
             dir.wipe()
             tracked = TrackedIds()
             val now = clock()
-            meta = ClipperMeta(source.url, start.sequence, start.timestamp.toString(), now.toString(), clip.name)
+            meta = ClipperMeta(source.url, start.sequence, start.timestamp.toString(), now.toString(), clip.first.name)
             processBatch(listOf(start), clip)
             dir.writeMeta(meta)
             head = start
@@ -123,7 +129,7 @@ class ReplicationService(
         }
         val ids = tracked ?: dir.loadTracked().also { tracked = it }
         val latest = source.latest()
-        update { it.copy(sourceSequence = latest.sequence, backlog = latest.sequence - head!!.sequence, firstSequence = meta.firstSequence, area = clip.name) }
+        update { it.copy(sourceSequence = latest.sequence, backlog = latest.sequence - head!!.sequence, firstSequence = meta.firstSequence, area = clip.first.name) }
 
         val started = clock()
         var kept = 0
@@ -138,8 +144,8 @@ class ReplicationService(
                 if (seq == latest.sequence) latest else source.state(seq) ?: throw IllegalStateException("State of sequence $seq is missing upstream")
             }
             val r = processBatch(states, clip)
-            kept += r.first
-            dropped += r.second
+            kept += r.kept
+            dropped += r.dropped
             done += states.size
             head = states.last()
             next = end + 1
@@ -147,7 +153,9 @@ class ReplicationService(
             update {
                 it.copy(
                     sequence = h.sequence, timestamp = h.timestamp.toString(), backlog = latest.sequence - h.sequence,
-                    keptTotal = it.keptTotal + r.first, droppedTotal = it.droppedTotal + r.second,
+                    keptTotal = it.keptTotal + r.kept, droppedTotal = it.droppedTotal + r.dropped,
+                    fetchedNodesTotal = it.fetchedNodesTotal + r.fetched,
+                    unresolvedNodesTotal = it.unresolvedNodesTotal + r.unresolved.size(),
                 )
             }
         }
@@ -162,20 +170,31 @@ class ReplicationService(
         return RunReport(done, kept, dropped, head, rebased)
     }
 
-    private fun processBatch(states: List<ReplicationState>, clip: ClipArea): Pair<Int, Int> {
+    private fun processBatch(states: List<ReplicationState>, clip: Pair<ClipArea, ClipArea>): ClipResult {
         val diffs = states.map { OscDiff.parseGz(source.diff(it.sequence)) }
         val ids = tracked ?: TrackedIds().also { tracked = it }
-        val clipper = DiffClipper(clip::contains, ids::contains) { n, w, r ->
-            val found = mirror.query { gol -> gol.existingIds(n, w, r) }
-            found::contains
-        }
+        val withWayNodes = mirror.dataHeader?.hasWaynodeIds == true
+        val clipper = DiffClipper(
+            inArea = clip.first::contains,
+            tracked = ids::contains,
+            lookup = { n, w, r ->
+                val found = mirror.query { gol -> gol.existingIds(n, w, r, withWayNodes) }
+                found::contains
+            },
+            nearArea = clip.second::contains,
+            wayNodesNear = { points -> if (withWayNodes) mirror.query { gol -> WayNodeIds.near(gol, points, NEAR_METERS) } else LongHashSet() },
+            fetcher = fetcher,
+        )
         val result = clipper.clip(diffs)
+        if (!result.unresolved.isEmpty) {
+            log.warn("Sequences {}..{}: {} way nodes neither in the mirror nor in the diffs: {}", states.first().sequence, states.last().sequence, result.unresolved.size(), result.unresolved.toSortedArray().take(20))
+        }
         states.zip(result.diffs).forEach { (st, elements) -> dir.writeSequence(st, OscDiff.writeGz(elements, config.generator)) }
         val epoch = states.last().timestamp.epochSecond
         ids.add(result.keptIds, epoch)
         dir.appendTracked(result.keptIds, epoch)
         dir.commitHead(states.last())
-        return result.kept to result.dropped
+        return result
     }
 
     private fun maybePrune(meta: ClipperMeta, reference: Instant, ids: TrackedIds) {
@@ -190,17 +209,18 @@ class ReplicationService(
         if (ids.pruneBefore(reference.minus(Duration.ofDays(1)).epochSecond) > 0) dir.rewriteTracked(ids)
     }
 
-    private fun resolveArea(): ClipArea {
+    private fun resolveArea(): Pair<ClipArea, ClipArea> {
         val spec = config.area?.trim()?.ifEmpty { null }
-        return when {
+        val (name, shape) = when {
             spec == null -> {
                 val text = ReplicationService::class.java.getResource("/replication/${ReplicationConfig.BUNDLED_AREA}")!!.readText()
-                ClipArea(ReplicationConfig.BUNDLED_AREA, ClipArea.parsePoly(text), config.bufferMeters)
+                ReplicationConfig.BUNDLED_AREA to ClipArea.parsePoly(text)
             }
-            spec.startsWith("mirror:") -> mirror.query { gol -> ClipArea.fromMirror(gol, spec.removePrefix("mirror:"), config.bufferMeters) }
+            spec.startsWith("mirror:") -> mirror.query { gol -> ClipArea.mirrorShape(gol, spec.removePrefix("mirror:")) }
                 ?: throw IllegalStateException("No admin_level=2 boundary with ISO3166-1=${spec.removePrefix("mirror:")} in the mirror")
-            else -> ClipArea.fromFile(Path.of(spec), config.bufferMeters)
+            else -> ClipArea.shapeFromFile(Path.of(spec))
         }
+        return ClipArea(name, shape, config.bufferMeters) to ClipArea("$name outer", shape, config.bufferMeters + config.outerMeters)
     }
 
     fun findStart(target: Instant): ReplicationState {
@@ -228,5 +248,6 @@ class ReplicationService(
 
     private companion object {
         const val NEAR = 10L
+        const val NEAR_METERS = 200.0
     }
 }

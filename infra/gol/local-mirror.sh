@@ -4,6 +4,7 @@ GOL=${1:?path to the gol binary (GOL Tool 2.5+)}
 SOURCE=${2:?an updatable GOL (built with gol build --updatable)}
 WORK=${3:-data/live}
 HERE=$(cd "$(dirname "$0")" && pwd)
+GOL="$(cd "$(dirname "$GOL")" && pwd)/$(basename "$GOL")"
 
 mkdir -p "$WORK"
 WORK=$(cd "$WORK" && pwd)
