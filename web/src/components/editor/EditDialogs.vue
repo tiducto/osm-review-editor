@@ -46,15 +46,15 @@ function submit() {
 <template>
   <Modal v-if="editor.saveDialog" :title="t('dialog.save.title')" width="480px" @close="editor.saveDialog = false">
     <form class="space-y-3 px-5 py-4" data-testid="edit-save-dialog" @submit.prevent="submit">
-      <p class="text-[12px] text-fg-2">
+      <p class="text-[12.5px] text-fg-2">
         {{ tn('dialog.save.intro', editor.editCount) }}
       </p>
       <label class="block space-y-1">
-        <span class="text-[12px] font-bold">{{ t('dialog.save.titleLabel') }}</span>
+        <span class="text-[12px] font-medium">{{ t('dialog.save.titleLabel') }}</span>
         <input v-model="title" class="input" required data-testid="edit-save-title" />
       </label>
       <label class="block space-y-1">
-        <span class="text-[12px] font-bold">{{ t('dialog.save.comment') }} <span class="font-normal text-fg-3">{{ t('dialog.save.optional') }}</span></span>
+        <span class="text-[12px] font-medium">{{ t('dialog.save.comment') }} <span class="font-normal text-fg-3">{{ t('dialog.save.optional') }}</span></span>
         <input v-model="comment" class="input" :placeholder="t('dialog.save.commentPlaceholder')" />
       </label>
     </form>
@@ -67,7 +67,7 @@ function submit() {
   </Modal>
 
   <Modal v-if="issues.summary" :title="t('dialog.issues.title')" width="520px" @close="issues.summary.resolve(false)">
-    <div class="space-y-3 px-5 py-4 text-[12px]" data-testid="edit-issue-summary">
+    <div class="space-y-3 px-5 py-4 text-[12.5px]" data-testid="edit-issue-summary">
       <p class="text-fg-2">
         {{ t('dialog.issues.have') }}
         <b v-if="issues.summary.errors.length" class="text-error">{{ tn('toolbar.errors', issues.summary.errors.length) }}</b>

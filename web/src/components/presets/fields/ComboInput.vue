@@ -193,7 +193,7 @@ defineExpose({ focus })
       v-if="!readonly && options.length"
       type="button"
       tabindex="-1"
-      class="absolute inset-y-0 right-0 grid w-7 place-items-center text-fg-3 hover:text-fg"
+      class="absolute inset-y-0 right-0 grid w-6 place-items-center text-fg-3 hover:text-fg"
       @mousedown.prevent="toggle"
     >
       <Icon name="chevron-down" :size="12" />
@@ -201,7 +201,7 @@ defineExpose({ focus })
     <div
       v-if="open && !readonly && (filtered.length || (noMatchText && filtering && text.trim()))"
       ref="listEl"
-      class="scroll-thin absolute top-full right-0 left-0 z-40 -mt-px max-h-60 overflow-y-auto rounded-b-md border border-line-strong bg-surface shadow-pop"
+      class="scroll-thin absolute top-full right-0 left-0 z-40 mt-0.5 max-h-60 overflow-y-auto rounded-md border border-line bg-surface py-0.5 shadow-pop"
       role="listbox"
     >
       <button
@@ -212,16 +212,16 @@ defineExpose({ focus })
         role="option"
         :data-active="i === active"
         :aria-selected="i === active"
-        class="flex w-full items-baseline gap-2 px-2.5 py-1 text-left text-[12px]"
+        class="flex w-full items-baseline gap-2 px-2 py-1 text-left text-[12.5px]"
         :class="i === active ? 'bg-accent-soft text-fg' : 'text-fg hover:bg-surface-3'"
         :title="o.description ?? o.value"
         @mousedown.prevent="pick(o)"
         @mouseenter="active = i"
       >
         <span class="min-w-0 truncate" :class="o.raw && 'font-mono text-[12px]'">{{ o.title }}</span>
-        <span v-if="!o.raw && o.title !== o.value" class="ml-auto shrink-0 truncate font-mono text-[11px] text-fg-3">{{ o.value }}</span>
+        <span v-if="!o.raw && o.title !== o.value" class="ml-auto shrink-0 truncate font-mono text-[10.5px] text-fg-3">{{ o.value }}</span>
       </button>
-      <div v-if="!filtered.length" class="px-2.5 py-1 text-[12px] text-fg-3">{{ noMatchText }}</div>
+      <div v-if="!filtered.length" class="px-2 py-1 text-[12px] text-fg-3">{{ noMatchText }}</div>
     </div>
   </div>
 </template>

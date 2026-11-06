@@ -9,7 +9,6 @@ test('review opens and closes without blank frames', async ({ page }) => {
 
   await openMap(page, { zoom: 17 })
   const buildings = await renderedCount(page, { building: true })
-  await panels.paneButton(page, 'drafts').click()
   await panels.draftReview(page).click()
   await expect(panels.leaveReview(page)).toBeVisible()
   await settle(page)

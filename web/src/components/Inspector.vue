@@ -170,20 +170,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <div class="flex h-full flex-col bg-surface-2">
-    <div class="panel-header px-0">
-      <span class="w-10 shrink-0" />
-      <h2 class="panel-title">{{ t('view.title') }}</h2>
-      <button class="grid h-full w-10 shrink-0 place-items-center text-fg hover:bg-surface-3" :title="t('view.deselect')" @click="mapStore.select(null)"><Icon name="x" :size="18" /></button>
+  <div class="flex h-full flex-col">
+    <div class="flex h-10 shrink-0 items-center gap-2 border-b border-line px-3">
+      <h2 class="text-[13px] font-semibold">{{ t('view.title') }}</h2>
+      <button class="btn btn-ghost btn-icon btn-sm ml-auto w-6" :title="t('view.deselect')" @click="mapStore.select(null)"><Icon name="x" :size="14" /></button>
     </div>
 
     <div v-if="mapStore.selected" class="scroll-thin min-h-0 flex-1 overflow-y-auto">
-      <div class="space-y-2.5 border-b border-line-strong px-4 py-3">
+      <div class="space-y-2.5 border-b border-line px-4 py-3">
         <div>
           <div class="flex items-center gap-2">
             <Spinner v-if="mapStore.selectedLoading" :size="12" class="text-fg-3" />
           </div>
-          <h3 class="mt-1 text-[15px] leading-snug font-bold break-words">
+          <h3 class="mt-1 text-[16px] leading-snug font-semibold break-words">
             {{ feature ? featureTitle(feature.ref, feature.tags) : refLabel(mapStore.selected) }}
           </h3>
           <button class="mt-0.5 flex items-center gap-1 font-mono text-[11.5px] text-fg-3 hover:text-fg-2" :title="t('view.copyId')" @click="copyRef">
@@ -204,13 +203,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         </div>
       </div>
 
-      <section v-if="issues.length" class="space-y-2 border-b border-line-strong px-4 py-3">
+      <section v-if="issues.length" class="space-y-2 border-b border-line px-4 py-3">
         <div class="section-title">{{ t('view.issues') }}</div>
-        <div v-for="i in issues" :key="i.ruleId" class="card p-2.5">
+        <div v-for="i in issues" :key="i.ruleId" class="rounded-md border border-line bg-surface-2 p-2.5">
           <div class="flex items-start gap-2">
             <span class="mt-1 size-2 shrink-0 rounded-full" :style="{ background: rules.colorOf.get(i.ruleId) }" />
             <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-1.5 font-bold">
+              <div class="flex items-center gap-1.5 font-medium">
                 {{ rules.ruleById.get(i.ruleId)?.title ?? i.ruleId }}
                 <span class="size-1.5 rounded-full" :style="{ background: severityColor[i.severity] }" :title="t(severityKey[i.severity])" />
               </div>
@@ -235,7 +234,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       <template v-if="feature">
         <PresetEditor :entities="entities" @patch="onPatch" @preset="onPreset" @tags="edited = $event">
           <template #before-fields>
-            <p v-if="!editable && !dirty" class="border-b border-line-strong px-4 py-1.5 text-[11px] text-fg-3">{{ presets.t('inspector.notEditable') }}</p>
+            <p v-if="!editable && !dirty" class="border-b border-line px-4 py-1.5 text-[11px] text-fg-3">{{ presets.t('inspector.notEditable') }}</p>
           </template>
         </PresetEditor>
       </template>
@@ -249,8 +248,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       </div>
     </div>
 
-    <section v-if="conflict" class="scroll-thin max-h-[45%] shrink-0 space-y-2 overflow-y-auto border-t border-line-strong bg-changed-soft px-4 py-3" data-testid="manual-conflict">
-      <div class="flex items-center gap-2 font-bold text-changed">
+    <section v-if="conflict" class="scroll-thin max-h-[45%] shrink-0 space-y-2 overflow-y-auto border-t border-changed/40 bg-changed-soft px-4 py-3" data-testid="manual-conflict">
+      <div class="flex items-center gap-2 font-semibold text-changed">
         <Icon name="conflict" :size="15" /> {{ t('view.conflictTitle') }}
       </div>
       <p class="text-[12px] text-fg-2">{{ t('view.conflictBody', { version: conflict.liveVersion ?? '?' }) }}</p>
@@ -279,7 +278,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     </section>
 
     <Transition name="fade">
-      <footer v-if="dirty && mapStore.selected" class="shrink-0 space-y-2 border-t border-line-strong bg-surface px-4 py-3">
+      <footer v-if="dirty && mapStore.selected" class="shrink-0 space-y-2 border-t border-line bg-surface-2 px-4 py-3">
         <code class="block truncate font-mono text-[11.5px] text-fg-2" :title="summary">{{ summary }}</code>
         <input v-model="reason" class="input" :placeholder="t('view.reasonPlaceholder')" @keydown.enter.prevent="save" />
         <div class="flex items-center gap-2">

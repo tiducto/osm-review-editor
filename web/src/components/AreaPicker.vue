@@ -43,28 +43,28 @@ function choose(name: string | null) {
 
 <template>
   <div class="relative">
-    <button class="bar-btn max-w-32 gap-1.5 max-sm:px-2 sm:max-w-56" :class="open && 'bg-surface-3'" @click="open = !open">
+    <button class="btn h-8 max-w-32 gap-2 sm:max-w-56" :class="open && 'bg-surface-3'" @click="open = !open">
       <Spinner v-if="mapStore.areaLoading" :size="12" />
-      <Icon v-else name="pin" :size="16" class="text-fg-2" />
-      <span class="truncate max-sm:hidden">{{ mapStore.drawing ? t('area.drawing') : (mapStore.scopeName ?? t('area.mapView')) }}</span>
-      <Icon name="chevron-down" :size="13" class="text-fg-3 max-sm:hidden" />
+      <Icon v-else name="pin" :size="14" class="text-fg-3" />
+      <span class="truncate">{{ mapStore.drawing ? t('area.drawing') : (mapStore.scopeName ?? t('area.mapView')) }}</span>
+      <Icon name="chevron-down" :size="13" class="text-fg-3" />
     </button>
     <Transition name="pop">
-      <div v-if="open" class="absolute top-full left-0 z-40 mt-1.5 w-64 overflow-hidden rounded-md border border-line-strong bg-surface text-fg shadow-pop">
-        <div class="border-b border-line-strong bg-surface-2 p-2">
+      <div v-if="open" class="absolute top-full left-0 z-40 mt-1.5 w-64 overflow-hidden rounded-lg border border-line bg-surface shadow-pop">
+        <div class="border-b border-line p-1.5">
           <input ref="filterInput" v-model="filter" class="input" :placeholder="t('area.filter')" @keydown.esc="open = false" />
         </div>
         <ul class="scroll-thin max-h-72 overflow-y-auto py-1">
           <li>
-            <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-3" @click="choose(null)">
+            <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-2" @click="choose(null)">
               <Icon name="target" :size="14" class="text-fg-3" />
               <span class="flex-1">{{ t('area.mapView') }}</span>
               <Icon v-if="!mapStore.area && !mapStore.polygon" name="check" :size="14" class="text-accent" />
             </button>
             <p class="px-3 pb-1.5 pl-9 text-[11px] text-fg-3">{{ t('area.mapViewHint') }}</p>
           </li>
-          <li class="border-b border-line-strong pb-1">
-            <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-3" data-testid="draw-polygon" @click="startDrawing">
+          <li class="border-b border-line pb-1">
+            <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-2" data-testid="draw-polygon" @click="startDrawing">
               <Icon name="edit" :size="14" class="text-fg-3" />
               <span class="flex-1">{{ mapStore.polygon ? t('area.redraw') : t('area.draw') }}</span>
               <Icon v-if="mapStore.polygon" name="check" :size="14" class="text-accent" />
@@ -75,7 +75,7 @@ function choose(name: string | null) {
             </p>
           </li>
           <li v-for="a in list" :key="a.name">
-            <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-3" @click="choose(a.name)">
+            <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-2" @click="choose(a.name)">
               <Icon name="pin" :size="14" class="text-fg-3" />
               <span class="flex-1 truncate">{{ a.name }}</span>
               <Icon v-if="mapStore.area?.name === a.name" name="check" :size="14" class="text-accent" />

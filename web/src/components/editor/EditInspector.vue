@@ -100,15 +100,15 @@ function onSmart(p: SmartPreset) {
 </script>
 
 <template>
-  <div class="flex h-full flex-col bg-surface-2" data-testid="edit-inspector">
-    <div class="panel-header gap-1.5 pr-0 pl-3">
-      <span class="chip shrink-0 bg-surface-3 text-fg-2">iD {{ editor.version }}</span>
-      <h2 class="panel-title">{{ t('inspector.edit') }}</h2>
-      <span v-if="editor.selection.length > 1" class="chip shrink-0 bg-accent-soft text-accent">{{ t('inspector.selected', { n: editor.selection.length }) }}</span>
-      <button class="grid h-full w-10 shrink-0 place-items-center text-fg hover:bg-surface-3" :title="tt('shell.edit.deselect')" @click="editor.select([])"><Icon name="x" :size="18" /></button>
+  <div class="flex h-full flex-col" data-testid="edit-inspector">
+    <div class="flex h-10 shrink-0 items-center gap-2 border-b border-line px-3">
+      <h2 class="text-[13px] font-semibold">{{ t('inspector.edit') }}</h2>
+      <span class="chip bg-accent-soft text-accent">iD {{ editor.version }}</span>
+      <span v-if="editor.selection.length > 1" class="chip bg-surface-3 text-fg-2">{{ t('inspector.selected', { n: editor.selection.length }) }}</span>
+      <button class="btn btn-ghost btn-icon btn-sm ml-auto w-6" :title="tt('shell.edit.deselect')" @click="editor.select([])"><Icon name="x" :size="14" /></button>
     </div>
 
-    <div v-if="drawName" class="flex items-center gap-2 border-b border-line-strong bg-accent-soft px-4 py-2 text-[12px]" data-testid="draw-preset">
+    <div v-if="drawName" class="flex items-center gap-2 border-b border-accent/40 bg-accent-soft px-4 py-2 text-[12px]" data-testid="draw-preset">
       <Icon name="edit" :size="13" class="text-accent" />
       <span class="flex-1">{{ t('draw.hint', { name: drawName }) }}</span>
       <button class="btn btn-ghost btn-sm" @click="presetEdit.cancelDraw(); editor.select([])">{{ t('draw.cancel') }}</button>

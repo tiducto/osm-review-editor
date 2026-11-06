@@ -137,19 +137,18 @@ function labelTitle(field: FieldDef): string {
 <template>
   <div class="flex flex-col gap-2.5">
     <div v-for="field in visible.shown" :key="field.id" class="min-w-0" :data-field="field.id">
-      <div class="field-label h-7 gap-1 py-0 pr-0">
-        <span class="min-w-0 flex-1 truncate pr-2.5" :title="labelTitle(field)">{{ field.label }}</span>
+      <div class="mb-0.5 flex h-5 items-center gap-1">
+        <span class="min-w-0 truncate text-[11.5px] font-medium text-fg-2" :title="labelTitle(field)">{{ field.label }}</span>
         <button
           v-if="!readonly && present(field)"
           type="button"
-          class="grid w-8 shrink-0 place-items-center self-stretch rounded-tr-md border-l border-line-strong text-fg opacity-50 transition-opacity hover:bg-surface-3 hover:text-removed hover:opacity-100"
+          class="ml-auto grid h-5 w-5 shrink-0 place-items-center rounded text-fg-3 hover:bg-removed-soft hover:text-removed"
           :title="tr(locale, 'field.remove')"
           @click="remove(field)"
         >
-          <Icon name="trash" :size="14" />
+          <Icon name="trash" :size="12" />
         </button>
       </div>
-      <div class="field-body">
       <component
         :is="component(field)!"
         v-if="component(field)"
@@ -161,17 +160,15 @@ function labelTitle(field: FieldDef): string {
         v-bind="fieldFamily(field) === 'radio' ? { fieldById } : {}"
         @change="change"
       />
-      <div v-else class="rounded-b-md border border-line-strong bg-surface px-2.5 py-1.5 text-[11.5px] text-fg-3">
+      <div v-else class="rounded-md border border-dashed border-line bg-surface-2 px-2 py-1 text-[11.5px] text-fg-3">
         <div>{{ tr(locale, 'field.editInTags') }}</div>
         <div v-if="fallbackValues(field)" class="truncate font-mono text-[11px] text-fg-2" :title="fallbackValues(field)">{{ fallbackValues(field) }}</div>
       </div>
-      </div>
     </div>
 
-    <div v-if="!readonly && visible.addable.length" class="flex min-w-0 items-center gap-2 pt-1">
-      <div class="shrink-0 text-[12px] font-bold text-fg">{{ tr(locale, 'field.add') }}</div>
+    <div v-if="!readonly && visible.addable.length" class="min-w-0">
+      <div class="mb-0.5 text-[11.5px] font-medium text-fg-3">{{ tr(locale, 'field.add') }}</div>
       <ComboInput
-        class="flex-1"
         model-value=""
         :options="addOptions"
         :placeholder="addPlaceholder"

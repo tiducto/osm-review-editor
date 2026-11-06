@@ -80,9 +80,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col bg-surface-2" data-testid="validation">
-    <section class="shrink-0 border-b border-line-strong">
-      <button class="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-surface-3" @click="setupOpen = !setupOpen">
+  <div class="flex h-full min-h-0 flex-col" data-testid="validation">
+    <section class="shrink-0 border-b border-line">
+      <button class="flex w-full items-center gap-2 px-3 py-2 text-left" @click="setupOpen = !setupOpen">
         <Icon :name="setupOpen ? 'chevron-down' : 'chevron-right'" :size="12" class="text-fg-3" />
         <span class="section-title">{{ t('scan.newScan') }}</span>
         <span class="truncate text-[11.5px] text-fg-3">· {{ scopeLabel }}</span>
@@ -101,8 +101,7 @@ onBeforeUnmount(() => {
         <p v-if="scopeHelp" class="text-[11.5px] text-changed">{{ scopeHelp }}</p>
 
         <div>
-          <div class="field-label">{{ t('scan.checkFiles') }}</div>
-          <div class="field-body rounded-b-md border border-line-strong bg-surface px-2.5 py-1">
+          <div class="mb-1 text-[11.5px] font-medium text-fg-2">{{ t('scan.checkFiles') }}</div>
           <label v-for="f in scans.checkFiles" :key="f.path" class="flex items-center gap-2 py-0.5 text-[12px]">
             <input
               type="checkbox"
@@ -113,21 +112,18 @@ onBeforeUnmount(() => {
               @change="scans.toggleFile(f.path)"
             />
             <span class="min-w-0 flex-1 truncate font-mono text-[11.5px]" :title="f.path">{{ fileName(f.path) }}</span>
-            <span v-if="f.origin?.builtIn" class="chip bg-surface-3 text-[10px] text-fg-2">{{ t('scan.builtIn') }}</span>
-            <span v-else-if="f.origin" class="chip bg-surface-3 text-[10px] text-fg-2">{{ t('scan.remote') }}</span>
+            <span v-if="f.origin?.builtIn" class="chip bg-surface-3 text-[10px] text-fg-3">{{ t('scan.builtIn') }}</span>
+            <span v-else-if="f.origin" class="chip bg-surface-3 text-[10px] text-fg-3">{{ t('scan.remote') }}</span>
           </label>
           <p v-if="!scans.checkFiles.length" class="text-[11.5px] text-fg-3">{{ t('scan.noCheckFiles') }}</p>
-          </div>
         </div>
         <div>
-          <div class="field-label">{{ t('scan.builtInRules') }}</div>
-          <div class="field-body rounded-b-md border border-line-strong bg-surface px-2.5 py-1">
+          <div class="mb-1 text-[11.5px] font-medium text-fg-2">{{ t('scan.builtInRules') }}</div>
           <label v-for="r in builtInSelectable" :key="r.id" class="flex items-center gap-2 py-0.5 text-[12px]" :title="r.description">
             <input type="checkbox" class="accent-[var(--accent)]" :checked="scans.selectedBuiltIn.has(r.id)" @change="scans.toggleBuiltIn(r.id)" />
             <span class="min-w-0 flex-1 truncate">{{ r.title }}</span>
-            <span class="size-2 shrink-0 rounded-full" :style="{ background: severityColor[r.severity] }" />
+            <span class="size-1.5 shrink-0 rounded-full" :style="{ background: severityColor[r.severity] }" />
           </label>
-          </div>
         </div>
         <button
           class="btn btn-primary w-full justify-center"
@@ -139,8 +135,8 @@ onBeforeUnmount(() => {
           <Icon v-else name="bolt" :size="13" />
           {{ scans.running ? t('scan.scanning', { seconds: elapsed }) : t('scan.run') }}
         </button>
-        <div v-if="scans.running" class="h-1 overflow-hidden rounded-sm bg-line-strong">
-          <div class="h-full w-1/3 animate-[ore-indet_1.2s_ease-in-out_infinite] rounded-sm bg-accent" />
+        <div v-if="scans.running" class="h-1 overflow-hidden rounded-full bg-surface-3">
+          <div class="h-full w-1/3 animate-[ore-indet_1.2s_ease-in-out_infinite] rounded-full bg-accent" />
         </div>
         <p v-if="scans.runError" class="text-[11.5px] text-error">{{ scans.runError }}</p>
       </div>
@@ -149,7 +145,7 @@ onBeforeUnmount(() => {
     <div class="scroll-thin min-h-0 flex-1 overflow-y-auto">
       <section v-if="scans.loadingReport" class="flex items-center gap-2 px-3 py-3 text-fg-3"><Spinner :size="12" /> {{ t('scan.loadingReport') }}</section>
 
-      <section v-else-if="scan" class="space-y-2.5 border-b border-line-strong px-3 py-3" data-testid="scan-report">
+      <section v-else-if="scan" class="space-y-2.5 border-b border-line px-3 py-3" data-testid="scan-report">
         <div class="flex items-center gap-2">
           <span class="section-title">{{ t('scan.report') }}</span>
           <span class="truncate text-[11.5px] text-fg-3">{{ scan.areaName ?? t('scan.mapArea') }} · {{ when(scan.startedAt) }}</span>
@@ -159,43 +155,43 @@ onBeforeUnmount(() => {
           <button
             v-for="s in sevs"
             :key="s"
-            class="rounded-md border px-1 py-1.5 transition-colors hover:bg-surface-3"
-            :class="scans.severities[s] ? 'border-line-strong bg-surface' : 'border-line bg-surface-2 text-fg-3 opacity-60'"
+            class="rounded-md border px-1 py-1.5 transition-colors"
+            :class="scans.severities[s] ? 'border-line-strong bg-surface-2' : 'border-line text-fg-3 opacity-60'"
             @click="scans.severities[s] = !scans.severities[s]"
           >
-            <div class="text-[16px] leading-5 font-bold tabular-nums" :style="{ color: severityColor[s] }">
+            <div class="font-mono text-[15px] font-semibold tabular-nums" :style="{ color: severityColor[s] }">
               {{ formatNumber(s === 'error' ? scan.errors : s === 'warning' ? scan.warnings : scan.infos) }}
             </div>
-            <div class="text-[11px] font-bold text-fg-2">{{ t(sevLabel[s]) }}</div>
+            <div class="text-[10.5px] text-fg-3">{{ t(sevLabel[s]) }}</div>
           </button>
         </div>
-        <div v-if="scans.diff" class="seg flex w-full" data-testid="scan-diff">
-          <button class="seg-btn flex-1 px-1" :class="scans.view === 'all' && 'active'" @click="scans.view = 'all'">
+        <div v-if="scans.diff" class="flex rounded-md border border-line p-0.5 text-[11.5px]" data-testid="scan-diff">
+          <button class="flex-1 rounded px-1 py-1" :class="scans.view === 'all' && 'bg-surface-3 font-medium'" @click="scans.view = 'all'">
             {{ t('scan.viewAll', { count: formatNumber(scan.issueCount) }) }}
           </button>
-          <button class="seg-btn flex-1 px-1" :class="scans.view === 'new' && 'active'" @click="scans.view = 'new'">
-            <span :class="scans.view === 'new' ? 'text-white' : 'text-changed'">{{ t('scan.viewNew', { count: formatNumber(scans.diff.newCount) }) }}</span>
+          <button class="flex-1 rounded px-1 py-1" :class="scans.view === 'new' && 'bg-surface-3 font-medium'" @click="scans.view = 'new'">
+            <span class="text-changed">{{ t('scan.viewNew', { count: formatNumber(scans.diff.newCount) }) }}</span>
           </button>
-          <button class="seg-btn flex-1 px-1" :class="scans.view === 'resolved' && 'active'" @click="scans.view = 'resolved'">
-            <span :class="scans.view === 'resolved' ? 'text-white' : 'text-added'">{{ t('scan.viewResolved', { count: formatNumber(scans.diff.resolvedCount) }) }}</span>
+          <button class="flex-1 rounded px-1 py-1" :class="scans.view === 'resolved' && 'bg-surface-3 font-medium'" @click="scans.view = 'resolved'">
+            <span class="text-added">{{ t('scan.viewResolved', { count: formatNumber(scans.diff.resolvedCount) }) }}</span>
           </button>
         </div>
         <p v-if="scans.diff" class="text-[11px] text-fg-3">
           {{ scans.diff.against ? t('scan.unchangedSince', { count: formatNumber(scans.diff.unchangedCount) }) : t('scan.noEarlier') }}
         </p>
-        <table class="card w-full overflow-hidden text-[11.5px] tabular-nums">
+        <table class="w-full text-[11.5px] tabular-nums">
           <tbody>
             <tr
               v-for="g in scans.groups"
               :key="g.group"
-              class="cursor-pointer border-b border-line last:border-b-0 hover:bg-surface-3"
+              class="cursor-pointer hover:bg-surface-2"
               :class="scans.group === g.group && 'bg-accent-soft'"
               @click="scans.group = scans.group === g.group ? null : g.group"
             >
-              <td class="max-w-0 truncate py-1 pr-2 pl-2" :title="g.group">{{ g.group }}</td>
-              <td class="w-9 text-right font-bold" :style="{ color: g.error ? severityColor.error : undefined }">{{ g.error || '' }}</td>
-              <td class="w-9 text-right font-bold" :style="{ color: g.warning ? severityColor.warning : undefined }">{{ g.warning || '' }}</td>
-              <td class="w-9 pr-2 text-right font-bold" :style="{ color: g.info ? severityColor.info : undefined }">{{ g.info || '' }}</td>
+              <td class="max-w-0 truncate py-0.5 pr-2" :title="g.group">{{ g.group }}</td>
+              <td class="w-9 text-right font-mono" :style="{ color: g.error ? severityColor.error : undefined }">{{ g.error || '' }}</td>
+              <td class="w-9 text-right font-mono" :style="{ color: g.warning ? severityColor.warning : undefined }">{{ g.warning || '' }}</td>
+              <td class="w-9 text-right font-mono" :style="{ color: g.info ? severityColor.info : undefined }">{{ g.info || '' }}</td>
             </tr>
           </tbody>
         </table>
@@ -206,7 +202,7 @@ onBeforeUnmount(() => {
           <input v-model="scans.text" class="input" :placeholder="t('scan.filterIssues')" data-testid="issue-filter" />
           <div class="flex items-center gap-1.5 text-[11.5px]">
             <span class="text-fg-3">{{ t('scan.shown', { count: formatNumber(scans.listed.length) }) }}</span>
-            <button v-if="scans.fixable.length" class="ml-auto font-bold text-accent hover:text-accent-strong" @click="scans.pickAllFixable()">{{ t('scan.selectFixable', { count: formatNumber(scans.fixable.length) }) }}</button>
+            <button v-if="scans.fixable.length" class="ml-auto text-accent hover:underline" @click="scans.pickAllFixable()">{{ t('scan.selectFixable', { count: formatNumber(scans.fixable.length) }) }}</button>
             <button v-if="scans.picked.size" class="text-fg-3 hover:text-fg" @click="scans.picked.clear()">{{ t('common.none') }}</button>
           </div>
           <button
@@ -219,12 +215,12 @@ onBeforeUnmount(() => {
             <Spinner v-if="scans.creatingDraft" :size="12" /><Icon v-else name="plus" :size="12" /> {{ tn('scan.draftFromIssues', scans.picked.size) }}
           </button>
         </div>
-        <ul class="border-t border-line bg-surface" data-testid="issue-list">
+        <ul data-testid="issue-list">
           <li
             v-for="l in shown"
             :key="`${l.state}-${l.issue.id}`"
-            class="group flex items-start gap-2 border-b border-l-2 border-b-line py-1.5 pr-3 pl-2.5 text-[12px] hover:bg-surface-3"
-            :class="scans.focused === l.issue.id ? 'border-l-accent bg-accent-soft' : 'border-l-transparent'"
+            class="group flex items-start gap-2 border-l-2 py-1.5 pr-3 pl-2.5 text-[12px] hover:bg-surface-2"
+            :class="scans.focused === l.issue.id ? 'border-accent bg-surface-2' : 'border-transparent'"
           >
             <input
               v-if="l.state !== 'resolved' && (l.issue.fix || l.issue.deleteObject)"
@@ -240,7 +236,7 @@ onBeforeUnmount(() => {
                 <span class="size-2 shrink-0 rounded-full" :style="{ background: l.state === 'resolved' ? '#94a3b8' : severityColor[l.issue.severity] }" />
                 <span class="truncate" :class="l.state === 'resolved' && 'text-fg-3 line-through'" :title="l.issue.message">{{ l.issue.message }}</span>
               </span>
-              <span class="mt-0.5 flex items-center gap-1.5 pl-3.5 text-[11px] text-fg-3">
+              <span class="mt-0.5 flex items-center gap-1.5 pl-3.5 text-[10.5px] text-fg-3">
                 <span class="font-mono">{{ refString(l.issue.ref) }}</span>
                 <span class="truncate">{{ l.issue.group ?? l.issue.rule }}</span>
                 <span v-if="l.state === 'new' && scans.diff?.against" class="chip bg-changed-soft px-1 text-[9.5px] text-changed">{{ t('scan.badgeNew') }}</span>
@@ -249,30 +245,30 @@ onBeforeUnmount(() => {
             </button>
           </li>
         </ul>
-        <button v-if="scans.listed.length > shown.length" class="mx-3 my-2 text-[12px] font-bold text-accent hover:text-accent-strong" @click="shownLimit += 300">
+        <button v-if="scans.listed.length > shown.length" class="mx-3 my-2 text-[12px] text-accent hover:underline" @click="shownLimit += 300">
           {{ t('scan.showMore', { count: formatNumber(scans.listed.length - shown.length) }) }}
         </button>
       </section>
 
-      <section class="border-t border-line-strong px-3 py-3">
+      <section class="border-t border-line px-3 py-3">
         <div class="mb-1.5 flex items-center gap-2">
           <span class="section-title">{{ t('scan.previous') }}</span>
           <button class="btn btn-ghost btn-icon btn-sm ml-auto w-6" :title="t('common.reload')" @click="scans.loadHistory()"><Icon name="refresh" :size="12" /></button>
         </div>
         <p v-if="!scans.history.length" class="text-[12px] text-fg-3">{{ t('scan.noScans') }}</p>
-        <ul>
-          <li v-for="s in scans.history" :key="s.id" class="overflow-hidden border-x border-b border-line-strong bg-surface first:rounded-t-md first:border-t last:rounded-b-md">
+        <ul class="space-y-0.5">
+          <li v-for="s in scans.history" :key="s.id">
             <button
-              class="row-btn px-2 py-1.5 text-[12px]"
+              class="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[12px] hover:bg-surface-2"
               :class="scan?.id === s.id && 'bg-accent-soft'"
               @click="scans.openScan(s.id)"
             >
               <span class="min-w-0 flex-1 truncate">{{ s.areaName ?? s.scope.replace(/#.*$/, '') }}</span>
-              <span v-if="s.trigger === 'mirror_swap'" class="chip bg-surface-3 text-[10px] text-fg-2" :title="t('scan.autoTitle')">{{ t('scan.auto') }}</span>
+              <span v-if="s.trigger === 'mirror_swap'" class="chip bg-surface-3 text-[10px] text-fg-3" :title="t('scan.autoTitle')">{{ t('scan.auto') }}</span>
               <span v-if="s.status === 'failed'" class="text-error" :title="s.error ?? ''"><Icon name="alert" :size="12" /></span>
               <span v-else-if="s.status === 'running'"><Spinner :size="11" /></span>
-              <span v-else class="text-[11px] font-bold tabular-nums text-fg-2">{{ formatNumber(s.issueCount) }}</span>
-              <span class="shrink-0 text-[11px] text-fg-3">{{ when(s.startedAt) }}</span>
+              <span v-else class="font-mono text-[11px] tabular-nums text-fg-2">{{ formatNumber(s.issueCount) }}</span>
+              <span class="shrink-0 text-[10.5px] text-fg-3">{{ when(s.startedAt) }}</span>
             </button>
           </li>
         </ul>

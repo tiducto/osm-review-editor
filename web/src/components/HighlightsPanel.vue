@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { HighlightFile } from '@/generated/models'
+import { useMapStore } from '@/stores/map'
 import { useHighlightsStore } from '@/stores/highlights'
 import { useRuleFilesStore } from '@/stores/ruleFiles'
 import Icon from './Icon.vue'
 import Spinner from './Spinner.vue'
 import Modal from './Modal.vue'
+import MapFeaturesPanel from './MapFeaturesPanel.vue'
 import { useI18n } from '@/i18n'
 import type { Scope } from '@/lib/scope'
-import MapFeaturesPanel from './MapFeaturesPanel.vue'
 
 const emit = defineEmits<{ edit: [path: string] }>()
+const mapStore = useMapStore()
 const hl = useHighlightsStore()
 const ruleFiles = useRuleFilesStore()
 const { t } = useI18n()
@@ -48,13 +50,29 @@ async function save() {
 </script>
 
 <template>
-  <div class="bg-surface-2">
+  <div>
+    <section class="space-y-2 border-b border-line px-3 py-3">
+      <div class="section-title">{{ t('highlight.imagery') }}</div>
+      <div class="relative">
+        <Icon name="image" :size="14" class="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-fg-3" />
+        <select
+          class="input appearance-none pr-7 pl-7"
+          :value="mapStore.imageryId ?? ''"
+          @change="mapStore.setImagery(($event.target as HTMLSelectElement).value || null)"
+        >
+          <option value="">{{ t('common.none') }}</option>
+          <option v-for="s in mapStore.allImagery" :key="s.id" :value="s.id">{{ s.name }}</option>
+        </select>
+        <Icon name="chevron-down" :size="13" class="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-fg-3" />
+      </div>
+    </section>
+
     <MapFeaturesPanel />
 
-    <section class="space-y-2 border-b border-line-strong px-3 py-3">
+    <section class="space-y-2 border-b border-line px-3 py-3">
       <div class="flex items-center">
         <span class="section-title">{{ t('highlight.filter') }}</span>
-        <button v-if="hl.quickFile" class="ml-auto text-[11.5px] font-bold text-accent hover:text-accent-strong" data-testid="save-filter" @click="startSave">
+        <button v-if="hl.quickFile" class="ml-auto text-[11.5px] text-accent hover:underline" data-testid="save-filter" @click="startSave">
           {{ t('highlight.newFromFilter') }}
         </button>
       </div>
@@ -75,7 +93,7 @@ async function save() {
         <button
           v-for="ex in examples"
           :key="ex"
-          class="rounded-sm border border-line-strong bg-surface px-1.5 py-0.5 text-left font-mono text-[10.5px] leading-4 text-fg-2 hover:bg-surface-3 hover:text-fg"
+          class="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[10.5px] text-fg-3 hover:bg-surface-3 hover:text-fg-2"
           @click="hl.quickText = ex"
         >
           {{ ex }}
@@ -87,23 +105,23 @@ async function save() {
       <div class="flex items-center gap-2 px-3 pb-1.5">
         <span class="section-title">{{ t('highlight.title') }}</span>
         <span class="truncate text-[11.5px] text-fg-3">· {{ scopeLabel(hl.scope) }}</span>
-        <button v-if="hl.active.length" class="ml-auto text-[11.5px] font-bold text-fg-3 hover:text-accent" @click="hl.clear()">{{ t('common.clear') }}</button>
+        <button v-if="hl.active.length" class="ml-auto text-[11.5px] text-fg-3 hover:text-accent" @click="hl.clear()">{{ t('common.clear') }}</button>
       </div>
       <div v-if="!hl.loaded && !hl.loadError" class="flex items-center gap-2 px-3 py-2 text-fg-3"><Spinner :size="12" /> {{ t('highlight.loading') }}</div>
       <p v-else-if="hl.loadError" class="px-3 py-2 text-[12px] text-error">{{ hl.loadError }}</p>
       <p v-else-if="!hl.files.length" class="px-3 py-2 text-[12px] text-fg-3">{{ t('highlight.noFiles') }}</p>
-      <ul class="border-t border-line bg-surface">
+      <ul>
         <li
           v-for="f in hl.files"
           :key="f.path"
-          class="border-b border-l-2 border-b-line transition-colors"
-          :class="expanded === f.path ? 'border-l-accent bg-accent-soft' : 'border-l-transparent hover:bg-surface-3'"
+          class="border-l-2 transition-colors"
+          :class="expanded === f.path ? 'border-accent bg-surface-2' : 'border-transparent hover:bg-surface-2'"
           :data-testid="`highlight-${f.path}`"
         >
           <div class="flex items-center gap-2 py-1.5 pr-2 pl-2.5">
             <button
-              class="grid size-4 shrink-0 place-items-center rounded-sm border transition-colors disabled:opacity-40"
-              :class="hl.isActive(f.path) ? 'border-accent bg-accent' : 'border-line-strong bg-surface'"
+              class="grid size-4 shrink-0 place-items-center rounded border-2 transition-colors disabled:opacity-40"
+              :class="hl.isActive(f.path) ? 'border-accent bg-accent' : 'border-line-strong'"
               :disabled="!f.valid"
               :title="hl.isActive(f.path) ? t('highlight.hide') : t('highlight.showOnMap')"
               :aria-pressed="hl.isActive(f.path)"
@@ -112,27 +130,27 @@ async function save() {
               <Icon v-if="hl.isActive(f.path)" name="check" :size="10" :stroke="3.5" class="text-white" />
             </button>
             <button class="min-w-0 flex-1 text-left" @click="expanded = expanded === f.path ? null : f.path">
-              <span class="block truncate font-bold" :class="hl.isActive(f.path) ? 'text-fg' : 'text-fg-2'" :title="f.title">{{ f.title }}</span>
+              <span class="block truncate" :class="hl.isActive(f.path) ? 'text-fg' : 'text-fg-2'" :title="f.title">{{ f.title }}</span>
               <span class="mt-0.5 flex gap-0.5">
-                <span v-for="c in colors(f)" :key="c" class="h-1 w-4 rounded-sm" :style="{ background: c }" />
+                <span v-for="c in colors(f)" :key="c" class="h-1 w-4 rounded-full" :style="{ background: c }" />
               </span>
             </button>
             <span v-if="!f.valid" class="text-error" :title="t('highlight.fileHasErrors')"><Icon name="alert" :size="13" /></span>
-            <span v-else-if="!f.allCompiled" class="chip shrink-0 bg-surface-3 text-[10px] text-fg-2" :title="t('highlight.serverRulesTitle')">{{ t('highlight.server') }}</span>
-            <span v-if="origin(f)?.builtIn" class="chip shrink-0 bg-surface-3 text-[10px] text-fg-2">{{ t('highlight.builtIn') }}</span>
+            <span v-else-if="!f.allCompiled" class="chip shrink-0 bg-surface-3 text-[10px] text-fg-3" :title="t('highlight.serverRulesTitle')">{{ t('highlight.server') }}</span>
+            <span v-if="origin(f)?.builtIn" class="chip shrink-0 bg-surface-3 text-[10px] text-fg-3">{{ t('highlight.builtIn') }}</span>
           </div>
           <div v-if="expanded === f.path" class="space-y-2 pr-3 pb-3 pl-9">
             <p class="text-[12px] text-fg-2">{{ f.description || t('highlight.noDescription') }}</p>
             <ul v-if="f.legend.length" class="space-y-0.5 text-[12px]">
               <li v-for="l in f.legend" :key="l.rule" class="flex items-center gap-2">
-                <span class="h-1.5 w-3.5 rounded-sm" :style="{ background: l.color ?? '#999' }" />{{ l.label }}
+                <span class="h-1.5 w-3.5 rounded-full" :style="{ background: l.color ?? '#999' }" />{{ l.label }}
               </li>
             </ul>
             <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
-              <span class="chip border border-line-strong bg-surface font-mono font-normal text-fg-2">{{ f.path }}</span>
-              <span v-if="f.dimOthers" class="chip border border-line-strong bg-surface text-fg-2">{{ t('highlight.dimsOthers') }}</span>
-              <span v-if="f.stats" class="chip border border-line-strong bg-surface text-fg-2">{{ t('highlight.stats', { stats: f.stats }) }}</span>
-              <span class="chip border border-line-strong bg-surface text-fg-2">{{ t('highlight.rulesOnTiles', { compiled: f.rules.filter((r) => r.compiled).length, total: f.rules.length }) }}</span>
+              <span class="chip bg-surface-3 font-mono text-fg-3">{{ f.path }}</span>
+              <span v-if="f.dimOthers" class="chip bg-surface-3 text-fg-3">{{ t('highlight.dimsOthers') }}</span>
+              <span v-if="f.stats" class="chip bg-surface-3 text-fg-3">{{ t('highlight.stats', { stats: f.stats }) }}</span>
+              <span class="chip bg-surface-3 text-fg-3">{{ t('highlight.rulesOnTiles', { compiled: f.rules.filter((r) => r.compiled).length, total: f.rules.length }) }}</span>
             </div>
             <p v-for="(d, i) in f.diagnostics.filter((x) => x.severity === 'error')" :key="i" class="text-[11.5px] text-error">
               {{ d.line }}:{{ d.column }} {{ d.message }}
@@ -148,7 +166,7 @@ async function save() {
 
     <Modal v-if="saving" :title="t('highlight.newFromFilter')" width="420px" @close="saving = false">
       <form class="space-y-2 px-5 py-4" @submit.prevent="save">
-        <label class="block text-[12px] font-bold text-fg">{{ t('highlight.titleLabel') }}</label>
+        <label class="block text-[12px] text-fg-2">{{ t('highlight.titleLabel') }}</label>
         <input v-model="saveName" class="input" autofocus data-testid="filter-name" />
         <p class="font-mono text-[11px] text-fg-3">{{ hl.quickText }}</p>
       </form>

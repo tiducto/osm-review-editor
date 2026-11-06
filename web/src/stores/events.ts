@@ -10,7 +10,6 @@ import { useRuleFilesStore } from './ruleFiles'
 import { useScansStore } from './scans'
 import { usePushView } from './pushView'
 import { usePresetsStore } from './presets'
-import { usePanelStore } from './panel'
 import { t, tn } from '@/i18n'
 
 export function connectEvents(): () => void {
@@ -40,7 +39,7 @@ export function connectEvents(): () => void {
       app.toast(tn('app.remoteDrafts', ids.length), 'success')
       drafts.statusFilter = 'open'
       drafts.drawerTab = 'drafts'
-      usePanelStore().open('drafts')
+      drafts.drawerOpen = true
       void drafts.loadDrafts()
     }
     if (drafts.reviewing) drafts.stopReview()

@@ -41,80 +41,73 @@ function isActive(mode: string) {
 
 <template>
   <div class="pointer-events-auto flex flex-col items-center gap-1.5" data-testid="edit-toolbar">
-    <div v-if="!editor.active" class="flex items-center gap-2">
+    <div v-if="!editor.active" class="flex items-center gap-2 rounded-lg border border-line bg-surface/95 p-1 shadow-panel backdrop-blur">
       <button
-        class="bar-btn shadow-panel"
+        class="btn btn-primary btn-sm"
         :disabled="editor.starting || mapStore.zoom < 15"
         :title="mapStore.zoom < 15 ? t('toolbar.zoomToEdit') : t('toolbar.enterTitle')"
         data-testid="edit-enter"
         @click="editor.enter()"
       >
-        <Spinner v-if="editor.starting" :size="12" /><Icon v-else name="edit" :size="16" /> {{ t('toolbar.enter') }}
+        <Spinner v-if="editor.starting" :size="12" /><Icon v-else name="edit" :size="13" /> {{ t('toolbar.enter') }}
       </button>
     </div>
-    <div v-else class="flex flex-wrap items-center justify-center gap-2">
-      <div class="bar-group shadow-panel">
+    <div v-else class="flex items-center gap-1 rounded-lg border border-accent/50 bg-surface/95 p-1 shadow-pop backdrop-blur">
       <button
         v-for="tool in tools"
         :key="tool.mode"
-        class="bar-btn"
-        :class="isActive(tool.mode) && 'active'"
+        class="btn btn-sm"
+        :class="isActive(tool.mode) ? 'btn-primary' : 'btn-ghost'"
         :title="`${t(tool.label)} (${tool.key})`"
         :data-testid="`edit-${tool.mode}`"
         @click="editor.setMode(tool.mode)"
       >
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path :d="tool.path" /></svg>
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="tool.path" /></svg>
         <span class="hidden lg:inline">{{ t(tool.label) }}</span>
       </button>
-      </div>
-      <div class="bar-group shadow-panel">
+      <div class="mx-1 h-5 w-px bg-line" />
       <button
-        class="bar-btn"
+        class="btn btn-ghost btn-icon btn-sm"
         :disabled="!editor.undoLabel"
         :title="editor.undoLabel ? t('toolbar.undo', { label: editor.undoLabel }) : t('toolbar.nothingToUndo')"
         data-testid="edit-undo"
         @click="editor.undo()"
       >
-        <Icon name="undo" :size="16" />
+        <Icon name="undo" :size="14" />
       </button>
       <button
-        class="bar-btn"
+        class="btn btn-ghost btn-icon btn-sm"
         :disabled="!editor.redoLabel"
         :title="editor.redoLabel ? t('toolbar.redo', { label: editor.redoLabel }) : t('toolbar.nothingToRedo')"
         data-testid="edit-redo"
         @click="editor.redo()"
       >
-        <Icon name="undo" :size="16" class="-scale-x-100" />
+        <Icon name="undo" :size="14" class="-scale-x-100" />
       </button>
-      </div>
-      <div class="bar-group shadow-panel">
       <button
-        class="bar-btn"
-        :class="issues.panelOpen && 'active'"
+        class="btn btn-sm"
+        :class="issues.panelOpen ? 'btn-primary' : 'btn-ghost'"
         :title="issuesTitle"
         data-testid="edit-issues-toggle"
         @click="issues.panelOpen = !issues.panelOpen"
       >
-        <Icon name="alert" :size="16" :class="issues.panelOpen ? '' : issueTone" />
+        <Icon name="alert" :size="13" :class="issues.panelOpen ? '' : issueTone" />
         <span class="font-mono tabular-nums">{{ issues.errors.length + issues.warnings.length }}</span>
       </button>
-      </div>
-      <div class="bar-group shadow-panel">
-      <span class="bar-btn cursor-default tabular-nums hover:bg-surface" :title="tn('toolbar.editCount', editor.editCount)" data-testid="edit-count">
+      <span class="chip bg-surface-3 font-mono text-fg-2 tabular-nums" :title="tn('toolbar.editCount', editor.editCount)" data-testid="edit-count">
         {{ editor.editCount }}
       </span>
-      <button class="bar-btn" :class="editor.editCount ? 'bg-accent text-white hover:bg-accent-strong' : ''" :disabled="editor.saving || (!editor.editCount && !editor.draftId)" :title="t('toolbar.saveTitle')" data-testid="edit-save" @click="editor.requestSave()">
-        <Spinner v-if="editor.saving" :size="12" /><Icon v-else name="upload" :size="16" />
+      <button class="btn btn-primary btn-sm" :disabled="editor.saving || (!editor.editCount && !editor.draftId)" :title="t('toolbar.saveTitle')" data-testid="edit-save" @click="editor.requestSave()">
+        <Spinner v-if="editor.saving" :size="12" /><Icon v-else name="upload" :size="13" />
         {{ editor.draftId ? t('toolbar.saveDraft') : t('common.save') }}
       </button>
-      <button class="bar-btn px-2" :title="t('toolbar.exit')" :aria-label="t('toolbar.exit')" data-testid="edit-exit" @click="editor.exit()"><Icon name="x" :size="16" /></button>
-      </div>
+      <button class="btn btn-ghost btn-sm" :title="t('toolbar.exit')" :aria-label="t('toolbar.exit')" data-testid="edit-exit" @click="editor.exit()"><Icon name="x" :size="13" /></button>
     </div>
     <div
       v-if="editor.active && (drawingKind || editor.draftTitle || editor.loadingTiles || !editor.zoomOk)"
-      class="flex max-w-[min(560px,calc(100vw-24px))] flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-md bg-[var(--tooltip-bg)] px-3 py-1 text-[12px] text-white/85 shadow-panel"
+      class="flex max-w-[min(560px,calc(100vw-24px))] flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-full border border-line bg-surface/95 px-3 py-1 text-[12px] text-fg-2 shadow-panel backdrop-blur"
     >
-      <span v-if="editor.draftTitle" class="font-bold text-white">{{ t('toolbar.editing', { title: editor.draftTitle }) }}</span>
+      <span v-if="editor.draftTitle" class="font-medium text-fg">{{ t('toolbar.editing', { title: editor.draftTitle }) }}</span>
       <span v-if="drawingKind">{{ drawingKind }}</span>
       <span v-if="editor.loadingTiles" class="flex items-center gap-1.5"><Spinner :size="11" /> {{ t('toolbar.loading') }}</span>
       <span v-if="!editor.zoomOk">{{ t('toolbar.zoomForData') }}</span>

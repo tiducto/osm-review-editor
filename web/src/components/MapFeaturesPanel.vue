@@ -32,7 +32,7 @@ function toggle(id: FeatureGroup) {
 </script>
 
 <template>
-  <section class="border-b border-line-strong px-3 py-3" data-testid="map-features">
+  <section class="border-b border-line px-3 py-3" data-testid="map-features">
     <button class="flex w-full items-center gap-1.5" :aria-expanded="open" data-testid="map-features-toggle" @click="open = !open">
       <Icon :name="open ? 'chevron-down' : 'chevron-right'" :size="12" class="text-fg-3" />
       <span class="section-title">{{ t('shell.features.title') }}</span>

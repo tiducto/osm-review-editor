@@ -1,44 +1,32 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRuleFilesStore } from './ruleFiles'
 
-export const PANES = ['background', 'map-data', 'validation', 'rules', 'presets', 'drafts', 'settings'] as const
-export type PaneName = (typeof PANES)[number]
+export type PanelTab = 'map' | 'validate' | 'rules' | 'presets'
 
-const LEGACY: Record<string, PaneName> = { map: 'map-data', validate: 'validation', rules: 'rules', presets: 'presets' }
+const KEY = 'ore.panelTab'
 
-function isPane(v: string | null): v is PaneName {
-  return !!v && (PANES as readonly string[]).includes(v)
-}
-
-function fromUrl(): PaneName | null {
-  const q = new URLSearchParams(location.search)
-  const pane = q.get('pane')
-  if (isPane(pane)) return pane
-  const legacy = q.get('panel')
-  return legacy ? (LEGACY[legacy] ?? null) : null
+function read(): PanelTab {
+  const q = new URLSearchParams(location.search).get('panel')
+  if (q === 'map' || q === 'validate' || q === 'rules' || q === 'presets') return q
+  try {
+    const v = localStorage.getItem(KEY)
+    if (v === 'map' || v === 'validate' || v === 'rules' || v === 'presets') return v
+  } catch {}
+  return 'map'
 }
 
 export const usePanelStore = defineStore('panel', () => {
   const ruleFiles = useRuleFilesStore()
-  const pane = ref<PaneName | null>(fromUrl())
-  const last = ref<PaneName>(pane.value ?? 'map-data')
-  const wide = computed(() => pane.value === 'rules' && !!ruleFiles.open)
+  const tab = ref<PanelTab>(read())
+  const wide = computed(() => tab.value === 'rules' && !!ruleFiles.open)
+  const open = ref(window.innerWidth >= 768)
 
-  function open(name: PaneName) {
-    pane.value = name
-    last.value = name
-  }
+  watch(tab, (t) => {
+    try {
+      localStorage.setItem(KEY, t)
+    } catch {}
+  })
 
-  function close() {
-    pane.value = null
-  }
-
-  function toggle(name?: PaneName) {
-    const target = name ?? last.value
-    if (pane.value === target || (!name && pane.value)) close()
-    else open(target)
-  }
-
-  return { pane, last, wide, open, close, toggle }
+  return { tab, wide, open }
 })
