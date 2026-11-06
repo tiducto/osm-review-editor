@@ -92,20 +92,25 @@ class ClipArea(val name: String, lonLatShape: Geometry, val bufferMeters: Double
             return factory.createPolygon(linear.first(), linear.drop(1).toTypedArray())
         }
 
-        fun fromFile(file: Path, bufferMeters: Double): ClipArea {
+        fun shapeFromFile(file: Path): Pair<String, Geometry> {
             val text = file.readText()
-            val shape = if (file.name.endsWith(".poly")) parsePoly(text) else parseGeoJson(text)
-            return ClipArea(file.name, shape, bufferMeters)
+            return file.name to if (file.name.endsWith(".poly")) parsePoly(text) else parseGeoJson(text)
         }
 
-        fun fromMirror(gol: FeatureLibrary, code: String, bufferMeters: Double): ClipArea? {
+        fun fromFile(file: Path, bufferMeters: Double): ClipArea =
+            shapeFromFile(file).let { (name, shape) -> ClipArea(name, shape, bufferMeters) }
+
+        fun fromMirror(gol: FeatureLibrary, code: String, bufferMeters: Double): ClipArea? =
+            mirrorShape(gol, code)?.let { (name, shape) -> ClipArea(name, shape, bufferMeters) }
+
+        fun mirrorShape(gol: FeatureLibrary, code: String): Pair<String, Geometry>? {
             val iso = code.uppercase()
             val f = gol.select("a[boundary=administrative][admin_level=2]")
                 .firstOrNull { b -> listOf("ISO3166-1", "ISO3166-1:alpha2").any { b.tag(it).trim().uppercase() == iso } }
                 ?: return null
             val geom = f.toGeometry().copy()
             Mercator.unproject(geom)
-            return ClipArea("mirror:$iso (${f.ref})", geom, bufferMeters)
+            return "mirror:$iso (${f.ref})" to geom
         }
     }
 }

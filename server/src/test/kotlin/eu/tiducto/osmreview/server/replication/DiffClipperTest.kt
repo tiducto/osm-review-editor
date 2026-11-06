@@ -41,10 +41,11 @@ class DiffClipperTest {
         val inGol = setOf(OsmType.NODE to 11L, OsmType.WAY to 23L, OsmType.NODE to 50L)
         val tracked = setOf(OsmType.NODE to 10L)
         var looked = 0
-        val clipper = DiffClipper(inArea, { t, id -> (t to id) in tracked }) { n, w, r ->
+        val lookup = IdLookup { n, w, r ->
             looked = n.size + w.size + r.size
             { t, id -> (t to id) in inGol }
         }
+        val clipper = DiffClipper(inArea, { t, id -> (t to id) in tracked }, lookup)
         val r = clipper.clip(listOf(elements))
         val kept = r.diffs.single().map { "${it.type.apiName[0]}${it.id}" }
         assertEquals(listOf("n-1", "n1", "n3", "n4", "n10", "n11", "w20", "w22", "w23", "r30", "r31", "r33", "n13"), kept)

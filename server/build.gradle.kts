@@ -131,6 +131,7 @@ tasks.named<JavaExec>("run") {
 
 tasks.test {
     environment("OSM_REVIEW_TEST_GOL", System.getenv("OSM_REVIEW_TEST_GOL") ?: "")
+    environment("OSM_REVIEW_TEST_GOL_UPDATABLE", System.getenv("OSM_REVIEW_TEST_GOL_UPDATABLE") ?: "")
 }
 
 tasks.register<JavaExec>("runClipper") {

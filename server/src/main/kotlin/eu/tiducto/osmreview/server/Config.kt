@@ -85,7 +85,15 @@ data class Config(
                     intervalSeconds = get("REPLICATION_INTERVAL_SECONDS")?.toLong() ?: 60,
                     batchSize = get("REPLICATION_BATCH")?.toInt() ?: 60,
                     area = get("REPLICATION_AREA"),
-                    bufferMeters = get("REPLICATION_BUFFER_METERS")?.toDouble() ?: 2000.0,
+                    bufferMeters = get("REPLICATION_BUFFER_METERS")?.toDouble() ?: 0.0,
+                    outerMeters = get("REPLICATION_OUTER_METERS")?.toDouble() ?: 10_000.0,
+                    fillApiUrl = get("REPLICATION_FILL_API").let { v ->
+                        when (v) {
+                            null -> ReplicationConfig.DEFAULT_FILL_API
+                            "off", "false", "none" -> null
+                            else -> v
+                        }
+                    },
                     keepDays = get("REPLICATION_KEEP_DAYS")?.toLong() ?: 3,
                     generator = "OSM Review Editor $version",
                 ),

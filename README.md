@@ -90,7 +90,8 @@ Environment variables (`.env` for Docker Compose):
 | `REPLICATION_ENABLED` | Run the minutely clipper in the app (compose sets `true`; default `false` for `./gradlew :server:run`) |
 | `REPLICATION_SOURCE_URL` | Upstream replication feed (default `https://planet.openstreetmap.org/replication/minute`) |
 | `REPLICATION_INTERVAL_SECONDS`, `REPLICATION_BATCH` | Clipper polling (60 s) and diffs per batch (60) |
-| `REPLICATION_AREA`, `REPLICATION_BUFFER_METERS` | Clip area: empty for the shipped Czechia polygon, a `.poly`/GeoJSON path or `mirror:CZ`; buffer (2000 m) |
+| `REPLICATION_AREA`, `REPLICATION_BUFFER_METERS`, `REPLICATION_OUTER_METERS` | Clip area: empty for the shipped Czechia extract polygon, a `.poly`/GeoJSON path or `mirror:CZ`; buffer (0 m); band checked for way nodes of GOL ways (10 km) |
+| `REPLICATION_FILL_API` | OSM API read for way nodes missing from both the diffs and the GOL (default osm.org API 0.6, `off` to disable) |
 | `REPLICATION_DIR`, `REPLICATION_KEEP_DAYS` | Local replication directory (default `DATA_DIR/replication`) and how long diffs are kept (3 days) |
 | `CONTACT` | Contact for the User-Agent sent to the OSM API |
 | `PORT`, `REMOTE_CONTROL_PORT` | Ports (default 3000 and 8111) |
@@ -397,11 +398,19 @@ The mirror is minutes behind OSM, not a day. Two parts cooperate over the shared
      mirror per batch) or that the clipper kept before (`tracked-ids.bin`, so a node created a minute
      ago and moved now is still kept even though the GOL has not caught up yet);
    - created, modified and deleted nodes inside the clip area plus `REPLICATION_BUFFER_METERS`
-     (default 2,000 m). The area is the Geofabrik extract polygon shipped with the server
-     (`czech-republic.poly`), a `.poly` or GeoJSON file named by `REPLICATION_AREA`, or
-     `REPLICATION_AREA=mirror:CZ` for the mirror's own `admin_level=2` boundary with that ISO code;
+     (default 0: the shipped area is the Geofabrik extract polygon `czech-republic.poly`, the same
+     polygon the GOL was built from, so a buffer would only add data the GOL never had). The area
+     can also be a `.poly` or GeoJSON file named by `REPLICATION_AREA`, or `REPLICATION_AREA=mirror:CZ`
+     for the mirror's own `admin_level=2` boundary (then set a buffer of a few km);
+   - nodes outside the area but within `REPLICATION_OUTER_METERS` (10 km) of it that are untagged
+     nodes of a way in the GOL (way node ids decoded from the GOL near their position), so ways
+     crossing the polygon edge do not keep stale node positions;
    - ways that reference a kept or existing node (always with their full `nd` list), plus the nodes
-     of kept ways that appear in the same diff, so `gol update` finds their coordinates;
+     of kept ways that appear in the same diffs, so `gol update` finds their coordinates. A node a
+     kept way references that is neither in the diffs nor in the GOL (an existing way extended onto
+     an unchanged node outside the extract) is fetched read-only from the OSM API
+     (`REPLICATION_FILL_API`, default `https://api.openstreetmap.org/api/0.6`, `off` to disable) and
+     written into the clipped diff before the way, so no way ends up with `geodesk:missing_nodes`;
    - relations with a kept or existing member, repeated until nothing changes.
 
    It writes the clipped diffs to `/data/replication` in the replication layout, with OSM's sequence
@@ -445,11 +454,15 @@ Failure modes:
 - **Clipper lag.** `mirror.replication.lagSeconds` and `backlog` grow when the planet feed is
   unreachable or the app was down; it catches up in batches. `mirror.replication.error` has the
   last error. The sidecar meanwhile reports `result: "current"` (nothing new).
-- **Missing nodes.** A GOL keeps no area, so the clipper decides what is relevant. Untagged way nodes
-  are not GeoDesk features and their ids cannot be looked up, so a node moved outside the buffer
-  that belongs to a way inside the area keeps its old position, and a new way that only reuses
-  existing untagged nodes is dropped, until the weekly rebuild. Ways whose nodes could not be
-  resolved get `geodesk:missing_nodes`; `infra/gol/live-spike.sh` counts them before and after.
+- **Missing nodes.** `gol update` keeps only node refs it finds in the GOL or the diff; the others get
+  `geodesk:missing_nodes`. The first live spike had 3 such ways after 27 minutes: with a 2 km buffer
+  around the extract polygon, nodes of a German changeset 1.9 km outside the polygon were kept and
+  pulled in their ways, whose other (unchanged) nodes the GOL never had. The buffer is now 0 and every
+  kept way is checked: refs that are in neither the diffs, the GOL's feature nodes nor the way node
+  ids of nearby GOL ways are fetched from the OSM API. `mirror.replication.fetchedNodesTotal` counts
+  fills and `unresolvedNodesTotal` refs that could not be fetched (API down or `off`).
+  `infra/gol/live-spike.sh` counts broken ways before and after. A new way that reuses only existing
+  untagged nodes, with none of its own in the area, is still dropped until the weekly rebuild.
 - **Failed update or check.** The current GOL stays; a file that fails `gol check` is replaced by a
   copy of the current one before the next cycle. `mirror.sidecar.error` has the tool's last lines.
 - **App not acknowledging.** The sidecar waits (`phase: "idle"`, `result: "waiting"`) and retries.

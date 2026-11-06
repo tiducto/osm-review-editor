@@ -9,6 +9,7 @@ import eu.tiducto.osmreview.server.core.EventBus
 import eu.tiducto.osmreview.server.core.MergeService
 import eu.tiducto.osmreview.server.core.OverlayService
 import eu.tiducto.osmreview.server.replication.HttpReplicationSource
+import eu.tiducto.osmreview.server.replication.OsmApiNodeFetcher
 import eu.tiducto.osmreview.server.replication.ReplicationConfig
 import eu.tiducto.osmreview.server.replication.ReplicationService
 import eu.tiducto.osmreview.server.db.Db
@@ -99,6 +100,7 @@ class App(
         ReplicationService(
             replicationConfig, mirror, HttpReplicationSource(replicationConfig.sourceUrl, config.userAgent),
             onChange = { runCatching { mirrorControl.emitStatus() } },
+            fetcher = replicationConfig.fillApiUrl?.let { OsmApiNodeFetcher(it, config.userAgent) },
         )
     } else {
         null

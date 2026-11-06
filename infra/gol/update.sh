@@ -149,7 +149,7 @@ clean() {
 }
 
 copy_gol() {
-  run cp "$DATA/$1" "$DATA/$2.tmp" && mv -f "$DATA/$2.tmp" "$DATA/$2"
+  { cp -c "$DATA/$1" "$DATA/$2.tmp" 2>/dev/null || run cp "$DATA/$1" "$DATA/$2.tmp"; } && mv -f "$DATA/$2.tmp" "$DATA/$2"
 }
 
 publish() {

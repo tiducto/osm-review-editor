@@ -912,6 +912,8 @@ export interface ReplicationStatus {
   droppedLastRun: number
   keptTotal: number
   droppedTotal: number
+  fetchedNodesTotal: number
+  unresolvedNodesTotal: number
   nextRunAt: string | null
   rebasedAt: string | null
   error: string | null

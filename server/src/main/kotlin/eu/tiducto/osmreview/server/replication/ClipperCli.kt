@@ -3,6 +3,7 @@ package eu.tiducto.osmreview.server.replication
 import com.geodesk.feature.FeatureLibrary
 import eu.tiducto.osmreview.rules.GolHeader
 import eu.tiducto.osmreview.rules.GolMirror
+import eu.tiducto.osmreview.rules.tagMap
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Path
 import kotlin.system.exitProcess
@@ -13,7 +14,7 @@ object ClipperCli {
         val opts = parse(args)
         when {
             "header" in opts -> header(opts.getValue("header"))
-            "missing" in opts -> missing(Path.of(opts.getValue("missing").single()))
+            "missing" in opts -> opts.getValue("missing").forEach { missing(Path.of(it)) }
             "hold" in opts -> hold(Path.of(opts.getValue("hold")[0]), opts.getValue("hold").getOrNull(1)?.toLong() ?: 60)
             else -> clip(opts)
         }
@@ -32,9 +33,15 @@ object ClipperCli {
 
     private fun missing(file: Path) {
         FeatureLibrary(file).use { gol ->
-            val ways = gol.select("w[geodesk:missing_nodes]").count()
+            val broken = gol.select("w[geodesk:missing_nodes], a[geodesk:missing_nodes]").filter { it.isWay }
+            val ways = broken.size
             val relations = gol.select("r[geodesk:missing_members]").count()
             println("$file missing_nodes_ways=$ways missing_members_relations=$relations")
+            if ("list" in listOf(System.getenv("CLIPPER_LIST_MISSING") ?: "")) {
+                broken.forEach { w ->
+                    println("w${w.id()} missing_nodes=${w.stringValue("geodesk:missing_nodes")} tags=${w.tagMap()}")
+                }
+            }
         }
     }
 
@@ -56,14 +63,18 @@ object ClipperCli {
             dir = out,
             batchSize = one("batch")?.toInt() ?: 60,
             area = one("area"),
-            bufferMeters = one("buffer")?.toDouble() ?: 2000.0,
+            bufferMeters = one("buffer")?.toDouble() ?: 0.0,
+            fillApiUrl = one("fill-api")?.takeIf { it != "off" } ?: if (one("fill-api") == "off") null else ReplicationConfig.DEFAULT_FILL_API,
             generator = "OSM Review Editor clipper",
         )
         val max = one("max")?.toLong() ?: Long.MAX_VALUE
         val userAgent = "OSMReviewEditor/clipper-cli (+${one("contact") ?: "local"})"
         GolMirror(out.resolve("no-sidecar"), gol).use { mirror ->
             check(mirror.reloadIfChanged()) { mirror.status().message ?: "Cannot open $gol" }
-            val service = ReplicationService(config, mirror, HttpReplicationSource(config.sourceUrl, userAgent))
+            val service = ReplicationService(
+                config, mirror, HttpReplicationSource(config.sourceUrl, userAgent),
+                fetcher = config.fillApiUrl?.let { OsmApiNodeFetcher(it, userAgent) },
+            )
             val reference = GolHeader.read(gol)?.timestamp
             var report = runBlocking { service.runOnce(if (max == Long.MAX_VALUE) max else 0) }
             if (max != Long.MAX_VALUE && reference != null) {
@@ -83,7 +94,8 @@ object ClipperCli {
             println(
                 "clipped sequences=${report.sequences} kept=${report.kept} dropped=${report.dropped} " +
                     "head=${report.head?.sequence} headTimestamp=${report.head?.timestamp} first=${s.firstSequence} " +
-                    "rebased=${report.rebased} area=${s.area} source=${s.sourceSequence}",
+                    "rebased=${report.rebased} area=${s.area} source=${s.sourceSequence} " +
+                    "fetchedNodes=${s.fetchedNodesTotal} unresolvedNodes=${s.unresolvedNodesTotal}",
             )
         }
     }
@@ -99,7 +111,7 @@ object ClipperCli {
 
     private fun usage(): Nothing {
         System.err.println(
-            "usage: ClipperCli --gol <file.gol> --out <replication dir> [--max N sequences past the GOL timestamp] [--source URL] [--area FILE|mirror:CZ] [--buffer M] [--batch N]\n" +
+            "usage: ClipperCli --gol <file.gol> --out <replication dir> [--max N sequences past the GOL timestamp] [--source URL] [--area FILE|mirror:CZ] [--buffer M] [--fill-api URL|off] [--batch N]\n" +
                 "       ClipperCli --header <file.gol>...\n" +
                 "       ClipperCli --missing <file.gol>\n" +
                 "       ClipperCli --hold <file.gol> [seconds]",

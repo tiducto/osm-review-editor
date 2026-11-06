@@ -230,6 +230,8 @@ data class ReplicationStatus(
     val droppedLastRun: Int = 0,
     val keptTotal: Long = 0,
     val droppedTotal: Long = 0,
+    val fetchedNodesTotal: Long = 0,
+    val unresolvedNodesTotal: Long = 0,
     val nextRunAt: String? = null,
     val rebasedAt: String? = null,
     val error: String? = null,

@@ -384,6 +384,8 @@ change and after every cycle:
 | `firstSequence` | Oldest sequence kept locally |
 | `lastRunAt`, `lastRunSeconds`, `lastRunSequences` | Last run: end, duration, sequences processed |
 | `keptLastRun`, `droppedLastRun`, `keptTotal`, `droppedTotal` | Changes kept and dropped (last run, since the app started) |
+| `fetchedNodesTotal` | Way nodes fetched from the OSM API because a kept way referenced them and neither the diffs nor the GOL had them |
+| `unresolvedNodesTotal` | Such nodes that could not be fetched (those ways will carry `geodesk:missing_nodes`) |
 | `nextRunAt` | Next scheduled run |
 | `rebasedAt` | Last re-base |
 | `error` | Last run's error, `null` after a successful run |

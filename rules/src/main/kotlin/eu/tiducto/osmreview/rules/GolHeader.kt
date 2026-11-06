@@ -7,9 +7,12 @@ import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.time.Instant
 
-data class GolHeader(val revision: Long, val timestamp: Instant?, val url: String?) {
+data class GolHeader(val revision: Long, val timestamp: Instant?, val url: String?, val flags: Int = 0) {
+    val hasWaynodeIds: Boolean get() = flags and 1 != 0
+
     companion object {
         private const val SIZE = 512
+        private const val FLAGS = 80
         private const val ACTIVE_SNAPSHOT = 17
         private const val SNAPSHOTS = 128
         private const val SNAPSHOT_SIZE = 64
@@ -34,7 +37,7 @@ data class GolHeader(val revision: Long, val timestamp: Instant?, val url: Strin
             val len = b.get(URL_LENGTH).toInt() and 0xff
             val url = if (len == 0) null else ByteArray(len).also { arr -> for (i in 0 until len) arr[i] = b.get(URL + i) }.decodeToString()
             val ts = if (millis in MIN_MILLIS..MAX_MILLIS) Instant.ofEpochMilli(millis) else null
-            return GolHeader(revision, ts, url)
+            return GolHeader(revision, ts, url, b.getInt(FLAGS))
         }
 
         private const val MIN_MILLIS = 946684800000L
