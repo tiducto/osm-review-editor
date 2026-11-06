@@ -1,7 +1,10 @@
 @import 'tailwindcss';
 @import 'maplibre-gl/dist/maplibre-gl.css' layer(components);
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
+  color-scheme: light;
   --bg: #f4f5f7;
   --surface: #ffffff;
   --surface-2: #f7f8fa;
@@ -34,6 +37,95 @@
 
   --shadow: 0 1px 2px rgb(15 23 42 / 0.06), 0 4px 16px rgb(15 23 42 / 0.06);
   --shadow-lg: 0 10px 40px rgb(15 23 42 / 0.18);
+
+  --cm-bg: #ffffff;
+  --cm-gutter: #f8fafc;
+  --cm-gutter-line: #e5e7eb;
+  --cm-gutter-fg: #94a3b8;
+  --cm-active: #f1f5f9;
+  --cm-active-gutter: #e2e8f0;
+  --cm-selection: #d9d9d9;
+  --cm-selection-focused: #d7d4f0;
+  --cm-tooltip: #f5f5f5;
+  --cm-tooltip-line: #dddddd;
+  --syn-comment: #8a8f98;
+  --syn-string: #0f7b3e;
+  --syn-number: #b45309;
+  --syn-color: #be185d;
+  --syn-keyword: #7c3aed;
+  --syn-type: #1d4ed8;
+  --syn-class: #0e7490;
+  --syn-attribute: #9a3412;
+  --syn-property: #1e40af;
+  --syn-regexp: #c2410c;
+  --syn-operator: #475569;
+  --syn-atom: #0f766e;
+}
+
+.dark {
+  color-scheme: dark;
+  --bg: #0b0f17;
+  --surface: #121722;
+  --surface-2: #171d2a;
+  --surface-3: #1e2534;
+  --line: #242c3b;
+  --line-strong: #323c4f;
+  --fg: #e6e9ef;
+  --fg-2: #a3adbd;
+  --fg-3: #6b7587;
+  --accent: #4f8cff;
+  --accent-soft: #4f8cff24;
+
+  --added: #4ade80;
+  --added-soft: #22c55e24;
+  --removed: #f87171;
+  --removed-soft: #ef444426;
+  --changed: #fbbf24;
+  --changed-soft: #f59e0b24;
+  --geom: #c084fc;
+  --geom-soft: #a855f726;
+
+  --info: #38bdf8;
+  --warning: #fbbf24;
+  --error: #f87171;
+  --prod: #fb923c;
+  --prod-soft: #f9731629;
+  --claude: #e08a68;
+  --claude-soft: #d9775729;
+
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 16px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 10px 40px rgb(0 0 0 / 0.55);
+
+  --cm-bg: var(--surface);
+  --cm-gutter: var(--surface-2);
+  --cm-gutter-line: var(--line);
+  --cm-gutter-fg: var(--fg-3);
+  --cm-active: #1a2130;
+  --cm-active-gutter: var(--surface-3);
+  --cm-selection: #2a3446;
+  --cm-selection-focused: #2c4370;
+  --cm-tooltip: var(--surface-2);
+  --cm-tooltip-line: var(--line-strong);
+  --syn-comment: #7d8798;
+  --syn-string: #6ee7a0;
+  --syn-number: #fbbf24;
+  --syn-color: #f472b6;
+  --syn-keyword: #b794f6;
+  --syn-type: #7aa7ff;
+  --syn-class: #5eead4;
+  --syn-attribute: #fdba74;
+  --syn-property: #93c5fd;
+  --syn-regexp: #fb923c;
+  --syn-operator: #a3adbd;
+  --syn-atom: #2dd4bf;
+}
+
+.dark .maplibregl-control-container {
+  color-scheme: light;
+  --surface: #ffffff;
+  --line: #e3e6ea;
+  --fg-2: #475569;
+  --shadow: 0 1px 2px rgb(15 23 42 / 0.06), 0 4px 16px rgb(15 23 42 / 0.06);
 }
 
 

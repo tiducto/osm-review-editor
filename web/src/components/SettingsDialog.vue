@@ -10,6 +10,7 @@ import ConfirmDialog from './ConfirmDialog.vue'
 import ImageryEditor from './ImageryEditor.vue'
 import Icon from './Icon.vue'
 import { LOCALES, useI18n, type MessageKey } from '@/i18n'
+import { THEME_PREFS, setThemePref, themePref } from '@/lib/theme'
 
 const { t, locale, setLocale } = useI18n()
 const app = useAppStore()
@@ -107,6 +108,23 @@ const shortcuts: [string, MessageKey][] = [
             @click="setLocale(l)"
           >
             {{ l === 'cs' ? t('common.lang.cs') : t('common.lang.en') }}
+          </button>
+        </div>
+      </section>
+
+      <section class="flex items-center gap-3 px-5 py-4">
+        <h3 class="section-title">{{ t('settings.theme') }}</h3>
+        <div class="ml-auto flex overflow-hidden rounded-md border border-line text-[12px] font-medium" role="group" :aria-label="t('settings.theme')" data-testid="settings-theme">
+          <button
+            v-for="p in THEME_PREFS"
+            :key="p"
+            class="h-7 px-3 transition-colors"
+            :class="themePref === p ? 'bg-accent text-white' : 'text-fg-2 hover:bg-surface-2'"
+            :aria-pressed="themePref === p"
+            :data-testid="`settings-theme-${p}`"
+            @click="setThemePref(p)"
+          >
+            {{ t(`settings.theme.${p}`) }}
           </button>
         </div>
       </section>
