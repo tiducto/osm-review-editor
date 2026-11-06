@@ -176,12 +176,12 @@ test('fast pans and zooms keep the map drawn', async ({ page }) => {
   await openMap(page, { zoom: 16 })
   for (let i = 0; i < 6; i++) {
     const dx = i % 2 ? 300 : -300
-    await page.evaluate((dx) => (window as unknown as { __oreMap: any }).__oreMap.panBy([dx, dx / 3], { duration: 150 }), dx)
+    await page.evaluate((dx) => void (window as unknown as { __oreMap: any }).__oreMap.panBy([dx, dx / 3], { duration: 150 }), dx)
     await page.waitForTimeout(80)
   }
-  await page.evaluate(() => (window as unknown as { __oreMap: any }).__oreMap.zoomTo(13, { duration: 300 }))
+  await page.evaluate(() => void (window as unknown as { __oreMap: any }).__oreMap.zoomTo(13, { duration: 300 }))
   await page.waitForTimeout(350)
-  await page.evaluate(([c]) => (window as unknown as { __oreMap: any }).__oreMap.flyTo({ center: c, zoom: 18, duration: 400 }), [CENTRE] as const)
+  await page.evaluate(([c]) => void (window as unknown as { __oreMap: any }).__oreMap.flyTo({ center: c, zoom: 18, duration: 400 }), [CENTRE] as const)
   await settle(page)
   expect(await renderedCount(page, { building: true })).toBeGreaterThan(0)
 })
